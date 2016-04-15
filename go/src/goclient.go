@@ -2,6 +2,7 @@ package main
 
 import (
 	"benchlib"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,33 +22,21 @@ const (
 	clientName = "golang"
 )
 
+var (
+	logPayloadStr string
+)
+
+func init() {
+	lps := make([]byte, benchlib.LogsSizeMax)
+	for i := 0; i < len(lps); i++ {
+		lps[i] = byte(i)
+	}
+	logPayloadStr = string(lps)
+}
+
 type testClient struct {
 	baseURL string
 	tracer  ot.Tracer
-}
-
-type sleeper struct {
-	sleepDebt time.Duration
-}
-
-func (s *sleeper) amortizedSleep(d, interval time.Duration) {
-	s.sleepDebt += d
-	if s.sleepDebt > interval {
-		s.sleep()
-	}
-}
-
-func (s *sleeper) sleep() {
-	if s.sleepDebt < 0 {
-		return
-	}
-	begin := time.Now()
-	for s.sleepDebt > 0 {
-		time.Sleep(s.sleepDebt)
-		now := time.Now()
-		s.sleepDebt -= now.Sub(begin)
-		begin = now
-	}
 }
 
 func work(n int64) int64 {
@@ -88,61 +77,106 @@ func (t *testClient) loop() {
 		if control.Exit {
 			return
 		}
-		timing := t.run(&control)
-
+		timing, flusht, sleeps, answer := t.run(&control)
+		var sleeps_buf bytes.Buffer
+		for _, s := range sleeps {
+			sleeps_buf.WriteString(fmt.Sprint(int64(s)))
+			sleeps_buf.WriteString(",")
+		}
 		t.getURL(fmt.Sprint(
 			benchlib.ResultPath,
 			"?timing=",
-			timing.Seconds()))
+			timing.Seconds(),
+			"&flush=",
+			flusht.Seconds(),
+			"&s=",
+			sleeps_buf.String(),
+			"&a=",
+			answer))
 	}
 }
 
-func testBody(control *benchlib.Control) {
-	var s sleeper
+func testBody(control *benchlib.Control) ([]time.Duration, int64) {
+	var sleep_debt time.Duration
+	var answer int64
+	num_sleeps := (time.Duration(control.Repeat) * control.Sleep) / control.SleepInterval
+	sleeps := make([]time.Duration, num_sleeps)
+	sleep_cnt := 0
 	for i := int64(0); i < control.Repeat; i++ {
 		span := ot.StartSpan("span/test")
-		work(control.Work)
-		span.Finish()
-		if control.Sleep != 0 {
-			s.amortizedSleep(control.Sleep, control.SleepInterval)
+		answer = work(control.Work)
+		for i := int64(0); i < control.NumLogs; i++ {
+			span.LogEventWithPayload("testlog",
+				logPayloadStr[0:control.BytesPerLog])
 		}
+		span.Finish()
+		if control.Sleep == 0 {
+			continue
+		}
+		sleep_debt += control.Sleep
+		if sleep_debt < control.SleepInterval {
+			continue
+		}
+		begin := time.Now()
+		time.Sleep(sleep_debt)
+		elapsed := time.Now().Sub(begin)
+		sleep_debt -= elapsed
+		sleeps[sleep_cnt] = elapsed
+		sleep_cnt++
 	}
-	s.sleep()
+	return sleeps, answer
 }
 
-func (t *testClient) run(control *benchlib.Control) time.Duration {
+func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duration, []time.Duration, int64) {
 	if control.Trace {
 		ot.InitGlobalTracer(t.tracer)
 	} else {
 		ot.InitGlobalTracer(ot.NoopTracer{})
 	}
-	runtime.GOMAXPROCS(1) // TODO
+	conc := control.Concurrent
+	runtime.GOMAXPROCS(conc)
 	runtime.GC()
 
-	conc := control.Concurrent
+	sleeps := make([][]time.Duration, conc, conc)
+	answer := make([]int64, conc, conc)
+
 	beginTest := time.Now()
 	if conc == 1 {
-		testBody(control)
+		sleeps[0], answer[0] = testBody(control)
 	} else {
 		start := &sync.WaitGroup{}
 		finish := &sync.WaitGroup{}
 		start.Add(conc)
 		finish.Add(conc)
 		for c := 0; c < conc; c++ {
+			c := c
 			go func() {
 				start.Done()
 				start.Wait()
-				testBody(control)
+				sleeps[c], answer[c] = testBody(control)
 				finish.Done()
 			}()
 		}
 		finish.Wait()
 	}
-	if control.Trace && !control.NoFlush {
+	endTime := time.Now()
+	flushDur := time.Duration(0)
+	if control.Trace {
 		recorder := t.tracer.(basictracer.Tracer).Options().Recorder.(*ls.Recorder)
 		recorder.Flush()
+		flushDur = time.Now().Sub(endTime)
 	}
-	return time.Now().Sub(beginTest)
+	var sleep_final []time.Duration
+	var answer_final int64
+	for c := 0; c < conc; c++ {
+		for _, s := range sleeps[c] {
+			if s != 0 {
+				sleep_final = append(sleep_final, s)
+			}
+		}
+		answer_final *= answer[c]
+	}
+	return endTime.Sub(beginTest), flushDur, sleep_final, answer_final
 }
 
 func main() {
