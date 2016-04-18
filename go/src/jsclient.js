@@ -36,6 +36,12 @@ const test_tracer = opentracing.initNewTracer(lightstep.tracer({
     group_name           : 'should-not-be-required',
 }));
 
+var log_input_string = "";
+
+for (var i = 0; i < 1<<20; i++) {
+    log_input_string += String.fromCharCode(i%256);
+}
+
 // Note: Keep-Alive does not work properly, reason unknown.  Disable
 // it to make progress.
 var keepAliveAgent = new http.Agent({
@@ -88,24 +94,26 @@ function exec_control(c, tracer) {
 		p *= p
 		p %= 2147483647
 	    }
+	    for (var i = 0; i < c.NumLogs; i++) {
+		span.logEvent("testlog", log_input_string.substr(0, c.BytesPerLog));
+	    }
 	    span.finish()
 	    if (c.Sleep != 0) {
 		sleep_debt += c.Sleep
 		if (sleep_debt >= c.SleepInterval)  {
 		    sleep_at = process.hrtime()
-		    return setTimeout(body_func, (sleep_debt - c.SleepCorrection) / millis_per_nano, r - 1)
+		    return setTimeout(body_func, sleep_debt / millis_per_nano, r - 1)
 		}
 	    }
 	}
-	if (sleep_debt > 0) {
-	    sleep_at = process.hrtime()
-	    return setTimeout(body_func, (sleep_debt - c.SleepCorrection) / millis_per_nano, 0)
-	}
+	var endTime = process.hrtime()
+	var elapsed = (endTime[0] - begin[0]) + (endTime[1] - begin[1]) * 1e-9
 	var done_func = function (err) {
 	    // TODO check err
-	    var diff = process.hrtime(begin);
-	    var elapsed = diff[0] + (diff[1] * 1e-9)
-	    var path = '/result?timing=' + elapsed + '&a=' + p + '&s=' + sleep_nanos;
+	    var flushDiff = process.hrtime(endTime);
+	    var flushElapsed = flushDiff[0] + flushDiff[1] * 1e9
+	    var path = '/result?timing=' + elapsed + '&flush=' + flushElapsed +
+		'&a=' + p + '&s=' + sleep_nanos;
 	    return http.get({
 		host: host,
 		port: port,
