@@ -37,8 +37,7 @@ const (
 	maxConcurrency = 3
 
 	// testTolerance is used for a sanity checks.
-	// TODO this is too lax, but needed for testing on busy laptops.
-	testTolerance = 0.1
+	testTolerance = 0.02
 
 	// For clients that require timing correction (i.e., NodeJS)
 	timingTolerance = 0.015 // ~= 1 second per minute
@@ -53,9 +52,9 @@ var (
 
 	// client is a list of client programs for the benchmark
 	clients = []benchClient{
-		{"golang", []string{"./goclient"}, false},
-		{"python", []string{"./pyclient.py"}, false},
-		{"nodejs", []string{"node", "./jsclient.js"}, true},
+		//{"golang", []string{"./goclient"}, false},
+		//{"python", []string{"./pyclient.py"}, false},
+		{"nodejs", []string{"node", "--expose-gc", "./jsclient.js"}, true},
 	}
 
 	// requestCh is used to serialize HTTP requests
@@ -226,7 +225,7 @@ func (s *benchService) estimateWorkCost() {
 	glog.V(1).Infof("Work cost %.3gs/unit", s.current.workCost.Wall)
 }
 
-func (s *benchService) sanityCheckWork() {
+func (s *benchService) sanityCheckWork() bool {
 	runfor := time.Second.Seconds()
 	conc := 1
 	var st benchlib.TimingStats
@@ -243,10 +242,12 @@ func (s *benchService) sanityCheckWork() {
 
 	absRatio := math.Abs((st.Wall.Mean() - runfor) / runfor)
 	if absRatio > testTolerance {
-		glog.Fatal("CPU work not well calibrated (or insufficient CPU) @ concurrency ",
+		glog.Warning("CPU work not well calibrated (or insufficient CPU) @ concurrency ",
 			conc, ": measured ", st.Mean(), " expected ", runfor,
 			" off by ", absRatio*100.0, "%")
+		return false
 	}
+	return true
 }
 
 func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
@@ -289,9 +290,6 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 }
 
 func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.TimingStats {
-	// TODO in GO/PY we adjust the load factor until finding saturation
-	// in NODEJS we adjust the sleep factor
-
 	workTime := benchlib.Time(opts.load / opts.qps)
 	sleepTime := benchlib.Time((1 - opts.load) / opts.qps)
 
@@ -340,6 +338,11 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 		return ss, spans, bytes
 	}
 	for {
+		if s.current.NeedsTimingAdjustment {
+			// Adjust for on-the-fly compilation, etc.
+			s.recalibrate()
+		}
+
 		ss, spans, bytes := runOnce()
 		if s.current.NeedsTimingAdjustment && sleepTime != 0 {
 			offBy := ss.Wall.Mean() - opts.seconds
@@ -371,9 +374,9 @@ func (s *benchService) measureImpairment() {
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
 		100,
-		200,
-		300, 400, 500,
-		600, 700, 800, 900, 1000,
+		// 200,
+		// 300, 400, 500,
+		// 600, 700, 800, 900, 1000,
 	}
 	logcfg := []struct{ num, size int64 }{
 		{0, 0},
@@ -382,9 +385,11 @@ func (s *benchService) measureImpairment() {
 		{6, 100},
 	}
 	loadlist := []float64{
-		.5, .6, .7, .8, .9,
-		.92, .94, .96, .98,
-		.99, .995, .997, .999, 1.0,
+		.92, .93, .94, .95,
+
+		//.5, .6, .7, .8, .9,
+		//.92, .94, .96, .98,
+		//.99, .995, .997, .999, 1.0,
 	}
 	for _, qps := range qpss {
 		for _, lcfg := range logcfg {
@@ -441,6 +446,18 @@ func (s *benchService) runTests() {
 	os.Exit(0)
 }
 
+func (s *benchService) recalibrate() {
+	s.current = newBenchStats(s.current.benchClient)
+	s.warmup()
+	s.estimateZeroCosts()
+	s.estimateRoundCost()
+	s.estimateWorkCost()
+	for !s.sanityCheckWork() {
+		s.estimateWorkCost()
+	}
+	s.measureSpanCost()
+}
+
 func (s *benchService) runTest(bc *benchClient) {
 	s.current = newBenchStats(bc)
 
@@ -458,15 +475,7 @@ func (s *benchService) runTest(bc *benchClient) {
 		glog.Info("Awaiting test client")
 	}
 
-	// Calibration
-	s.warmup()
-	s.estimateZeroCosts()
-	s.estimateRoundCost()
-	s.estimateWorkCost()
-	s.sanityCheckWork()
-
-	// Measurement
-	s.measureSpanCost()
+	s.recalibrate()
 	s.measureImpairment()
 }
 
