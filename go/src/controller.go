@@ -52,8 +52,8 @@ var (
 
 	// client is a list of client programs for the benchmark
 	clients = []benchClient{
-		//{"golang", []string{"./goclient"}, false},
-		//{"python", []string{"./pyclient.py"}, false},
+		{"python", []string{"./pyclient.py"}, false},
+		{"golang", []string{"./goclient"}, false},
 		{"nodejs", []string{"nodejs", "--expose-gc", "./jsclient.js"}, true},
 	}
 
