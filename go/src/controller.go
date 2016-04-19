@@ -53,9 +53,9 @@ var (
 
 	// client is a list of client programs for the benchmark
 	clients = []benchClient{
-		//{"golang", []string{"./goclient"}, false},
+		{"golang", []string{"./goclient"}, false},
+		{"python", []string{"./pyclient.py"}, false},
 		{"nodejs", []string{"node", "./jsclient.js"}, true},
-		//{"python", []string{"./pyclient.py"}, false},
 	}
 
 	// requestCh is used to serialize HTTP requests

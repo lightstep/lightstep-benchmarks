@@ -29,7 +29,7 @@ var (
 func init() {
 	lps := make([]byte, benchlib.LogsSizeMax)
 	for i := 0; i < len(lps); i++ {
-		lps[i] = byte(i)
+		lps[i] = 'A' + byte(i%26)
 	}
 	logPayloadStr = string(lps)
 }

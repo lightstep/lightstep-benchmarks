@@ -39,7 +39,7 @@ const test_tracer = opentracing.initNewTracer(lightstep.tracer({
 var log_input_string = "";
 
 for (var i = 0; i < 1<<20; i++) {
-    log_input_string += String.fromCharCode(i%256);
+    log_input_string += String.fromCharCode(65 + (i%26));
 }
 
 // Note: Keep-Alive does not work properly, reason unknown.  Disable
