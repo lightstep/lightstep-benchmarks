@@ -12,13 +12,6 @@ import urllib2
 import opentracing
 import lightstep.tracer
 
-global always
-always = True
-
-timer = time.time
-
-# TODO generate constants from benchlib/bench.go and import them
-
 test_tracer = lightstep.tracer.init_tracer(
     access_token='ignored',
     secure=False,
@@ -31,6 +24,7 @@ base_url = 'http://localhost:8000'
 prime_work = 982451653
 logs_memory = None
 logs_size_max = 1<<20
+nanos_per_second = 1e9
 
 def prepare_logs():
     global logs_memory
@@ -56,55 +50,36 @@ def do_work(n):
 
 def test_body(control):
     repeat    = control['Repeat']
-    sleep     = control['Sleep'] / 1e9
-    sleepival = control['SleepInterval'] / 1e9
+    sleepnano = control['Sleep']
+    sleepival = control['SleepInterval']
     work      = control['Work']
     logn      = control['NumLogs']
     logsz     = control['BytesPerLog']
-    sleeper   = Sleeper(sleepival)
+    answer    = None
+    sleep_debt = 0  # Accumulated nanoseconds
+    sleep_nanos = []  # List of actual sleeps (nanoseconds)
+
     for i in xrange(repeat):
         span = opentracing.tracer.start_span(operation_name='span/test')
         for j in xrange(logn):
-            span.log_event(logs_memory[0:logsz])
+            span.log(event="testlog", payload=logs_memory[0:logsz])
         #end
-        x = do_work(work)
-        if not always:
-            print x  # Prevent dead code elimination
-        #end
+        answer = do_work(work)
         span.finish()
-        if sleep != 0.0:
-            sleeper.amortized_sleep(sleep)
+        if sleepnano == 0:
+            continue
         #end
-    #end
-    sleeper.sleep()
-#end
-
-class Sleeper:
-    def __init__(self, interval):
-        self.sleep_debt = 0.0
-        self.sleep_interval = interval
-    #end
-
-    def amortized_sleep(self, duration):
-        self.sleep_debt += duration
-
-        if self.sleep_debt >= self.sleep_interval:
-            self.sleep()
+        sleep_debt += sleepnano
+        if sleep_debt < sleepival:
+            continue
         #end
+        begin = time.time()
+        time.sleep(sleep_debt / nanos_per_second)
+        elapsed = long((time.time() - begin) * nanos_per_second)
+        sleep_debt -= elapsed
+        sleep_nanos.append(elapsed)
     #end
-
-    def sleep(self):
-        if self.sleep_debt <= 0:
-            return
-        #end
-        begin = timer()
-        while self.sleep_debt > 0.0:
-            time.sleep(self.sleep_debt)
-            now = timer()
-            self.sleep_debt -= (now - begin)
-            begin = now
-        #end
-    #end
+    return (sleep_nanos, answer)
 #end
 
 class Worker(threading.Thread):
@@ -113,7 +88,7 @@ class Worker(threading.Thread):
         self.control = control
     #end
     def run(self):
-        test_body(self.control)
+        self.sleep_nanos, self.answer = test_body(self.control)
     #end
 #end
 
@@ -123,6 +98,7 @@ def loop():
         response = urllib2.urlopen(request)
         response_body = response.read()
 
+        global control
         control = json.loads(response_body)
 
         if response.code != 200:
@@ -131,7 +107,6 @@ def loop():
 
         concurrent = control['Concurrent']
         trace      = control['Trace']
-        noflush    = control['NoFlush']
 
         if control['Exit']:
             sys.exit(0)
@@ -143,23 +118,36 @@ def loop():
             opentracing.tracer = noop_tracer
         #end
 
-        begin = timer()
+        begin = time.time()
+        sleep_nanos = []
+        answer = None
 
         if concurrent == 1:
-            test_body(control)
+            sleep_nanos, answer = test_body(control)
         else:
             threads = [Worker(control) for x in xrange(concurrent)]
-            [x.start() for x in threads]  # TODO is this legitimate style?
-            [x.join() for x in threads]
+            for x in threads:
+                x.start()
+            #end
+            for x in threads:
+                x.join()
+            #end
+            sleep_nanos = [s for x in threads for s in x.sleep_nanos]
+            answer = '-'.join([str(x.answer) for x in threads])
         #end
 
-        if trace and not noflush:
+        end = time.time()
+        flush_dur = 0.0
+
+        if trace:
             opentracing.tracer.flush()
+            flush_dur = time.time() - end
         #end
-        
-        elapsed = timer() - begin
 
-        request = urllib2.Request(base_url + '/result?timing=%f' % elapsed)
+        elapsed = end - begin
+        path = '/result?timing=%f&flush=%f&s=%s&a=%s' % (
+            elapsed, flush_dur, ','.join([str(x) for x in sleep_nanos]), answer)
+        request = urllib2.Request(base_url + path)
         response = urllib2.urlopen(request)
         response_body = response.read()
 

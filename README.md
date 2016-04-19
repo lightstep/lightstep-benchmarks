@@ -96,9 +96,9 @@ range.  We consider 10μs a good measurement, while a measurement
 of 100μs indicates a library that needs improvement.  Current
 measurements:
 
-- golang 10μs
+- golang 0.5μs
 - nodejs 10μs
-- python 90μs
+- python 15μs
 
 Our goal is that unless the CPU is saturated, the empty span cost
 is the only additional user-perceived latency impact that results
@@ -155,14 +155,16 @@ vs. qps for every client library.
 
 Preliminary data:
 
-- python @100qps <0.5% (deferred) ~1% (synchronous);
-  @250qps <1% (deferred) ~2.5% (synchronous)
+- golang @100qps 0%; @250 qps < 0.1%; @500qps < 0.2%; @750qps < 0.3%; @1000qps < 0.5%
+- python in progress following recent speedups, CPU-limits required for final measurements
 - nodejs unfinished, sleep correction logic needed
-- golang unfinished, need to re-run tests
 
 Note: Because Python performance is showing glaring problems, I
 will prioritize fixing the Python client ahead of completing
 these measurements.
+
+Note: The numbers above are preliminary; longer tests will be needed
+for greater precision.
 
 ### Concurrency Costs
 

@@ -40,6 +40,9 @@ const (
 	// TODO this is too lax, but needed for testing on busy laptops.
 	testTolerance = 0.1
 
+	// For clients that require timing correction (i.e., NodeJS)
+	timingTolerance = 0.015 // ~= 1 second per minute
+
 	nanosPerSecond = 1e9
 )
 
@@ -50,9 +53,9 @@ var (
 
 	// client is a list of client programs for the benchmark
 	clients = []benchClient{
-		{"nodejs", []string{"node", "./jsclient.js"}},
-		{"python", []string{"./pyclient.py"}},
-		{"golang", []string{"./goclient"}},
+		//{"golang", []string{"./goclient"}, false},
+		{"nodejs", []string{"node", "./jsclient.js"}, true},
+		//{"python", []string{"./pyclient.py"}, false},
 	}
 
 	// requestCh is used to serialize HTTP requests
@@ -95,13 +98,7 @@ type benchService struct {
 }
 
 type benchStats struct {
-	// Note: using float64 instead of time.Duration since these
-	// are very small units of time.
-
-	// Note: []zeroCost, roundCost, and workCost are computed from
-	// the slope of their respective line, without considering the
-	// intercept. The intercept should be close to 0, but it is not
-	// being verified.
+	*benchClient
 
 	// The cost of doing zero repetitions, indexed by concurrency.
 	zeroCost []benchlib.Timing
@@ -115,9 +112,6 @@ type benchStats struct {
 	// Cost of tracing a span that does no work
 	spanCost benchlib.Timing
 
-	// Fixed cost of sleeping (per amortized sleep interval)
-	sleepCost benchlib.Timing
-
 	spansReceived int64
 	bytesReceived int64
 }
@@ -125,11 +119,19 @@ type benchStats struct {
 type benchClient struct {
 	Name string
 	Args []string
+
+	// When a client does not support preemtion and the CPU is
+	// saturated, sleeping too long causes the test to run
+	// overtime while sleeping too much.  To ensure the measured
+	// timing is for the desired QPS, clients such as these (e.g.,
+	// NodeJS) will have their sleep reduced.
+	NeedsTimingAdjustment bool
 }
 
-func newBenchStats() *benchStats {
+func newBenchStats(bc *benchClient) *benchStats {
 	return &benchStats{
-		zeroCost: make([]benchlib.Timing, maxConcurrency+1, maxConcurrency+1),
+		benchClient: bc,
+		zeroCost:    make([]benchlib.Timing, maxConcurrency+1, maxConcurrency+1),
 	}
 }
 
@@ -203,7 +205,7 @@ func (s *benchService) estimateWorkCost() {
 		}
 		multiplier *= 10
 	}
-
+	glog.V(1).Info("Measuring work cost for ", multiplier, "..", 10*multiplier)
 	// Compute data points for factors of the multiplier.
 	data := benchlib.Timings{}
 	for iter := 1; iter <= 10; iter++ {
@@ -221,11 +223,11 @@ func (s *benchService) estimateWorkCost() {
 
 	reg := data.LinearRegression()
 	s.current.workCost = reg.Slope()
-	glog.V(1).Infof("Work cost %.2gs/unit", s.current.workCost.Wall)
+	glog.V(1).Infof("Work cost %.3gs/unit", s.current.workCost.Wall)
 }
 
 func (s *benchService) sanityCheckWork() {
-	runfor := time.Second.Seconds() * 10
+	runfor := time.Second.Seconds()
 	conc := 1
 	var st benchlib.TimingStats
 	for i := 0; i < 10; i++ {
@@ -248,6 +250,8 @@ func (s *benchService) sanityCheckWork() {
 }
 
 func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
+	// TODO combine this function with estimateWorkCost (same form)
+	// Make sure the combined func is the only use of testTimeSlice.
 	multiplier := int64(1000)
 	for {
 		tm := s.run(&benchlib.Control{
@@ -255,136 +259,151 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 			Work:       0,
 			Repeat:     multiplier,
 			Trace:      trace,
-			NoFlush:    true,
 		})
 		if tm.Adjusted.Wall.Seconds() > testTimeSlice.Seconds() {
 			break
 		}
 		multiplier *= 10
 	}
-	multiplier /= 10
+	// multiplier /= 10
+	glog.V(1).Info("Measuring round cost for ", multiplier, "..", 10*multiplier)
 	var data benchlib.Timings
 	for i := 1; i <= 10; i++ {
 		rounds := multiplier * int64(i)
 		for j := 0; j < 10; j++ {
+			// Note: This actives the amortized sleep
+			// logic but never sleeps.
 			tm := s.run(&benchlib.Control{
-				Concurrent: 1,
-				Work:       0,
-				Repeat:     rounds,
-				Trace:      trace,
-				NoFlush:    true,
+				Concurrent:    1,
+				Work:          0,
+				Sleep:         1,
+				SleepInterval: time.Duration(rounds * 2),
+				Repeat:        rounds,
+				Trace:         trace,
 			})
 			data.Update(float64(rounds), tm.Adjusted)
 		}
 	}
-	// This test didn't flush, flush now.
-	s.flush()
 	reg := data.LinearRegression()
 	return reg.Slope()
 }
 
-func (s *benchService) estimateSleepCost() {
-	latency := benchlib.DefaultSleepInterval
-	duration := latency / 2
-
-	tm := s.run(&benchlib.Control{
-		Concurrent: 1,
-		Work:       int64(duration.Seconds() / s.current.workCost.Wall.Seconds()),
-		Sleep:      duration,
-		Repeat:     int64(10 * time.Second / latency),
-	})
-	if tm.Sleeps.Count() == 0 {
-		// No calibration.
-		return
-	}
-
-	diff := tm.Sleeps.Mean() - latency.Seconds()
-	s.current.sleepCost.Wall = benchlib.Time(diff)
-	glog.V(1).Info("Sleep calibration past-due average ", s.current.sleepCost)
-}
-
 func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.TimingStats {
-	workTime := opts.load / opts.qps
-	sleepTime := (1 - opts.load) / opts.qps
+	// TODO in GO/PY we adjust the load factor until finding saturation
+	// in NODEJS we adjust the sleep factor
 
-	// To maintain the target load and measure only deferred work
-	// while tracing, subtract the measured span cost from each
-	// sleep.  If the sleep is too little, return 0 to indicate
-	// saturation.
-	if opts.trace {
-		if sleepTime < s.current.spanCost.Wall.Seconds() {
-			glog.Info("QPS span cost adjustment too small, skipping sleep")
-			sleepTime = 0
-		} else {
-			sleepTime -= s.current.spanCost.Wall.Seconds()
-		}
+	workTime := benchlib.Time(opts.load / opts.qps)
+	sleepTime := benchlib.Time((1 - opts.load) / opts.qps)
+
+	if benchlib.Time(workTime) < s.current.roundCost.Wall {
+		// Too much test overhead to make an accurate measurement.
+		glog.Fatal("Load is too low to hide test overhead")
+		return benchlib.TimingStats{}
 	}
-
-	var ss benchlib.TimingStats
-	var spans stats.Stats
-	var bytes stats.Stats
+	workTime -= s.current.roundCost.Wall
 	total := opts.seconds * opts.qps
-	for i := 0; i < 5; i++ {
-		sbefore := s.current.spansReceived
-		bbefore := s.current.bytesReceived
-		tm := s.run(&benchlib.Control{
-			Concurrent:  1,
-			Work:        int64(workTime / s.current.workCost.Wall.Seconds()),
-			Sleep:       time.Duration(sleepTime * nanosPerSecond),
-			Repeat:      int64(total),
-			Trace:       opts.trace,
-			NumLogs:     opts.lognum,
-			BytesPerLog: opts.logsize,
-		})
-		stotal := s.current.spansReceived - sbefore
-		btotal := s.current.bytesReceived - bbefore
 
-		glog.V(2).Info("Ran at ", 100*opts.load,
-			"% for ",
-			time.Duration(opts.seconds*nanosPerSecond),
-			" saw ",
-			stotal,
-			" spans ",
-			btotal,
-			" bytes in ", tm.Adjusted)
-
-		ss.Update(tm.Adjusted)
-		spans.Update(float64(stotal))
-		bytes.Update(float64(btotal))
-	}
 	tr := "untraced"
 	if opts.trace {
 		tr = "traced"
 	}
-	glog.Infof("Load %v@%3f%% %v == %.2f%% %.2fB/span (%s)",
-		opts.qps, 100*opts.load, ss, (spans.Mean()/total)*100,
-		(bytes.Mean() / spans.Mean()), tr)
-	return ss
+	runOnce := func() (benchlib.TimingStats, stats.Stats, stats.Stats) {
+		var ss benchlib.TimingStats
+		var spans stats.Stats
+		var bytes stats.Stats
+		for ss.Count() != 5 {
+			sbefore := s.current.spansReceived
+			bbefore := s.current.bytesReceived
+			tm := s.run(&benchlib.Control{
+				Concurrent:  1,
+				Work:        int64(workTime / s.current.workCost.Wall),
+				Sleep:       time.Duration(sleepTime * nanosPerSecond),
+				Repeat:      int64(total),
+				Trace:       opts.trace,
+				NumLogs:     opts.lognum,
+				BytesPerLog: opts.logsize,
+			})
+			stotal := s.current.spansReceived - sbefore
+			btotal := s.current.bytesReceived - bbefore
+
+			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s,%.1f)",
+				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
+				100.0*workTime/(workTime+sleepTime))
+
+			glog.V(2).Info("Sleep total ", benchlib.Time(tm.Sleeps.Sum()),
+				" i.e. ", tm.Sleeps.Sum()/opts.seconds*100.0, "%")
+
+			ss.Update(tm.Measured)
+			spans.Update(float64(stotal))
+			bytes.Update(float64(btotal))
+		}
+		return ss, spans, bytes
+	}
+	for {
+		ss, spans, bytes := runOnce()
+		if s.current.NeedsTimingAdjustment && sleepTime != 0 {
+			offBy := ss.Wall.Mean() - opts.seconds
+			ratio := offBy / opts.seconds
+			if math.Abs(ratio) > timingTolerance {
+				adjust := benchlib.Time(offBy / float64(total))
+				if sleepTime < adjust {
+					sleepTime = 0
+				} else {
+					sleepTime -= adjust
+				}
+				glog.V(1).Info("Adjust timing by ", -adjust, " (", sleepTime+adjust, " to ",
+					sleepTime, ") diff ", offBy)
+				continue
+			}
+		}
+		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s,%.1f%%) == %.2f%% %.2fB/span",
+			opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr,
+			100.0*workTime/(workTime+sleepTime),
+			(spans.Mean()/total)*100, bytes.Mean()/spans.Mean())
+		return ss
+	}
 }
 
 func (s *benchService) measureImpairment() {
 	// Each test runs this long.
 	const testTime = 30
 
-	// Test will compute "impairment" measure for each QPS listed
-	qpss := []float64{100 /*, 500, 1000*/}
-
-	// Note: the timing includes a discount for the span creation cost.
+	// Test will compute CPU tax measure for each QPS listed
+	qpss := []float64{
+		100,
+		200,
+		300, 400, 500,
+		600, 700, 800, 900, 1000,
+	}
+	logcfg := []struct{ num, size int64 }{
+		{0, 0},
+		{2, 100},
+		{4, 100},
+		{6, 100},
+	}
+	loadlist := []float64{
+		.5, .6, .7, .8, .9,
+		.92, .94, .96, .98,
+		.99, .995, .997, .999, 1.0,
+	}
 	for _, qps := range qpss {
-		for _, load := range []float64{
-			//.1, .3, .5, .7, .9, .95, .96, .97, .98, .99, 0.995} {
-			.05, .1, .15, .2, .25} {
-			//.2} {
-			s.measureSpanSaturation(saturationTest{
-				trace:   true,
-				seconds: testTime,
-				qps:     qps,
-				load:    load})
-			s.measureSpanSaturation(saturationTest{
-				trace:   false,
-				seconds: testTime,
-				qps:     qps,
-				load:    load})
+		for _, lcfg := range logcfg {
+			for _, load := range loadlist {
+				s.measureSpanSaturation(saturationTest{
+					trace:   false,
+					seconds: testTime,
+					qps:     qps,
+					load:    load,
+					lognum:  lcfg.num,
+					logsize: lcfg.size})
+				s.measureSpanSaturation(saturationTest{
+					trace:   true,
+					seconds: testTime,
+					qps:     qps,
+					load:    load,
+					lognum:  lcfg.num,
+					logsize: lcfg.size})
+			}
 		}
 	}
 }
@@ -397,22 +416,9 @@ func (s *benchService) warmup() {
 	})
 }
 
-func (s *benchService) flush() {
-	s.run(&benchlib.Control{
-		Concurrent: 1,
-		Work:       0,
-		Repeat:     0,
-		NoFlush:    false,
-		Trace:      true,
-	})
-}
-
 func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 	if c.SleepInterval == 0 {
 		c.SleepInterval = benchlib.DefaultSleepInterval
-	}
-	if c.SleepCorrection == 0 {
-		c.SleepCorrection = s.current.sleepCost.Wall.Duration()
 	}
 	s.controlCh <- c
 	r := <-s.resultCh
@@ -436,7 +442,7 @@ func (s *benchService) runTests() {
 }
 
 func (s *benchService) runTest(bc *benchClient) {
-	s.current = newBenchStats()
+	s.current = newBenchStats(bc)
 
 	if bc != nil {
 		glog.Info("Testing ", bc.Name)
@@ -457,7 +463,6 @@ func (s *benchService) runTest(bc *benchClient) {
 	s.estimateZeroCosts()
 	s.estimateRoundCost()
 	s.estimateWorkCost()
-	s.estimateSleepCost()
 	s.sanityCheckWork()
 
 	// Measurement
@@ -535,14 +540,18 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 				sstat.Update(float64(snano) / nanosPerSecond)
 			}
 		}
-		glog.V(1).Info("Sleep timing: mean ", time.Duration(sstat.Mean()*nanosPerSecond),
-			" stddev ", time.Duration(sstat.PopulationStandardDeviation()*nanosPerSecond))
+		glog.V(2).Info("Sleep timing: mean ", benchlib.Time(sstat.Mean()),
+			" stddev ", benchlib.Time(sstat.PopulationStandardDeviation()))
+		glog.V(3).Info("Sleep values: ", sleep_info)
 	}
 	s.resultCh <- &benchlib.Result{
 		Measured: benchlib.Timing{
 			Wall: benchlib.ParseTime(params.Get("timing")),
 			User: usage.User,
 			Sys:  usage.Sys,
+		},
+		Flush: benchlib.Timing{
+			Wall: benchlib.ParseTime(params.Get("flush")),
 		},
 		Sleeps: sstat,
 	}

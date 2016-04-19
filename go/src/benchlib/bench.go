@@ -18,12 +18,14 @@ const (
 	ControlPath = "/control"
 	ResultPath  = "/result"
 
+	LogsSizeMax = 1 << 20
+
 	nanosPerSecond = 1e9
 )
 
 var (
 	// Tests amortize sleep calls so they're approximately this long.
-	DefaultSleepInterval = 25 * time.Millisecond
+	DefaultSleepInterval = 50 * time.Millisecond
 )
 
 type Control struct {
@@ -39,8 +41,6 @@ type Control struct {
 	Sleep time.Duration
 	// How many nanoseconds to sleep at once
 	SleepInterval time.Duration
-	// How many nanoseconds to subtract from the amortized sleep
-	SleepCorrection time.Duration
 
 	// How many bytes per log statement
 	BytesPerLog int64
@@ -48,14 +48,16 @@ type Control struct {
 
 	// Misc control bits
 	Trace   bool // Trace the operation.
-	NoFlush bool // Skip the flush operation.
 	Exit    bool // Terminate the test.
+	Profile bool // Profile this operation
 }
 
 type Result struct {
 	// The client under test measures its walltime, the controller
 	// measures user and system time. These are the raw values.
 	Measured Timing
+
+	Flush Timing
 
 	// The controller subtracts known overhead, yielding the
 	// measurement attributed (according to the model) to the
@@ -229,7 +231,8 @@ func (ts Timing) String() string {
 }
 
 func (ts TimingStats) String() string {
-	return fmt.Sprintf("%v {%v[%v]}", ts.Mean(), ts.StandardDeviation(), ts.Count())
+	// return fmt.Sprintf("%v {%v[%v]}", ts.Mean(), ts.StandardDeviation(), ts.Count())
+	return fmt.Sprintf("%v", ts.Mean())
 }
 
 func (ts TimingRegression) String() string {
