@@ -54,7 +54,7 @@ var (
 	clients = []benchClient{
 		//{"golang", []string{"./goclient"}, false},
 		//{"python", []string{"./pyclient.py"}, false},
-		{"nodejs", []string{"node", "--expose-gc", "./jsclient.js"}, true},
+		{"nodejs", []string{"nodejs", "--expose-gc", "./jsclient.js"}, true},
 	}
 
 	// requestCh is used to serialize HTTP requests
