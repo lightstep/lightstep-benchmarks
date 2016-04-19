@@ -326,8 +326,9 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 			stotal := s.current.spansReceived - sbefore
 			btotal := s.current.bytesReceived - bbefore
 
-			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s)",
-				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr)
+			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s,%.1f)",
+				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
+				100.0*workTime/(workTime+sleepTime))
 
 			glog.V(2).Info("Sleep total ", benchlib.Time(tm.Sleeps.Sum()),
 				" i.e. ", tm.Sleeps.Sum()/opts.seconds*100.0, "%")
@@ -355,8 +356,9 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 				continue
 			}
 		}
-		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) == %.2f%% %.2fB/span",
+		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s,%.1f%%) == %.2f%% %.2fB/span",
 			opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr,
+			100.0*workTime/(workTime+sleepTime),
 			(spans.Mean()/total)*100, bytes.Mean()/spans.Mean())
 		return ss
 	}
@@ -368,20 +370,21 @@ func (s *benchService) measureImpairment() {
 
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
-		100, 200,
-		// 300, 400, 500,
-		// 600, 700, 800, 900, 1000,
+		100,
+		200,
+		300, 400, 500,
+		600, 700, 800, 900, 1000,
 	}
 	logcfg := []struct{ num, size int64 }{
 		{0, 0},
 		{2, 100},
-		//		{4, 100},
-		//		{6, 100},
+		{4, 100},
+		{6, 100},
 	}
 	loadlist := []float64{
-		// .5, .6, .7, .8, .9, .95, .97, .99,
-		.9, .91, .92, .93, .94, .95,
-		// 0.995, .997, .999, 1.0,
+		.5, .6, .7, .8, .9,
+		.92, .94, .96, .98,
+		.99, .995, .997, .999, 1.0,
 	}
 	for _, qps := range qpss {
 		for _, lcfg := range logcfg {
