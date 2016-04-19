@@ -30,7 +30,7 @@ def prepare_logs():
     global logs_memory
     ba = bytearray(logs_size_max)
     for i in range(logs_size_max):
-        ba[i] = i % 256
+        ba[i] = 65 + (i % 26)
     #end
     logs_memory = bytes(ba)
 #end

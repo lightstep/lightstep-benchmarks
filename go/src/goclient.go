@@ -29,7 +29,7 @@ var (
 func init() {
 	lps := make([]byte, benchlib.LogsSizeMax)
 	for i := 0; i < len(lps); i++ {
-		lps[i] = byte(i)
+		lps[i] = 'A' + byte(i%26)
 	}
 	logPayloadStr = string(lps)
 }
@@ -186,9 +186,11 @@ func main() {
 			benchlib.ControllerHost, ":",
 			benchlib.ControllerPort),
 		tracer: ls.NewTracer(ls.Options{
-			AccessToken:        benchlib.ControllerAccessToken,
-			CollectorHost:      benchlib.ControllerHost,
-			CollectorPort:      benchlib.ControllerPort,
-			CollectorPlaintext: true})}
+			AccessToken: benchlib.ControllerAccessToken,
+			Collector: ls.Endpoint{
+				Host:      benchlib.ControllerHost,
+				Port:      benchlib.ControllerPort,
+				Plaintext: true},
+		})}
 	tc.loop()
 }
