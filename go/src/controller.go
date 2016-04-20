@@ -43,6 +43,8 @@ const (
 	timingTolerance = 0.015 // ~= 1 second per minute
 
 	nanosPerSecond = 1e9
+
+	minimumCalibrations = 5
 )
 
 var (
@@ -98,6 +100,9 @@ type benchService struct {
 
 type benchStats struct {
 	*benchClient
+
+	// Number of times calibration has been performed.
+	calibrations int
 
 	// The cost of doing zero repetitions, indexed by concurrency.
 	zeroCost []benchlib.Timing
@@ -178,7 +183,7 @@ func (s *benchService) estimateZeroCosts() {
 // the timing.
 func (s *benchService) measureSpanCost() {
 	s.current.spanCost = s.measureTestLoop(true)
-	glog.Info("Span creation cost: ", s.current.spanCost)
+	glog.V(1).Info("Span creation cost: ", s.current.spanCost)
 }
 
 // estimateRoundCost runs a untraced loop doing no work to establish
@@ -338,8 +343,10 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 		return ss, spans, bytes
 	}
 	for {
-		if s.current.NeedsTimingAdjustment {
-			// Adjust for on-the-fly compilation, etc.
+		if s.current.NeedsTimingAdjustment ||
+			s.current.calibrations < minimumCalibrations {
+			// Adjust for on-the-fly compilation,
+			// initialization costs, etc.
 			s.recalibrate()
 		}
 
@@ -374,9 +381,9 @@ func (s *benchService) measureImpairment() {
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
 		100,
-		// 200,
-		// 300, 400, 500,
-		// 600, 700, 800, 900, 1000,
+		200,
+		300, 400, 500,
+		600, 700, 800, 900, 1000,
 	}
 	logcfg := []struct{ num, size int64 }{
 		{0, 0},
@@ -385,11 +392,9 @@ func (s *benchService) measureImpairment() {
 		{6, 100},
 	}
 	loadlist := []float64{
-		.92, .93, .94, .95,
-
-		//.5, .6, .7, .8, .9,
-		//.92, .94, .96, .98,
-		//.99, .995, .997, .999, 1.0,
+		.5, .6, .7, .8, .9,
+		.92, .94, .96, .98,
+		.99, .995, .997, .999, 1.0,
 	}
 	for _, qps := range qpss {
 		for _, lcfg := range logcfg {
@@ -447,7 +452,9 @@ func (s *benchService) runTests() {
 }
 
 func (s *benchService) recalibrate() {
+	cnt := s.current.calibrations
 	s.current = newBenchStats(s.current.benchClient)
+	s.current.calibrations = cnt + 1
 	s.warmup()
 	s.estimateZeroCosts()
 	s.estimateRoundCost()
