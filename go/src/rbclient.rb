@@ -4,34 +4,9 @@ require 'net/http'
 require 'uri'
 
 $test_tracer = LightStep.init_global_tracer('ruby', 'ignored')
+
+# TODO: How to get a proper NoOp tracer?
 $noop_tracer = $test_tracer
-
-# span = LightStep.start_span('parent_span')
-# span.log_event('payload_test_1', 'ruby_value' => 123_456_789)
-# for i in 1..9
-#   child = LightStep.start_span('child_span', parent: span)
-#   child.log_event('child_log_event')
-#   sleep(0.05)
-#   child.finish
-# end
-# span.finish
-
-# test_queries << {
-#   type: 'trace',
-#   where: {
-#     span_guid: span.guid,
-#     at_micros: span.start_micros,
-#     min_span_count: 10
-#   },
-#   expect: {
-#     min_log_count: 10,
-#     log_payloads: [
-#       { stable_name: 'payload_test_1', payload_json: '{"ruby_value":123456789}' }
-#     ]
-#   }
-# }
-
-# puts JSON.pretty_generate(queries: test_queries)
 
 $base_url = "http://localhost:8000"
 $prime_work = 982451653
@@ -94,7 +69,7 @@ def loop()
     control = JSON.parse(resp)
 
     concurrent = control['Concurrent']
-    trace      = control['Trace']
+    trace = control['Trace']
 
     if control['Exit']
       exit(0)
