@@ -1,5 +1,7 @@
+# TODO This is a work in progress.
 FROM golang:latest
 MAINTAINER team@lightstep.com
+
 
 WORKDIR /
 

@@ -1,4 +1,5 @@
 #!/bin/sh
+# TODO This is a work in progress.
 
 DATETIME=$(date "+%Y-%m-%d_%H-%M-%S")
 BASENAME=lightstep-benchmark
