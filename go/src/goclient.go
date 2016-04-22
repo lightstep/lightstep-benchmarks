@@ -42,7 +42,7 @@ type testClient struct {
 func work(n int64) int64 {
 	const primeWork = 982451653
 	x := int64(primeWork)
-	for n >= 0 {
+	for n != 0 {
 		x *= primeWork
 		n--
 	}
