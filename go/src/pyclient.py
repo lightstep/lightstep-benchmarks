@@ -37,7 +37,7 @@ def prepare_logs():
 
 def do_work(n):
     x = prime_work
-    while n >= 0:
+    while n != 0:
         # Note: Python uses arbitrary precision math, so to keep the
         # cost of this function independent of n, use the remainder
         # operation below.
