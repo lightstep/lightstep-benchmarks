@@ -432,6 +432,7 @@ func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 		c.SleepInterval = benchlib.DefaultSleepInterval
 	}
 	s.controlCh <- c
+	// TODO: Maybe timeout here and help diagnose hung process?
 	r := <-s.resultCh
 	r.Adjusted = r.Measured
 	if s.current.zeroCost != nil {
