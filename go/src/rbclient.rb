@@ -1,14 +1,18 @@
 require 'json'
 require 'lightstep-tracer'
 require 'net/http'
+require 'pp'
 require 'uri'
 
-$test_tracer = LightStep.init_global_tracer('ruby', 'ignored')
-
-# TODO: How to get a proper NoOp tracer?
-$noop_tracer = $test_tracer
-
 $base_url = "http://localhost:8000"
+
+$test_tracer = LightStep.init_new_tracer('ruby', 'ignored',
+                                         collector_port: 8000,
+                                         collector_host: "localhost",
+                                         collector_encryption: 'none')
+$noop_tracer = LightStep.init_new_tracer('ruby', 'ignored',
+                                         transport: 'nil')
+
 $prime_work = 982451653
 $logs_memory = ""
 $logs_size_max = (1 << 20)
@@ -56,8 +60,8 @@ def test_body(tracer, control)
       next
     end
     before = Time.now.to_f
-    sleep(sleep_debt / nanos_per_second)
-    elapsed = (Time.now.to_f - before) * nanos_per_second
+    sleep(sleep_debt / $nanos_per_second)
+    elapsed = (Time.now.to_f - before) * $nanos_per_second
     sleep_debt -= elapsed
   end
 end
@@ -103,6 +107,26 @@ def loop()
     uri = URI.parse($base_url + path)
     resp = Net::HTTP.get(uri)
   end
+end
+
+def backtrace_for_all_threads(signame)
+  File.open("/tmp/ruby_backtrace_#{Process.pid}.txt","a") do |f|
+      f.puts "--- got signal #{signame}, dump backtrace for all threads at #{Time.now}"
+      if Thread.current.respond_to?(:backtrace)
+        Thread.list.each do |t|
+          f.puts t.inspect
+          PP.pp(t.backtrace.delete_if {|frame| frame =~ /^#{File.expand_path(__FILE__)}/},
+               f) # remove frames resulting from calling this method
+        end
+      else
+          PP.pp(caller.delete_if {|frame| frame =~ /^#{File.expand_path(__FILE__)}/},
+               f) # remove frames resulting from calling this method
+      end
+  end
+end
+
+Signal.trap(29) do
+  backtrace_for_all_threads("INFO")
 end
 
 loop()
