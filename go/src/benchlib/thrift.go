@@ -36,7 +36,7 @@ func (t *ThriftFactories) ServeThriftHTTP(res http.ResponseWriter, req *http.Req
 	rdbuffer := bytes.NewBuffer(nil)
 	rdbytes, err := rdbuffer.ReadFrom(req.Body)
 	if err != nil {
-		glog.Warning("Could not ready body: ", err)
+		glog.Warning("Could not read body: ", err)
 	}
 
 	client := &ThriftHTTPTransport{ioutil.NopCloser(rdbuffer), wrbuffer}

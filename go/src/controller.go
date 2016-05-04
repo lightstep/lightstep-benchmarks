@@ -54,6 +54,7 @@ var (
 
 	// client is a list of client programs for the benchmark
 	clients = []benchClient{
+		{"c++", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}, false},
 		{"ruby", []string{"ruby", "./rbclient.rb"}, false},
 		{"python", []string{"./pyclient.py"}, false},
 		{"golang", []string{"./goclient"}, false},
@@ -431,6 +432,7 @@ func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 	if c.SleepInterval == 0 {
 		c.SleepInterval = benchlib.DefaultSleepInterval
 	}
+	glog.V(3).Info("Next control: ", c)
 	s.controlCh <- c
 	// TODO: Maybe timeout here and help diagnose hung process?
 	r := <-s.resultCh
@@ -439,6 +441,7 @@ func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 		r.Adjusted.ReduceBy(s.current.zeroCost[c.Concurrent])
 	}
 	r.Adjusted.ReduceByFactor(s.current.roundCost, float64(c.Repeat))
+	glog.V(3).Info("Measured: ", r.Measured, " adjusted ", r.Adjusted, " using ", s.current)
 	return r
 }
 
@@ -553,7 +556,7 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 				continue
 			}
 			if snano, err := strconv.ParseUint(s, 10, 64); err != nil {
-				glog.Fatal("Could not parse timing: ", s)
+				glog.Fatal("Could not parse timing: ", sleep_info)
 			} else {
 				sstat.Update(float64(snano) / nanosPerSecond)
 			}
@@ -573,6 +576,9 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 		},
 		Sleeps: sstat,
 	}
+	// The response body is not used, but some HTTP clients are
+	// troubled by 0-byte responses.
+	res.Write([]byte("OK"))
 }
 
 // ServeJSONHTTP is more-or-less copied from crouton/cmd/collector/main.go
@@ -624,8 +630,8 @@ func main() {
 	mux := http.NewServeMux()
 	server := &http.Server{
 		Addr:         address,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 0 * time.Second,
+		ReadTimeout:  86400 * time.Second,
+		WriteTimeout: 86400 * time.Second,
 		Handler:      http.HandlerFunc(serializeHTTP),
 	}
 
