@@ -299,16 +299,10 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 	return reg.Slope()
 }
 
-func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.TimingStats {
+// Returns the CPU impairment as a ratio (e.g., 0.01 for 1% impairment).
+func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 	workTime := benchlib.Time(opts.load / opts.qps)
 	sleepTime := benchlib.Time((1 - opts.load) / opts.qps)
-
-	// if benchlib.Time(workTime) < s.current.roundCost.Wall {
-	// 	// Too much test overhead to make an accurate measurement.
-	// 	glog.Fatal("Load is too low to hide test overhead")
-	// 	return benchlib.TimingStats{}
-	// }
-	// workTime -= s.current.roundCost.Wall
 	total := opts.seconds * opts.qps
 
 	tr := "untraced"
@@ -334,14 +328,16 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 			stotal := s.current.spansReceived - sbefore
 			btotal := s.current.bytesReceived - bbefore
 
-			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s,%.1f)",
+			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).SubFactor(s.current.roundCost, total)
+			impairment := (adjusted.Wall.Seconds() - (total * (workTime + sleepTime).Seconds())) / adjusted.Wall.Seconds()
+
+			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%%",
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
-				100.0*workTime/(workTime+sleepTime))
+				100*impairment)
 
 			glog.V(2).Info("Sleep total ", benchlib.Time(tm.Sleeps.Sum()),
 				" i.e. ", tm.Sleeps.Sum()/opts.seconds*100.0, "%")
 
-			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).SubFactor(s.current.roundCost, total)
 			ss.Update(adjusted)
 			spans.Update(float64(stotal))
 			bytes.Update(float64(btotal))
@@ -371,22 +367,23 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 				continue
 			}
 		}
-		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s,%.1f%%) == %.2f%% %.2fB/span",
+		impairment := (ss.Wall.Mean() - total*(workTime+sleepTime).Seconds()) / ss.Wall.Mean()
+		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) impaired %.2f%% completed %.2f%% @ %.2fB/span",
 			opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr,
-			100.0*workTime/(workTime+sleepTime),
-			(spans.Mean()/total)*100, bytes.Mean()/spans.Mean())
-		return ss
+			100*impairment,
+			100*(spans.Mean()/total),
+			bytes.Mean()/spans.Mean())
+		return impairment
 	}
 }
 
 func (s *benchService) measureImpairment() {
 	// Each test runs this long.
-	const testTime = 600
+	const testTime = 30
 
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
 		100,
-		500,
 		1000,
 	}
 	// logcfg := []struct{ num, size int64 }{
@@ -396,6 +393,7 @@ func (s *benchService) measureImpairment() {
 	// 	{6, 100},
 	// }
 	loadlist := []float64{
+		.5,
 		.95,
 	}
 	// THEN add an experiment to ramp up collector latency and observe
@@ -403,7 +401,7 @@ func (s *benchService) measureImpairment() {
 	for _, qps := range qpss {
 		//for _, lcfg := range logcfg {
 		for _, load := range loadlist {
-			s.measureSpanSaturation(saturationTest{
+			untracedImpaired := s.measureSpanSaturation(saturationTest{
 				trace:   false,
 				seconds: testTime,
 				qps:     qps,
@@ -411,7 +409,7 @@ func (s *benchService) measureImpairment() {
 				//lognum:  lcfg.num,
 				//logsize: lcfg.size,
 			})
-			s.measureSpanSaturation(saturationTest{
+			tracedImpaired := s.measureSpanSaturation(saturationTest{
 				trace:   true,
 				seconds: testTime,
 				qps:     qps,
@@ -419,6 +417,8 @@ func (s *benchService) measureImpairment() {
 				//lognum:  lcfg.num,
 				//logsize: lcfg.size,
 			})
+			glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
+				qps, 100*load, 100*(tracedImpaired-untracedImpaired))
 		}
 		//}
 	}
