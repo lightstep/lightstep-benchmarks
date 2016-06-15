@@ -62,7 +62,7 @@ type Result struct {
 	// The controller subtracts known overhead, yielding the
 	// measurement attributed (according to the model) to the
 	// Control (minus test / communication overhead).
-	Adjusted Timing
+	// Adjusted Timing
 
 	// Sleeps are statistics about the sleep operations observed
 	// by the client, in seconds of walltime.
@@ -156,21 +156,22 @@ func (t Time) Duration() time.Duration {
 	return time.Duration(int64(t * nanosPerSecond))
 }
 
-func (t *Timing) ReduceBy(s Timing) {
+func (t Timing) Sub(s Timing) Timing {
 	t.Wall -= s.Wall
 	t.User -= s.User
 	t.Sys -= s.Sys
-}
-
-func (t Timing) Sub(s Timing) Timing {
-	t.ReduceBy(s)
 	return t
 }
 
-func (t *Timing) ReduceByFactor(s Timing, f float64) {
+func (t Timing) Div(d float64) Timing {
+	return Timing{t.Wall / Time(d), t.User / Time(d), t.Sys / Time(d)}
+}
+
+func (t Timing) SubFactor(s Timing, f float64) Timing {
 	t.Wall -= s.Wall * Time(f)
 	t.User -= s.User * Time(f)
 	t.Sys -= s.Sys * Time(f)
+	return t
 }
 
 func (d *Timings) Update(x float64, y Timing) {
@@ -241,6 +242,9 @@ func (ts TimingRegression) String() string {
 }
 
 func (t Time) String() string {
+	if t < 10e-9 && t > -10e-9 {
+		return fmt.Sprintf("%.3fns", float64(t)*1e9)
+	}
 	return time.Duration(int64(t * nanosPerSecond)).String()
 }
 

@@ -40,11 +40,13 @@ const (
 	testTolerance = 0.02
 
 	// For clients that require timing correction (i.e., NodeJS)
-	timingTolerance = 0.015 // ~= 1 second per minute
+	timingTolerance = 0.005 // ~= .3 second per minute
 
 	nanosPerSecond = 1e9
 
-	minimumCalibrations = 5
+	minimumCalibrations = 2
+
+	experimentRounds = 3
 )
 
 var (
@@ -54,11 +56,11 @@ var (
 
 	// client is a list of client programs for the benchmark
 	clients = []benchClient{
-		{"c++", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}, false},
-		{"ruby", []string{"ruby", "./rbclient.rb"}, false},
-		{"python", []string{"./pyclient.py"}, false},
-		{"golang", []string{"./goclient"}, false},
-		{"nodejs", []string{"nodejs", "--expose-gc", "./jsclient.js"}, true},
+		// {"c++", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}},
+		// {"ruby", []string{"ruby", "./rbclient.rb"}},
+		// {"python", []string{"./pyclient.py"}},
+		{"golang", []string{"./goclient"}},
+		// {"nodejs", []string{"nodejs", "--expose-gc", "./jsclient.js"}},
 	}
 
 	// requestCh is used to serialize HTTP requests
@@ -125,13 +127,6 @@ type benchStats struct {
 type benchClient struct {
 	Name string
 	Args []string
-
-	// When a client does not support preemtion and the CPU is
-	// saturated, sleeping too long causes the test to run
-	// overtime while sleeping too much.  To ensure the measured
-	// timing is for the desired QPS, clients such as these (e.g.,
-	// NodeJS) will have their sleep reduced.
-	NeedsTimingAdjustment bool
 }
 
 func newBenchStats(bc *benchClient) *benchStats {
@@ -173,10 +168,10 @@ func (s *benchService) estimateZeroCosts() {
 			tm := s.run(&benchlib.Control{
 				Concurrent: c,
 			})
-			st.Update(tm.Adjusted)
+			st.Update(tm.Measured)
 		}
-		glog.V(1).Infoln("Cost of zero repeats", st, "conc", c)
 		s.current.zeroCost[c] = st.Mean()
+		glog.V(1).Info("Cost Z_c_", c, " = ", s.current.zeroCost[c])
 	}
 }
 
@@ -185,14 +180,14 @@ func (s *benchService) estimateZeroCosts() {
 // the timing.
 func (s *benchService) measureSpanCost() {
 	s.current.spanCost = s.measureTestLoop(true)
-	glog.V(1).Info("Span creation cost: ", s.current.spanCost)
+	glog.V(1).Infof("Cost T = %s/span", s.current.spanCost)
 }
 
 // estimateRoundCost runs a untraced loop doing no work to establish
 // the baseline cost of a repetition.
 func (s *benchService) estimateRoundCost() {
 	s.current.roundCost = s.measureTestLoop(false)
-	glog.V(1).Infoln("Cost of single round", s.current.roundCost)
+	glog.V(1).Infof("Cost R = %s/round", s.current.roundCost)
 }
 
 // estimateWorkCosts measures the cost of the work function.
@@ -206,30 +201,33 @@ func (s *benchService) estimateWorkCost() {
 			Work:       multiplier,
 			Repeat:     1,
 		})
-		if tm.Adjusted.Wall.Seconds() > testTimeSlice.Seconds() {
+		if tm.Measured.Wall.Seconds() > testTimeSlice.Seconds() {
 			break
 		}
 		multiplier *= 10
 	}
-	glog.V(1).Info("Measuring work cost for ", multiplier, "..", 10*multiplier)
+	glog.V(2).Info("Measuring work cost for ", multiplier, "..", 10*multiplier)
 	// Compute data points for factors of the multiplier.
 	data := benchlib.Timings{}
 	for iter := 1; iter <= 10; iter++ {
 		repeat := int64(iter) * multiplier
 		for j := 0; j < 10; j++ {
 			tm := s.run(&benchlib.Control{
-				Concurrent: 1,
-				Work:       repeat,
-				Repeat:     1,
+				Concurrent:    1,
+				Work:          repeat,
+				Repeat:        1,
+				Sleep:         1,
+				SleepInterval: time.Duration(2),
 			})
 
-			data.Update(float64(repeat), tm.Adjusted)
+			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).Sub(s.current.roundCost)
+			data.Update(float64(repeat), adjusted)
 		}
 	}
 
 	reg := data.LinearRegression()
 	s.current.workCost = reg.Slope()
-	glog.V(1).Infof("Work cost %.3gs/unit", s.current.workCost.Wall)
+	glog.V(1).Infof("Cost W = %s/unit", s.current.workCost)
 }
 
 func (s *benchService) sanityCheckWork() bool {
@@ -243,9 +241,10 @@ func (s *benchService) sanityCheckWork() bool {
 			Work:       work,
 			Repeat:     1,
 		})
-		st.Update(tm.Adjusted)
+		adjusted := tm.Measured.Sub(s.current.zeroCost[1]).Sub(s.current.roundCost)
+		st.Update(adjusted)
 	}
-	glog.V(1).Infoln("Check work timing", st, "expected", runfor)
+	glog.V(2).Infoln("Check work timing", st, "expected", runfor)
 
 	absRatio := math.Abs((st.Wall.Mean() - runfor) / runfor)
 	if absRatio > testTolerance {
@@ -263,24 +262,27 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 	multiplier := int64(1000)
 	for {
 		tm := s.run(&benchlib.Control{
-			Concurrent: 1,
-			Work:       0,
-			Repeat:     multiplier,
-			Trace:      trace,
+			Concurrent:    1,
+			Work:          0,
+			Sleep:         1,
+			SleepInterval: time.Duration(multiplier * 2),
+			Repeat:        multiplier,
+			Trace:         trace,
 		})
-		if tm.Adjusted.Wall.Seconds() > testTimeSlice.Seconds() {
+		if tm.Measured.Wall.Seconds() > testTimeSlice.Seconds() {
 			break
 		}
 		multiplier *= 10
 	}
 	// multiplier /= 10
-	glog.V(1).Info("Measuring round cost for ", multiplier, "..", 10*multiplier)
+	glog.V(2).Info("Measuring round cost for ", multiplier, "..", 10*multiplier)
 	var data benchlib.Timings
 	for i := 1; i <= 10; i++ {
 		rounds := multiplier * int64(i)
 		for j := 0; j < 10; j++ {
-			// Note: This actives the amortized sleep
-			// logic but never sleeps.
+			// Note: This activates the amortized sleep
+			// logic but never sleeps (because Sleep = 1
+			// && SleepInterval > Repeat).
 			tm := s.run(&benchlib.Control{
 				Concurrent:    1,
 				Work:          0,
@@ -289,7 +291,8 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 				Repeat:        rounds,
 				Trace:         trace,
 			})
-			data.Update(float64(rounds), tm.Adjusted)
+			adjusted := tm.Measured.Sub(s.current.zeroCost[1])
+			data.Update(float64(rounds), adjusted)
 		}
 	}
 	reg := data.LinearRegression()
@@ -300,12 +303,12 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 	workTime := benchlib.Time(opts.load / opts.qps)
 	sleepTime := benchlib.Time((1 - opts.load) / opts.qps)
 
-	if benchlib.Time(workTime) < s.current.roundCost.Wall {
-		// Too much test overhead to make an accurate measurement.
-		glog.Fatal("Load is too low to hide test overhead")
-		return benchlib.TimingStats{}
-	}
-	workTime -= s.current.roundCost.Wall
+	// if benchlib.Time(workTime) < s.current.roundCost.Wall {
+	// 	// Too much test overhead to make an accurate measurement.
+	// 	glog.Fatal("Load is too low to hide test overhead")
+	// 	return benchlib.TimingStats{}
+	// }
+	// workTime -= s.current.roundCost.Wall
 	total := opts.seconds * opts.qps
 
 	tr := "untraced"
@@ -316,7 +319,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 		var ss benchlib.TimingStats
 		var spans stats.Stats
 		var bytes stats.Stats
-		for ss.Count() != 5 {
+		for ss.Count() != experimentRounds {
 			sbefore := s.current.spansReceived
 			bbefore := s.current.bytesReceived
 			tm := s.run(&benchlib.Control{
@@ -338,22 +341,22 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 			glog.V(2).Info("Sleep total ", benchlib.Time(tm.Sleeps.Sum()),
 				" i.e. ", tm.Sleeps.Sum()/opts.seconds*100.0, "%")
 
-			ss.Update(tm.Measured)
+			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).SubFactor(s.current.roundCost, total)
+			ss.Update(adjusted)
 			spans.Update(float64(stotal))
 			bytes.Update(float64(btotal))
 		}
 		return ss, spans, bytes
 	}
 	for {
-		if s.current.NeedsTimingAdjustment ||
-			s.current.calibrations < minimumCalibrations {
+		if s.current.calibrations < minimumCalibrations {
 			// Adjust for on-the-fly compilation,
 			// initialization costs, etc.
 			s.recalibrate()
 		}
 
 		ss, spans, bytes := runOnce()
-		if s.current.NeedsTimingAdjustment && sleepTime != 0 {
+		if sleepTime != 0 {
 			offBy := ss.Wall.Mean() - opts.seconds
 			ratio := offBy / opts.seconds
 			if math.Abs(ratio) > timingTolerance {
@@ -378,45 +381,46 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) benchlib.Timin
 
 func (s *benchService) measureImpairment() {
 	// Each test runs this long.
-	const testTime = 30
+	const testTime = 600
 
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
 		100,
-		200,
-		300, 400, 500,
-		600, 700, 800, 900, 1000,
+		500,
+		1000,
 	}
-	logcfg := []struct{ num, size int64 }{
-		{0, 0},
-		{2, 100},
-		{4, 100},
-		{6, 100},
-	}
+	// logcfg := []struct{ num, size int64 }{
+	// 	{0, 0},
+	// 	{2, 100},
+	// 	{4, 100},
+	// 	{6, 100},
+	// }
 	loadlist := []float64{
-		.5, .6, .7, .8, .9,
-		.92, .94, .96, .98,
-		.99, .995, .997, .999, 1.0,
+		.95,
 	}
+	// THEN add an experiment to ramp up collector latency and observe
+	// increase in impairment? dropped spans? tolerance? etc.
 	for _, qps := range qpss {
-		for _, lcfg := range logcfg {
-			for _, load := range loadlist {
-				s.measureSpanSaturation(saturationTest{
-					trace:   false,
-					seconds: testTime,
-					qps:     qps,
-					load:    load,
-					lognum:  lcfg.num,
-					logsize: lcfg.size})
-				s.measureSpanSaturation(saturationTest{
-					trace:   true,
-					seconds: testTime,
-					qps:     qps,
-					load:    load,
-					lognum:  lcfg.num,
-					logsize: lcfg.size})
-			}
+		//for _, lcfg := range logcfg {
+		for _, load := range loadlist {
+			s.measureSpanSaturation(saturationTest{
+				trace:   false,
+				seconds: testTime,
+				qps:     qps,
+				load:    load,
+				//lognum:  lcfg.num,
+				//logsize: lcfg.size,
+			})
+			s.measureSpanSaturation(saturationTest{
+				trace:   true,
+				seconds: testTime,
+				qps:     qps,
+				load:    load,
+				//lognum:  lcfg.num,
+				//logsize: lcfg.size,
+			})
 		}
+		//}
 	}
 }
 
@@ -436,12 +440,7 @@ func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 	s.controlCh <- c
 	// TODO: Maybe timeout here and help diagnose hung process?
 	r := <-s.resultCh
-	r.Adjusted = r.Measured
-	if s.current.zeroCost != nil {
-		r.Adjusted.ReduceBy(s.current.zeroCost[c.Concurrent])
-	}
-	r.Adjusted.ReduceByFactor(s.current.roundCost, float64(c.Repeat))
-	glog.V(3).Info("Measured: ", r.Measured, " adjusted ", r.Adjusted, " using ", s.current)
+	glog.V(3).Info("Measured: ", r.Measured, " using ", s.current)
 	return r
 }
 
