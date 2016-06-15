@@ -101,13 +101,13 @@ function exec_control(c, tracer) {
 		span.logEvent("testlog", log_input_string.substr(0, c.BytesPerLog));
 	    }
 	    span.finish()
-	    if (c.Sleep != 0) {
+	    //if (c.Sleep != 0) {
 		sleep_debt += c.Sleep
 		if (sleep_debt >= c.SleepInterval)  {
 		    sleep_at = process.hrtime()
 		    return setTimeout(body_func, sleep_debt / millis_per_nano, r - 1)
 		}
-	    }
+	    //}
 	}
 	var endTime = process.hrtime()
 	var elapsed = (endTime[0] - begin[0]) + (endTime[1] - begin[1]) * 1e-9
