@@ -24,6 +24,9 @@ import (
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
 )
 
+// TODO remove the if (Sleep != 0) test from each loadtest client, remove
+// the hacky Sleep = 1; SleepInterval = BIG; hack in this file.
+
 const (
 	// collectorBinaryPath is the path of the Thrift collector service
 	collectorBinaryPath = "/_rpc/v1/reports/binary"
@@ -59,8 +62,8 @@ var (
 		// {"c++", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}},
 		// {"ruby", []string{"ruby", "./rbclient.rb"}},
 		// {"python", []string{"./pyclient.py"}},
-		{"golang", []string{"./goclient"}},
-		// {"nodejs", []string{"nodejs", "--expose-gc", "./jsclient.js"}},
+		// {"golang", []string{"./goclient"}},
+		{"nodejs", []string{"nodejs", "--expose-gc", "./jsclient.js"}},
 	}
 
 	// requestCh is used to serialize HTTP requests
@@ -309,10 +312,11 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 	if opts.trace {
 		tr = "traced"
 	}
-	runOnce := func() (benchlib.TimingStats, stats.Stats, stats.Stats) {
+	runOnce := func() (benchlib.TimingStats, stats.Stats, stats.Stats, stats.Stats) {
 		var ss benchlib.TimingStats
 		var spans stats.Stats
 		var bytes stats.Stats
+		var sleeps stats.Stats
 		for ss.Count() != experimentRounds {
 			sbefore := s.current.spansReceived
 			bbefore := s.current.bytesReceived
@@ -327,22 +331,24 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 			})
 			stotal := s.current.spansReceived - sbefore
 			btotal := s.current.bytesReceived - bbefore
+			actualSleep := tm.Sleeps.Sum()
 
 			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).SubFactor(s.current.roundCost, total)
-			impairment := (adjusted.Wall.Seconds() - (total * (workTime + sleepTime).Seconds())) / adjusted.Wall.Seconds()
+			impairment := (adjusted.Wall.Seconds() - (total * workTime.Seconds()) - actualSleep) / adjusted.Wall.Seconds()
 
 			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%%",
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
 				100*impairment)
 
-			glog.V(2).Info("Sleep total ", benchlib.Time(tm.Sleeps.Sum()),
-				" i.e. ", tm.Sleeps.Sum()/opts.seconds*100.0, "%")
+			glog.V(2).Info("Sleep total ", benchlib.Time(actualSleep),
+				" i.e. ", actualSleep/opts.seconds*100.0, "%")
 
 			ss.Update(adjusted)
+			sleeps.Update(actualSleep)
 			spans.Update(float64(stotal))
 			bytes.Update(float64(btotal))
 		}
-		return ss, spans, bytes
+		return ss, spans, bytes, sleeps
 	}
 	for {
 		if s.current.calibrations < minimumCalibrations {
@@ -351,12 +357,16 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 			s.recalibrate()
 		}
 
-		ss, spans, bytes := runOnce()
-		if sleepTime != 0 {
-			offBy := ss.Wall.Mean() - opts.seconds
-			ratio := offBy / opts.seconds
-			if math.Abs(ratio) > timingTolerance {
-				adjust := benchlib.Time(offBy / float64(total))
+		ss, spans, bytes, sleeps := runOnce()
+
+		offBy := ss.Wall.Mean() - opts.seconds
+		ratio := offBy / opts.seconds
+		if math.Abs(ratio) > timingTolerance {
+			adjust := benchlib.Time(offBy / float64(total))
+			if adjust < 0 && sleepTime == 0 {
+				// The load factor precludes this test from succeeding.
+				glog.Info("Load factor is too high to continue")
+			} else {
 				if sleepTime < adjust {
 					sleepTime = 0
 				} else {
@@ -367,7 +377,8 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 				continue
 			}
 		}
-		impairment := (ss.Wall.Mean() - total*(workTime+sleepTime).Seconds()) / ss.Wall.Mean()
+
+		impairment := (ss.Wall.Mean() - (total * workTime.Seconds()) - sleeps.Mean()) / ss.Wall.Mean()
 		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) impaired %.2f%% completed %.2f%% @ %.2fB/span",
 			opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr,
 			100*impairment,
