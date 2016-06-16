@@ -33,7 +33,6 @@ const test_tracer = opentracing.initNewTracer(lightstep.tracer({
     collector_port       : port,
     collector_host       : host,
     collector_encryption : 'none',
-    group_name           : 'should-not-be-required',
 }));
 
 var log_input_string = "";
@@ -101,13 +100,13 @@ function exec_control(c, tracer) {
 		span.logEvent("testlog", log_input_string.substr(0, c.BytesPerLog));
 	    }
 	    span.finish()
-	    //if (c.Sleep != 0) {
-		sleep_debt += c.Sleep
-		if (sleep_debt >= c.SleepInterval)  {
-		    sleep_at = process.hrtime()
-		    return setTimeout(body_func, sleep_debt / millis_per_nano, r - 1)
-		}
-	    //}
+	    // Note: We go through this code section even when c.Sleep == 0
+	    // for measurement consistency.
+	    sleep_debt += c.Sleep
+	    if (sleep_debt >= c.SleepInterval)  {
+		sleep_at = process.hrtime()
+		return setTimeout(body_func, sleep_debt / millis_per_nano, r - 1)
+	    }
 	}
 	var endTime = process.hrtime()
 	var elapsed = (endTime[0] - begin[0]) + (endTime[1] - begin[1]) * 1e-9
