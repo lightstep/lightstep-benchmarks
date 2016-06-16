@@ -1,0 +1,10 @@
+FROM node:6.2.1-slim
+
+WORKDIR /data/app
+
+COPY jsclient.js /data/app
+COPY package.json /data/app
+COPY node_modules /data/app
+COPY controller /data/app
+
+CMD ["./controller", "--logtostderr", "-v=1"]

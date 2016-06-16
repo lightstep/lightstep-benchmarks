@@ -1,6 +1,8 @@
 #!/bin/sh
 # TODO This is a work in progress.
 
+eval $(docker-machine env)
+
 DATETIME=$(date "+%Y-%m-%d_%H-%M-%S")
 BASENAME=lightstep-benchmark
 PROJECT_ID=$(gcloud config --format text list project | cut -d' ' -f2)
@@ -14,6 +16,6 @@ gcloud docker push ${NAME}:${DATETIME}
 gcloud docker push ${NAME}:latest
 
 # Some docker-machine magic to create a machine
-eval $(docker-machine env lightstep-benchmarks-1cpu)
+eval $(docker-machine env lightstep-benchmarks-cpu1)
 
 gcloud docker run -- -d ${NAME}:${DATETIME} ./controller --logtostderr
