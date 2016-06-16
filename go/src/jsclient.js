@@ -33,6 +33,7 @@ const test_tracer = opentracing.initNewTracer(lightstep.tracer({
     collector_port       : port,
     collector_host       : host,
     collector_encryption : 'none',
+    component_name       : 'javascript/test',
 }));
 
 var log_input_string = "";
