@@ -13,7 +13,7 @@ mkdir -p $TMP/node_modules
 (cd $GOPATH/src && npm install 2>/dev/null)
 (cd $GOPATH/src && GOOS=linux GOARCH=amd64 go build -o $TMP/controller controller.go)
 
-tar -C src -cf - node_modules | (cd $TMP/node_modules && tar -xf -)
+tar -L -C src -cf - node_modules | (cd $TMP/node_modules && tar -xf -)
 ln src/package.json $TMP
 ln src/jsclient.js $TMP
 ln ../docker/Dockerfile.nodejs $TMP/Dockerfile
