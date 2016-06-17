@@ -37,7 +37,7 @@ const (
 	testIteration = 1000
 
 	// maxConcurrency is the limit of concurrency testing
-	maxConcurrency = 3
+	maxConcurrency = 1
 
 	// testTolerance is used for a sanity checks.
 	testTolerance = 0.02
@@ -47,23 +47,23 @@ const (
 
 	nanosPerSecond = 1e9
 
-	minimumCalibrations = 2
+	minimumCalibrations = 3
 
 	experimentRounds = 3
+
+	// testTimeSlice is a small duration used to set a minimum
+	// reasonable execution time during calibration.
+	testTimeSlice = 10 * time.Second
 )
 
 var (
-	// testTimeSlice is a small duration used to set a minimum
-	// reasonable execution time during calibration.
-	testTimeSlice = 10 * time.Millisecond
-
 	// client is a list of client programs for the benchmark
 	clients = []benchClient{
 		// {"c++", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}},
 		// {"ruby", []string{"ruby", "./rbclient.rb"}},
 		// {"python", []string{"./pyclient.py"}},
 		// {"golang", []string{"./goclient"}},
-		{"nodejs", []string{"nodejs", "--expose-gc", "./jsclient.js"}},
+		{"nodejs", []string{"node", "--expose-gc", "--always_opt", "./jsclient.js"}},
 	}
 
 	// requestCh is used to serialize HTTP requests
@@ -194,65 +194,65 @@ func (s *benchService) estimateRoundCost() {
 }
 
 // estimateWorkCosts measures the cost of the work function.
+// TODO this body is now nearly identical to measureTestLoop; Fix.
 func (s *benchService) estimateWorkCost() {
 	// The work function is assumed to be fast. Find a multiplier
 	// that results in working at least testTimeSlice.
 	multiplier := int64(1000)
 	for {
+		glog.V(2).Info("Testing work for rounds=", multiplier)
 		tm := s.run(&benchlib.Control{
-			Concurrent: 1,
-			Work:       multiplier,
-			Repeat:     1,
+			Concurrent:    1,
+			Work:          multiplier,
+			Repeat:        1,
+			Sleep:         1,
+			SleepInterval: time.Duration(2),
 		})
-		if tm.Measured.Wall.Seconds() > testTimeSlice.Seconds() {
-			break
+		if tm.Measured.Wall.Seconds() < testTimeSlice.Seconds() {
+			multiplier *= 10
+			continue
 		}
-		multiplier *= 10
-	}
-	glog.V(2).Info("Measuring work cost for ", multiplier, "..", 10*multiplier)
-	// Compute data points for factors of the multiplier.
-	data := benchlib.Timings{}
-	for iter := 1; iter <= 10; iter++ {
-		repeat := int64(iter) * multiplier
-		for j := 0; j < 10; j++ {
+		var st benchlib.TimingStats
+		for j := 0; j < 3; j++ {
+			glog.V(2).Info("Measuring work for rounds=", multiplier)
 			tm := s.run(&benchlib.Control{
 				Concurrent:    1,
-				Work:          repeat,
+				Work:          multiplier,
 				Repeat:        1,
 				Sleep:         1,
 				SleepInterval: time.Duration(2),
 			})
-
 			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).Sub(s.current.roundCost)
-			data.Update(float64(repeat), adjusted)
+			st.Update(adjusted)
+			glog.V(1).Info("Measured work for rounds=", multiplier, " in ", adjusted,
+				" == ", float64(adjusted.Wall)/float64(multiplier))
 		}
+		s.current.workCost = st.Mean().Div(float64(multiplier))
+		glog.V(1).Infof("Cost W = %s/unit", s.current.workCost)
+		return
 	}
-
-	reg := data.LinearRegression()
-	s.current.workCost = reg.Slope()
-	glog.V(1).Infof("Cost W = %s/unit", s.current.workCost)
 }
 
 func (s *benchService) sanityCheckWork() bool {
-	runfor := time.Second.Seconds()
-	conc := 1
 	var st benchlib.TimingStats
-	for i := 0; i < 10; i++ {
-		work := int64(runfor / s.current.workCost.Wall.Seconds())
+	for i := 0; i < 3; i++ {
+		work := int64(testTimeSlice.Seconds() / s.current.workCost.Wall.Seconds())
 		tm := s.run(&benchlib.Control{
-			Concurrent: conc,
-			Work:       work,
-			Repeat:     1,
+			Concurrent:    1,
+			Work:          work,
+			Repeat:        1,
+			Sleep:         1,
+			SleepInterval: time.Duration(2),
 		})
 		adjusted := tm.Measured.Sub(s.current.zeroCost[1]).Sub(s.current.roundCost)
 		st.Update(adjusted)
 	}
-	glog.V(2).Infoln("Check work timing", st, "expected", runfor)
+	glog.V(1).Infoln("Check work timing", st, "expected", testTimeSlice)
 
-	absRatio := math.Abs((st.Wall.Mean() - runfor) / runfor)
+	absRatio := math.Abs((st.Wall.Mean() - testTimeSlice.Seconds()) / testTimeSlice.Seconds())
 	if absRatio > testTolerance {
-		glog.Warning("CPU work not well calibrated (or insufficient CPU) @ concurrency ",
-			conc, ": measured ", st.Mean(), " expected ", runfor,
+		glog.Warning("CPU work not well calibrated (or insufficient CPU): measured ",
+			st.Mean(), " expected ", testTimeSlice,
 			" off by ", absRatio*100.0, "%")
 		return false
 	}
@@ -260,10 +260,9 @@ func (s *benchService) sanityCheckWork() bool {
 }
 
 func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
-	// TODO combine this function with estimateWorkCost (same form)
-	// Make sure the combined func is the only use of testTimeSlice.
 	multiplier := int64(1000)
 	for {
+		glog.V(2).Info("Measuring loop for rounds=", multiplier)
 		tm := s.run(&benchlib.Control{
 			Concurrent:    1,
 			Work:          0,
@@ -272,38 +271,34 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 			Repeat:        multiplier,
 			Trace:         trace,
 		})
-		if tm.Measured.Wall.Seconds() > testTimeSlice.Seconds() {
-			break
+		if tm.Measured.Wall.Seconds() < testTimeSlice.Seconds() {
+			multiplier *= 10
+			continue
 		}
-		multiplier *= 10
-	}
-	// multiplier /= 10
-	glog.V(2).Info("Measuring round cost for ", multiplier, "..", 10*multiplier)
-	var data benchlib.Timings
-	for i := 1; i <= 10; i++ {
-		rounds := multiplier * int64(i)
-		for j := 0; j < 10; j++ {
-			// Note: This activates the amortized sleep
-			// logic but never sleeps (because Sleep = 1
-			// && SleepInterval > Repeat).
+		var ss benchlib.TimingStats
+		for j := 0; j < 3; j++ {
 			tm := s.run(&benchlib.Control{
 				Concurrent:    1,
 				Work:          0,
 				Sleep:         1,
-				SleepInterval: time.Duration(rounds * 2),
-				Repeat:        rounds,
+				SleepInterval: time.Duration(multiplier * 2),
+				Repeat:        multiplier,
 				Trace:         trace,
 			})
 			adjusted := tm.Measured.Sub(s.current.zeroCost[1])
-			data.Update(float64(rounds), adjusted)
+			if trace {
+				adjusted = adjusted.SubFactor(s.current.roundCost, float64(multiplier))
+			}
+			ss.Update(adjusted)
+			glog.V(1).Info("Measured cost for rounds=", multiplier, " in ", adjusted,
+				" == ", float64(adjusted.Wall)/float64(multiplier))
 		}
+		return ss.Mean().Div(float64(multiplier))
 	}
-	reg := data.LinearRegression()
-	return reg.Slope()
 }
 
 // Returns the CPU impairment as a ratio (e.g., 0.01 for 1% impairment).
-func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
+func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 	workTime := benchlib.Time(opts.load / opts.qps)
 	sleepTime := benchlib.Time((1 - opts.load) / opts.qps)
 	total := opts.seconds * opts.qps
@@ -312,7 +307,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 	if opts.trace {
 		tr = "traced"
 	}
-	runOnce := func() (benchlib.TimingStats, stats.Stats, stats.Stats, stats.Stats) {
+	runOnce := func() (*benchlib.TimingStats, *stats.Stats, *stats.Stats, *stats.Stats) {
 		var ss benchlib.TimingStats
 		var spans stats.Stats
 		var bytes stats.Stats
@@ -340,6 +335,11 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
 				100*impairment)
 
+			if impairment < 0 {
+				glog.V(1).Info("Optimization? Restarting")
+				return nil, nil, nil, nil
+			}
+
 			glog.V(2).Info("Sleep total ", benchlib.Time(actualSleep),
 				" i.e. ", actualSleep/opts.seconds*100.0, "%")
 
@@ -348,7 +348,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 			spans.Update(float64(stotal))
 			bytes.Update(float64(btotal))
 		}
-		return ss, spans, bytes, sleeps
+		return &ss, &spans, &bytes, &sleeps
 	}
 	for {
 		if s.current.calibrations < minimumCalibrations {
@@ -359,6 +359,11 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 
 		ss, spans, bytes, sleeps := runOnce()
 
+		if ss == nil {
+			s.recalibrate()
+			continue
+		}
+
 		offBy := ss.Wall.Mean() - opts.seconds
 		ratio := offBy / opts.seconds
 		if math.Abs(ratio) > timingTolerance {
@@ -366,16 +371,16 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 			if adjust < 0 && sleepTime == 0 {
 				// The load factor precludes this test from succeeding.
 				glog.Info("Load factor is too high to continue")
-			} else {
-				if sleepTime < adjust {
-					sleepTime = 0
-				} else {
-					sleepTime -= adjust
-				}
-				glog.V(1).Info("Adjust timing by ", -adjust, " (", sleepTime+adjust, " to ",
-					sleepTime, ") diff ", offBy)
-				continue
+				return nil
 			}
+			if sleepTime < adjust {
+				sleepTime = 0
+			} else {
+				sleepTime -= adjust
+			}
+			glog.V(1).Info("Adjust timing by ", -adjust, " (", sleepTime+adjust, " to ",
+				sleepTime, ") diff ", offBy)
+			continue
 		}
 
 		impairment := (ss.Wall.Mean() - (total * workTime.Seconds()) - sleeps.Mean()) / ss.Wall.Mean()
@@ -384,17 +389,18 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) float64 {
 			100*impairment,
 			100*(spans.Mean()/total),
 			bytes.Mean()/spans.Mean())
-		return impairment
+		return &impairment
 	}
 }
 
 func (s *benchService) measureImpairment() {
 	// Each test runs this long.
-	const testTime = 30
+	const testTime = 600
 
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
 		100,
+		500,
 		1000,
 	}
 	// logcfg := []struct{ num, size int64 }{
@@ -405,7 +411,7 @@ func (s *benchService) measureImpairment() {
 	// }
 	loadlist := []float64{
 		.5,
-		.95,
+		.9,
 	}
 	// THEN add an experiment to ramp up collector latency and observe
 	// increase in impairment? dropped spans? tolerance? etc.
@@ -420,6 +426,9 @@ func (s *benchService) measureImpairment() {
 				//lognum:  lcfg.num,
 				//logsize: lcfg.size,
 			})
+			if untracedImpaired == nil {
+				continue
+			}
 			tracedImpaired := s.measureSpanSaturation(saturationTest{
 				trace:   true,
 				seconds: testTime,
@@ -428,8 +437,11 @@ func (s *benchService) measureImpairment() {
 				//lognum:  lcfg.num,
 				//logsize: lcfg.size,
 			})
+			if tracedImpaired == nil {
+				continue
+			}
 			glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
-				qps, 100*load, 100*(tracedImpaired-untracedImpaired))
+				qps, 100*load, 100*(*tracedImpaired-*untracedImpaired))
 		}
 		//}
 	}
@@ -437,9 +449,20 @@ func (s *benchService) measureImpairment() {
 
 func (s *benchService) warmup() {
 	s.run(&benchlib.Control{
-		Concurrent: 1,
-		Work:       10000,
-		Repeat:     100,
+		Concurrent:    1,
+		Work:          1000,
+		Repeat:        10,
+		Trace:         false,
+		Sleep:         1,
+		SleepInterval: 5,
+	})
+	s.run(&benchlib.Control{
+		Concurrent:    1,
+		Work:          1000,
+		Repeat:        10,
+		Trace:         true,
+		Sleep:         10,
+		SleepInterval: 100,
 	})
 }
 
@@ -467,17 +490,20 @@ func (s *benchService) runTests() {
 }
 
 func (s *benchService) recalibrate() {
-	cnt := s.current.calibrations
-	s.current = newBenchStats(s.current.benchClient)
-	s.current.calibrations = cnt + 1
-	s.warmup()
-	s.estimateZeroCosts()
-	s.estimateRoundCost()
-	s.estimateWorkCost()
-	for !s.sanityCheckWork() {
+	for {
+		cnt := s.current.calibrations
+		s.current = newBenchStats(s.current.benchClient)
+		s.current.calibrations = cnt + 1
+		s.warmup()
+		s.estimateZeroCosts()
+		s.estimateRoundCost()
 		s.estimateWorkCost()
+		if !s.sanityCheckWork() {
+			continue
+		}
+		s.measureSpanCost()
+		return
 	}
-	s.measureSpanCost()
 }
 
 func (s *benchService) runTest(bc *benchClient) {
