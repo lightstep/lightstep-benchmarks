@@ -7,4 +7,4 @@ COPY package.json /data/app
 COPY node_modules /data/app
 COPY controller /data/app
 
-CMD ["./controller", "--logtostderr", "-v=1"]
+CMD ["./controller", "--logtostderr", "-v=1", "--client=nodejs"]

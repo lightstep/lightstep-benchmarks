@@ -58,11 +58,11 @@ const (
 
 var (
 	// client is a list of client programs for the benchmark
-	clients = []benchClient{
-		// {"c++", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}},
-		// {"ruby", []string{"ruby", "./rbclient.rb"}},
-		// {"python", []string{"./pyclient.py"}},
-		// {"golang", []string{"./goclient"}},
+	allClients = []benchClient{
+		{"cpp", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}},
+		{"ruby", []string{"ruby", "./rbclient.rb"}},
+		{"python", []string{"./pyclient.py"}},
+		{"golang", []string{"./goclient"}},
 		{"nodejs", []string{"node", "--expose-gc", "--always_opt", "./jsclient.js"}},
 	}
 
@@ -73,6 +73,8 @@ var (
 		"If true, this process will the run the test clients "+
 			" itself. Otherwise, tests may be run manually by setting "+
 			"this false.")
+	client = flag.String("client", "",
+		"Name of the client library being tested (matches benchClient.Name0")
 )
 
 type saturationTest struct {
@@ -482,8 +484,10 @@ func (s *benchService) runTests() {
 	if !*headless {
 		s.runTest(nil)
 	} else {
-		for _, bc := range clients {
-			s.runTest(&bc)
+		for _, bc := range allClients {
+			if bc.Name == *client {
+				s.runTest(&bc)
+			}
 		}
 	}
 	os.Exit(0)
