@@ -66,9 +66,6 @@ def test_body(control):
         #end
         answer = do_work(work)
         span.finish()
-        if sleepnano == 0:
-            continue
-        #end
         sleep_debt += sleepnano
         if sleep_debt < sleepival:
             continue

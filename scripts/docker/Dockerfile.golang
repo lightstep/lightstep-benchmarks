@@ -1,0 +1,8 @@
+FROM alpine:latest
+
+WORKDIR /data
+
+COPY controller /data
+COPY goclient /data
+
+CMD ["./controller", "--logtostderr", "-v=1", "--client=golang"]
