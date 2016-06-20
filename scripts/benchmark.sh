@@ -72,8 +72,13 @@ function dockerize()
     || true
 
     eval $(docker-machine env ${VM})
+    # N.B. eval ignores the return value, so check if the above worked
+    if [ "$(docker-machine active)" != "${VM}" ]; then
+      echo "Docker-machine failed to setup env";
+      exit 1;
+    fi
 
-    PROCS=`docker ps -q`
+    PROCS=`docker ps -q -all`
     docker kill ${PROCS} 2> /dev/null || true
     docker rm ${PROCS} 2> /dev/null || true
 
