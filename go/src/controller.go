@@ -53,7 +53,7 @@ const (
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
-	testTimeSlice = 10 * time.Second
+	testTimeSlice = time.Second / 3
 )
 
 var (
@@ -63,7 +63,9 @@ var (
 		{"ruby", []string{"ruby", "./rbclient.rb"}},
 		{"python", []string{"./pyclient.py"}},
 		{"golang", []string{"./goclient"}},
-		{"nodejs", []string{"node", "--expose-gc", "--always_opt", "./jsclient.js"}},
+		{"nodejs", []string{"node", "--expose-gc",
+			"--trace-gc", "--trace-gc-verbose", "--trace-gc-ignore-scavenger",
+			"--always_opt", "./jsclient.js"}},
 	}
 
 	// requestCh is used to serialize HTTP requests
@@ -337,7 +339,8 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
 				100*impairment)
 
-			if impairment < 0 {
+			// If more than 10% under, recalibrate
+			if impairment < -0.1 {
 				glog.V(1).Info("Optimization? Restarting")
 				return nil, nil, nil, nil
 			}
@@ -369,19 +372,20 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 		offBy := ss.Wall.Mean() - opts.seconds
 		ratio := offBy / opts.seconds
 		if math.Abs(ratio) > timingTolerance {
-			adjust := benchlib.Time(offBy / float64(total))
+			adjust := -benchlib.Time(offBy / float64(total))
 			if adjust < 0 && sleepTime == 0 {
 				// The load factor precludes this test from succeeding.
 				glog.Info("Load factor is too high to continue")
 				return nil
 			}
 			if sleepTime < adjust {
+				glog.V(1).Info("Adjust timing to zero (", sleepTime, " adjust ", adjust, ") off by ", offBy)
 				sleepTime = 0
 			} else {
-				sleepTime -= adjust
+				glog.V(1).Info("Adjust timing by ", adjust, " (", sleepTime, " to ",
+					sleepTime+adjust, ") off by ", offBy)
+				sleepTime += adjust
 			}
-			glog.V(1).Info("Adjust timing by ", -adjust, " (", sleepTime+adjust, " to ",
-				sleepTime, ") diff ", offBy)
 			continue
 		}
 
@@ -397,7 +401,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 
 func (s *benchService) measureImpairment() {
 	// Each test runs this long.
-	const testTime = 600
+	const testTime = 60
 
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
@@ -413,6 +417,7 @@ func (s *benchService) measureImpairment() {
 	// }
 	loadlist := []float64{
 		.5,
+		.8,
 		.9,
 	}
 	// THEN add an experiment to ramp up collector latency and observe
