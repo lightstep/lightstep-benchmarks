@@ -4,20 +4,26 @@ set -e
 
 # Name of the client, usually language or runtime (e.g., nodejs, golang).
 CLIENT="$1"
+CPUS="$2"
 
 CLOUD_ZONE="us-central1-a"
 PROJECT_ID="helpful-cat-109717"
 CLOUD_MACH_BASE="n1-standard-"
 VM_BASE="ls-bench-${CLIENT}-"
 IMG_BASE="bench-${CLIENT}"
+CONTAINER="${IMG_BASE}-${CPUS}"
 
 if [ "${CLIENT}" = "" ]; then
-    echo "usage: $0 client_name"
+    usage
+    exit 1
+fi
+if [ "${CPUS}" = "" ]; then
+    usage
     exit 1
 fi
 
 if [ ! -d "${GOPATH}/src" ]; then
-    echo "GOPATH must be set"
+    usage
     exit 1
 fi
 
@@ -28,6 +34,13 @@ if [ ! -d "${SCRIPTS}" ]; then
     echo "Scripts directory not found (${SCRIPTS})"
     exit 1
 fi
+
+function usage()
+{
+    echo "usage: $0 client_name cpus"
+    echo "  GOPATH must be set"
+    echo "  Configuration in \$GOPATH/../scripts"
+}
 
 function build()
 {
@@ -43,13 +56,11 @@ function build()
 
 function on_exit()
 {
-    rm -rf "$DBUILD"
+    rm -rf "${DBUILD}"
 }
 
 function dockerize()
 {
-    local CONC=1
-    local CPUS=$[$CONC+1]
     local VM="${VM_BASE}${CPUS}"
 
     docker-machine create \
@@ -57,12 +68,17 @@ function dockerize()
         --google-project ${PROJECT_ID} \
         --google-zone ${CLOUD_ZONE} \
         --google-machine-type ${CLOUD_MACH_BASE}${CPUS} \
-        ${VM}
+        ${VM} \
+    || true
 
     eval $(docker-machine env ${VM})
 
+    PROCS=`docker ps -q`
+    docker kill ${PROCS} 2> /dev/null || true
+    docker rm ${PROCS} 2> /dev/null || true
+
     docker build -t ${IMG_BASE}:latest ${DBUILD}
-    docker run -d ${IMG_BASE}:latest
+    docker run --name ${CONTAINER} -d ${IMG_BASE}:latest
 }
 
 trap on_exit EXIT
