@@ -53,7 +53,7 @@ const (
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
-	testTimeSlice = time.Second / 3
+	testTimeSlice = time.Second
 )
 
 var (
@@ -305,6 +305,7 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 	workTime := benchlib.Time(opts.load / opts.qps)
 	sleepTime := benchlib.Time((1 - opts.load) / opts.qps)
+	sleepTime0 := sleepTime
 	total := opts.seconds * opts.qps
 
 	tr := "untraced"
@@ -341,7 +342,6 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 
 			// If more than 10% under, recalibrate
 			if impairment < -0.1 {
-				glog.V(1).Info("Optimization? Restarting")
 				return nil, nil, nil, nil
 			}
 
@@ -369,6 +369,10 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 			continue
 		}
 
+		// TODO The logic here is using averages, which allows
+		// several wildly-out-of-range runs to counter each
+		// other.  Perform this fitness test on individual run
+		// times.
 		offBy := ss.Wall.Mean() - opts.seconds
 		ratio := offBy / opts.seconds
 		if math.Abs(ratio) > timingTolerance {
@@ -385,6 +389,11 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 				glog.V(1).Info("Adjust timing by ", adjust, " (", sleepTime, " to ",
 					sleepTime+adjust, ") off by ", offBy)
 				sleepTime += adjust
+
+				if sleepTime > sleepTime0 {
+					sleepTime = sleepTime0
+					s.recalibrate()
+				}
 			}
 			continue
 		}
@@ -401,7 +410,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 
 func (s *benchService) measureImpairment() {
 	// Each test runs this long.
-	const testTime = 60
+	const testTime = 180
 
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
@@ -500,6 +509,7 @@ func (s *benchService) runTests() {
 
 func (s *benchService) recalibrate() {
 	for {
+		glog.V(1).Info("Calibration starting")
 		cnt := s.current.calibrations
 		s.current = newBenchStats(s.current.benchClient)
 		s.current.calibrations = cnt + 1
