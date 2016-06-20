@@ -1,4 +1,4 @@
-FROM node:6.2.1-slim
+FROM alpine:latest
 
 WORKDIR /data
 
