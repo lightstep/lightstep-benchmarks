@@ -110,9 +110,6 @@ func testBody(control *benchlib.Control) ([]time.Duration, int64) {
 				logPayloadStr[0:control.BytesPerLog])
 		}
 		span.Finish()
-		if control.Sleep == 0 {
-			continue
-		}
 		sleep_debt += control.Sleep
 		if sleep_debt < control.SleepInterval {
 			continue
