@@ -52,9 +52,7 @@ def test_body(tracer, control)
     end
     answer = do_work(work)
     span.finish()
-    if sleepnano == 0
-      next
-    end
+    # TODO implement true-sleeps return
     sleep_debt += sleepnano
     if sleep_debt < sleepival
       next
