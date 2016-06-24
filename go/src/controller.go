@@ -53,7 +53,9 @@ const (
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
-	testTimeSlice = time.Second
+	testTimeSlice = time.Second / 2
+
+	testRounds = 7
 )
 
 var (
@@ -63,9 +65,11 @@ var (
 		{"ruby", []string{"ruby", "./rbclient.rb"}},
 		{"python", []string{"./pyclient.py"}},
 		{"golang", []string{"./goclient"}},
-		{"nodejs", []string{"node", "--expose-gc",
-			"--trace-gc", "--trace-gc-verbose", "--trace-gc-ignore-scavenger",
-			"--always_opt", "./jsclient.js"}},
+		{"nodejs", []string{"node",
+			"--expose-gc",
+			"--always_opt",
+			//"--trace-gc", "--trace-gc-verbose", "--trace-gc-ignore-scavenger",
+			"./jsclient.js"}},
 	}
 
 	// requestCh is used to serialize HTTP requests
@@ -75,8 +79,8 @@ var (
 		"If true, this process will the run the test clients "+
 			" itself. Otherwise, tests may be run manually by setting "+
 			"this false.")
-	client = flag.String("client", "",
-		"Name of the client library being tested (matches benchClient.Name0")
+	client = flag.String("client", "golang",
+		"Name of the client library being tested (matches benchClient.Name)")
 )
 
 type saturationTest struct {
@@ -217,7 +221,7 @@ func (s *benchService) estimateWorkCost() {
 			continue
 		}
 		var st benchlib.TimingStats
-		for j := 0; j < 3; j++ {
+		for j := 0; j < testRounds; j++ {
 			glog.V(2).Info("Measuring work for rounds=", multiplier)
 			tm := s.run(&benchlib.Control{
 				Concurrent:    1,
@@ -239,7 +243,7 @@ func (s *benchService) estimateWorkCost() {
 
 func (s *benchService) sanityCheckWork() bool {
 	var st benchlib.TimingStats
-	for i := 0; i < 3; i++ {
+	for i := 0; i < testRounds; i++ {
 		work := int64(testTimeSlice.Seconds() / s.current.workCost.Wall.Seconds())
 		tm := s.run(&benchlib.Control{
 			Concurrent:    1,
@@ -280,7 +284,7 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 			continue
 		}
 		var ss benchlib.TimingStats
-		for j := 0; j < 3; j++ {
+		for j := 0; j < testRounds; j++ {
 			tm := s.run(&benchlib.Control{
 				Concurrent:    1,
 				Work:          0,
@@ -294,7 +298,7 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 				adjusted = adjusted.SubFactor(s.current.roundCost, float64(multiplier))
 			}
 			ss.Update(adjusted)
-			glog.V(1).Info("Measured cost for rounds=", multiplier, " in ", adjusted,
+			glog.V(2).Info("Measured cost for rounds=", multiplier, " in ", adjusted,
 				" == ", float64(adjusted.Wall)/float64(multiplier))
 		}
 		return ss.Mean().Div(float64(multiplier))
@@ -336,9 +340,9 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).SubFactor(s.current.roundCost, total)
 			impairment := (adjusted.Wall.Seconds() - (total * workTime.Seconds()) - actualSleep) / adjusted.Wall.Seconds()
 
-			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%%",
+			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%% (sleep time %s)",
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
-				100*impairment)
+				100*impairment, sleepTime)
 
 			// If more than 10% under, recalibrate
 			if impairment < -0.1 {
@@ -377,23 +381,26 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 		ratio := offBy / opts.seconds
 		if math.Abs(ratio) > timingTolerance {
 			adjust := -benchlib.Time(offBy / float64(total))
-			if adjust < 0 && sleepTime == 0 {
-				// The load factor precludes this test from succeeding.
-				glog.Info("Load factor is too high to continue")
-				return nil
-			}
-			if sleepTime < adjust {
-				glog.V(1).Info("Adjust timing to zero (", sleepTime, " adjust ", adjust, ") off by ", offBy)
-				sleepTime = 0
-			} else {
-				glog.V(1).Info("Adjust timing by ", adjust, " (", sleepTime, " to ",
-					sleepTime+adjust, ") off by ", offBy)
-				sleepTime += adjust
-
-				if sleepTime > sleepTime0 {
-					sleepTime = sleepTime0
-					s.recalibrate()
+			if adjust < 0 {
+				if sleepTime == 0 {
+					// The load factor precludes this test from succeeding.
+					glog.Info("Load factor is too high to continue")
+					return nil
 				}
+				if sleepTime+adjust <= 0 {
+					glog.V(1).Info("Adjust timing to zero (", sleepTime, " adjust ", adjust, ") off by ", offBy)
+					sleepTime = 0
+					continue
+				}
+			}
+
+			glog.V(1).Info("Adjust timing by ", adjust, " (", sleepTime, " to ",
+				sleepTime+adjust, ") off by ", offBy)
+			sleepTime += adjust
+
+			if sleepTime > sleepTime0 {
+				sleepTime = sleepTime0
+				s.recalibrate()
 			}
 			continue
 		}
@@ -410,7 +417,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 
 func (s *benchService) measureImpairment() {
 	// Each test runs this long.
-	const testTime = 180
+	const testTime = 600
 
 	// Test will compute CPU tax measure for each QPS listed
 	qpss := []float64{
@@ -418,22 +425,14 @@ func (s *benchService) measureImpairment() {
 		500,
 		1000,
 	}
-	// logcfg := []struct{ num, size int64 }{
-	// 	{0, 0},
-	// 	{2, 100},
-	// 	{4, 100},
-	// 	{6, 100},
-	// }
 	loadlist := []float64{
-		.5,
 		.8,
-		.9,
 	}
 	// THEN add an experiment to ramp up collector latency and observe
 	// increase in impairment? dropped spans? tolerance? etc.
 	for _, qps := range qpss {
-		//for _, lcfg := range logcfg {
 		for _, load := range loadlist {
+			glog.Infof("Starting %v@%3f%%", qps, 100*load)
 			untracedImpaired := s.measureSpanSaturation(saturationTest{
 				trace:   false,
 				seconds: testTime,
@@ -459,7 +458,6 @@ func (s *benchService) measureImpairment() {
 			glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
 				qps, 100*load, 100*(*tracedImpaired-*untracedImpaired))
 		}
-		//}
 	}
 }
 
@@ -498,10 +496,15 @@ func (s *benchService) runTests() {
 	if !*headless {
 		s.runTest(nil)
 	} else {
+		ran := false
 		for _, bc := range allClients {
 			if bc.Name == *client {
 				s.runTest(&bc)
+				ran = true
 			}
+		}
+		if !ran {
+			glog.Fatal("Please set --client=<...>")
 		}
 	}
 	os.Exit(0)

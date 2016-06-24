@@ -77,7 +77,7 @@ function next_control() {
 
 function exec_control(c, tracer) {
     // Force garbage collection (requires the --enable-gc flag)
-    // global.gc()
+    global.gc()
 
     var begin = process.hrtime();
     var sleep_debt = 0;
