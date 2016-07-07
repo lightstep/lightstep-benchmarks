@@ -1,15 +1,22 @@
 #!/bin/bash
 #set -e
+# TODO this is a throw-away script. nothing to see here.
 
-echo Python 1 CPU
-./show_logs.sh python 1 | grep "CPU imp"
-echo Python 2 CPUs
-./show_logs.sh python 2 | grep "CPU imp"
-echo Nodejs 1 CPU
-./show_logs.sh nodejs 1 | grep "CPU imp"
-echo Nodejs 2 CPUs
-./show_logs.sh nodejs 2 | grep "CPU imp"
-echo Golang 1 CPU
-./show_logs.sh golang 1 | grep "CPU imp"
-echo Golang 2 CPUs GOMAXPROCS=1
-./show_logs.sh golang1 2 | grep "CPU imp"
+echo Python 1x1
+./show_logs.sh python 1 single-thread-zero-logs | grep "CPU imp"
+echo Python 1x2
+./show_logs.sh python 2 single-thread-zero-logs | grep "CPU imp"
+echo Nodejs 1x1
+./show_logs.sh nodejs 1 single-thread-zero-logs | grep "CPU imp"
+echo Nodejs 1x2
+./show_logs.sh nodejs 2 single-thread-zero-logs | grep "CPU imp"
+echo Golang 1x1
+./show_logs.sh golang 1 single-thread-zero-logs | grep "CPU imp"
+echo Golang 1x2 GOMAXPROCS=1
+./show_logs.sh golang1 2 single-thread-zero-logs | grep "CPU imp"
+
+echo Concurrency=2
+echo Golang 2x2
+./show_logs.sh golang 2 two-threads-zero-logs | grep "CPU imp"
+echo Golang 2x4
+./show_logs.sh golang 2 two-threads-zero-logs | grep "CPU imp"
