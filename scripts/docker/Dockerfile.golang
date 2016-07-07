@@ -3,6 +3,7 @@ FROM alpine:latest
 WORKDIR /data
 
 COPY controller /data
+COPY config.json /data
 COPY goclient /data
 
-CMD ["./controller", "--logtostderr", "-v=1", "--client=golang"]
+CMD ["./controller", "--logtostderr", "-v=1", "--client=golang", "--config=./config.json"]
