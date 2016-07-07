@@ -37,7 +37,7 @@ const (
 	testIteration = 1000
 
 	// maxConcurrency is the limit of concurrency testing
-	maxConcurrency = 1
+	maxConcurrency = 2
 
 	// testTolerance is used for a sanity checks.
 	testTolerance = 0.02
@@ -55,17 +55,17 @@ const (
 	// reasonable execution time during calibration.
 	testTimeSlice = time.Second / 2
 
-	testRounds = 7
+	testRounds = 20
 )
 
 var (
 	// client is a list of client programs for the benchmark
-	allClients = []benchClient{
-		{"cpp", []string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}},
-		{"ruby", []string{"ruby", "./rbclient.rb"}},
-		{"python", []string{"./pyclient.py"}},
-		{"golang", []string{"./goclient"}},
-		{"nodejs", []string{"node",
+	allClients = map[string]benchClient{
+		"cpp":    {[]string{"./github.com/lightstep/lightstep-tracer-cpp/test/cppclient"}},
+		"ruby":   {[]string{"ruby", "./rbclient.rb"}},
+		"python": {[]string{"./pyclient.py"}},
+		"golang": {[]string{"./goclient"}},
+		"nodejs": {[]string{"node",
 			"--expose-gc",
 			"--always_opt",
 			//"--trace-gc", "--trace-gc-verbose", "--trace-gc-ignore-scavenger",
@@ -75,21 +75,27 @@ var (
 	// requestCh is used to serialize HTTP requests
 	requestCh = make(chan sreq)
 
-	headless = flag.Bool("headless", true,
-		"If true, this process will the run the test clients "+
-			" itself. Otherwise, tests may be run manually by setting "+
-			"this false.")
-	client = flag.String("client", "golang",
-		"Name of the client library being tested (matches benchClient.Name)")
+	client     = flag.String("client", "", "Name of the client library being tested")
+	configFile = flag.String("config", "", "Name of the configuration file")
 )
 
+type conf struct {
+	Seconds     float64
+	Concurrency int
+	Load        float64
+	Rates       []float64
+	LogNum      int64
+	LogSize     int64
+}
+
 type saturationTest struct {
-	trace   bool
-	seconds float64
-	qps     float64
-	load    float64
-	lognum  int64
-	logsize int64
+	trace       bool
+	concurrency int
+	seconds     float64
+	qps         float64
+	load        float64
+	lognum      int64
+	logsize     int64
 }
 
 type sreq struct {
@@ -114,7 +120,7 @@ type benchService struct {
 }
 
 type benchStats struct {
-	*benchClient
+	benchClient
 
 	// Number of times calibration has been performed.
 	calibrations int
@@ -136,11 +142,10 @@ type benchStats struct {
 }
 
 type benchClient struct {
-	Name string
 	Args []string
 }
 
-func newBenchStats(bc *benchClient) *benchStats {
+func newBenchStats(bc benchClient) *benchStats {
 	return &benchStats{
 		benchClient: bc,
 		zeroCost:    make([]benchlib.Timing, maxConcurrency+1, maxConcurrency+1),
@@ -415,49 +420,35 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 	}
 }
 
-func (s *benchService) measureImpairment() {
-	// Each test runs this long.
-	const testTime = 600
-
-	// Test will compute CPU tax measure for each QPS listed
-	qpss := []float64{
-		100,
-		500,
-		1000,
-	}
-	loadlist := []float64{
-		.8,
-	}
-	// THEN add an experiment to ramp up collector latency and observe
-	// increase in impairment? dropped spans? tolerance? etc.
-	for _, qps := range qpss {
-		for _, load := range loadlist {
-			glog.Infof("Starting %v@%3f%%", qps, 100*load)
-			untracedImpaired := s.measureSpanSaturation(saturationTest{
-				trace:   false,
-				seconds: testTime,
-				qps:     qps,
-				load:    load,
-				//lognum:  lcfg.num,
-				//logsize: lcfg.size,
-			})
-			if untracedImpaired == nil {
-				continue
-			}
-			tracedImpaired := s.measureSpanSaturation(saturationTest{
-				trace:   true,
-				seconds: testTime,
-				qps:     qps,
-				load:    load,
-				//lognum:  lcfg.num,
-				//logsize: lcfg.size,
-			})
-			if tracedImpaired == nil {
-				continue
-			}
-			glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
-				qps, 100*load, 100*(*tracedImpaired-*untracedImpaired))
+func (s *benchService) measureImpairment(c conf) {
+	for _, qps := range c.Rates {
+		glog.Infof("Starting %v@%3f%%", qps, 100*c.Load)
+		untracedImpaired := s.measureSpanSaturation(saturationTest{
+			trace:       false,
+			concurrency: c.Concurrency,
+			seconds:     c.Seconds,
+			qps:         qps,
+			load:        c.Load,
+			lognum:      c.LogNum,
+			logsize:     c.LogSize,
+		})
+		if untracedImpaired == nil {
+			continue
 		}
+		tracedImpaired := s.measureSpanSaturation(saturationTest{
+			trace:       true,
+			concurrency: c.Concurrency,
+			seconds:     c.Seconds,
+			qps:         qps,
+			load:        c.Load,
+			lognum:      c.LogNum,
+			logsize:     c.LogSize,
+		})
+		if tracedImpaired == nil {
+			continue
+		}
+		glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
+			qps, 100*c.Load, 100*(*tracedImpaired-*untracedImpaired))
 	}
 }
 
@@ -492,21 +483,8 @@ func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 	return r
 }
 
-func (s *benchService) runTests() {
-	if !*headless {
-		s.runTest(nil)
-	} else {
-		ran := false
-		for _, bc := range allClients {
-			if bc.Name == *client {
-				s.runTest(&bc)
-				ran = true
-			}
-		}
-		if !ran {
-			glog.Fatal("Please set --client=<...>")
-		}
-	}
+func (s *benchService) runTests(b benchClient, c conf) {
+	s.runTest(b, c)
 	os.Exit(0)
 }
 
@@ -528,28 +506,24 @@ func (s *benchService) recalibrate() {
 	}
 }
 
-func (s *benchService) runTest(bc *benchClient) {
+func (s *benchService) runTest(bc benchClient, c conf) {
 	s.current = newBenchStats(bc)
 
-	if bc != nil {
-		glog.Info("Testing ", bc.Name)
-		ch := make(chan bool)
+	glog.Info("Testing ", *client)
+	ch := make(chan bool)
 
-		defer func() {
-			s.exitClient()
-			<-ch
-		}()
+	defer func() {
+		s.exitClient()
+		<-ch
+	}()
 
-		go s.execClient(bc, ch)
-	} else {
-		glog.Info("Awaiting test client")
-	}
+	go s.execClient(bc, ch)
 
 	s.recalibrate()
-	s.measureImpairment()
+	s.measureImpairment(c)
 }
 
-func (s *benchService) execClient(bc *benchClient, ch chan bool) {
+func (s *benchService) execClient(bc benchClient, ch chan bool) {
 	cmd := exec.Command(bc.Args[0], bc.Args[1:]...)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
@@ -693,6 +667,24 @@ func main() {
 		Handler:      http.HandlerFunc(serializeHTTP),
 	}
 
+	var c conf
+
+	bc, ok := allClients[*client]
+	if !ok {
+		glog.Fatal("Please set the --client=<...> client name")
+	}
+	if *configFile == "" {
+		glog.Fatal("Please set the --config=<...> configuration filename")
+	}
+	cdata, err := ioutil.ReadFile(*configFile)
+	if err != nil {
+		glog.Fatal("Error reading ", *configFile, ": ", err.Error())
+	}
+	err = json.Unmarshal(cdata, &c)
+	if err != nil {
+		glog.Fatal("Error JSON-parsing ", *configFile, ": ", err.Error())
+	}
+
 	service := &benchService{}
 	service.processor = lst.NewReportingServiceProcessor(service)
 	service.resultCh = make(chan *benchlib.Result)
@@ -716,7 +708,7 @@ func main() {
 	mux.HandleFunc(benchlib.ResultPath, service.ServeResultHTTP)
 	mux.HandleFunc("/", service.ServeDefaultHTTP)
 
-	go service.runTests()
+	go service.runTests(bc, c)
 
 	glog.Fatal(server.ListenAndServe())
 }
