@@ -1,7 +1,8 @@
 FROM python:2.7
 WORKDIR /data
 COPY controller /data
+COPY config.json /data
 COPY pyclient.py /data
 COPY requirements.txt /data
 RUN pip install -r requirements.txt
-CMD ["./controller", "--logtostderr", "-v=1", "--client=python"]
+CMD ["./controller", "--logtostderr", "-v=1", "--client=python", "--config=./config.json"]

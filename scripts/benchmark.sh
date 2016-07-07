@@ -5,13 +5,16 @@ set -e
 # Name of the client, usually language or runtime (e.g., nodejs, golang).
 CLIENT="$1"
 CPUS="$2"
+TEST_CONFIG_BASE="$3"
 
+GCLOUD_CONFIG="devel"
 CLOUD_ZONE="us-central1-a"
-PROJECT_ID="helpful-cat-109717"
+PROJECT_ID="lightstep-dev"
 CLOUD_MACH_BASE="n1-standard-"
-VM_BASE="ls-bench-${CLIENT}-"
 IMG_BASE="bench-${CLIENT}"
-CONTAINER="${IMG_BASE}-${CPUS}"
+VM="bench-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}"
+
+STANDING_GCLOUD_CONFIG=`gcloud config configurations list | grep True | awk '{print $1}'`
 
 if [ "${CLIENT}" = "" ]; then
     usage
@@ -29,15 +32,21 @@ fi
 
 DBUILD="${GOPATH}/build.$$"
 SCRIPTS="${GOPATH}/../scripts"
+TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_BASE}.json"
 
 if [ ! -d "${SCRIPTS}" ]; then
     echo "Scripts directory not found (${SCRIPTS})"
     exit 1
 fi
 
+function set_config()
+{
+    gcloud config configurations activate ${GCLOUD_CONFIG} 2> /dev/null
+}
+
 function usage()
 {
-    echo "usage: $0 client_name cpus"
+    echo "usage: $0 client_name cpus config"
     echo "  GOPATH must be set"
     echo "  Configuration in \$GOPATH/../scripts"
 }
@@ -52,17 +61,17 @@ function build()
     . ${SCRIPTS}/docker/${CLIENT}.sh
 
     ln ${SCRIPTS}/docker/Dockerfile.${CLIENT} ${DBUILD}/Dockerfile
+    ln ${TEST_CONFIG} ${DBUILD}/config.json
 }
 
 function on_exit()
 {
     rm -rf "${DBUILD}"
+    gcloud config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
 }
 
 function dockerize()
 {
-    local VM="${VM_BASE}${CPUS}"
-
     docker-machine create \
         --driver google \
         --google-project ${PROJECT_ID} \
@@ -78,16 +87,16 @@ function dockerize()
       exit 1;
     fi
 
-    PROCS=`docker ps -q -all`
+    local PROCS=`docker ps -q -all`
     docker kill ${PROCS} 2> /dev/null || true
     docker rm ${PROCS} 2> /dev/null || true
 
     docker build -t ${IMG_BASE}:latest ${DBUILD}
-    docker run --name ${CONTAINER} -d ${IMG_BASE}:latest
+    docker run --name ${VM} -d ${IMG_BASE}:latest
 }
 
 trap on_exit EXIT
 
+set_config
 build
 dockerize
-
