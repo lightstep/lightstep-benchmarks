@@ -171,7 +171,7 @@ func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duratio
 				sleep_final = append(sleep_final, s)
 			}
 		}
-		answer_final *= answer[c]
+		answer_final += answer[c]
 	}
 	return endTime.Sub(beginTest), flushDur, sleep_final, answer_final
 }
