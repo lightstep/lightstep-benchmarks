@@ -1,5 +1,4 @@
 #!/bin/bash
-#set -e
 # TODO this is a throw-away script. nothing to see here.
 
 # echo Python 1x1
