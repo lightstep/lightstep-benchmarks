@@ -1,22 +1,5 @@
 'use strict';
 
-// note: this test client exhibits strange performance that is
-// non-deterministic.
-//
-// first, occasionally a run of measurespanthroughput using the no-op
-// tracer takes significantly longer than expected (after
-// calibration), with the divergence increasing as the load increases.
-// this could be reproduced, (non-deterministically), with the debug
-// and non-debug versions of the ls library. (e.g., an untraced test 
-// that should run 10 seconds runs 15 seconds). is this a scheduling
-// problem?
-//
-// second, when turning on nodejs profiling support, the
-// measurespanthroughput test runs significantly faster than expected
-// (after calibration), with the divergence increasing as the load
-// increases. (e.g., an untraced test that should run 30 seconds runs
-// 15 seconds).
-
 const opentracing = require('opentracing');
 const lightstep   = require('lightstep-tracer');
 const http        = require('http');

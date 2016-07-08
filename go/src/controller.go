@@ -37,7 +37,7 @@ const (
 	testIteration = 1000
 
 	// maxConcurrency is the limit of concurrency testing
-	maxConcurrency = 2
+	maxConcurrency = 16
 
 	// testTolerance is used for a sanity checks.
 	testTolerance = 0.02
@@ -126,6 +126,8 @@ type benchStats struct {
 	calibrations int
 
 	// The cost of doing zero repetitions, indexed by concurrency.
+	// Note: this is a small, sparse array because we only test
+	// power-of-two configurations.
 	zeroCost []benchlib.Timing
 
 	// The cost of a round w/ no working, no sleeping, no tracing.
@@ -178,7 +180,7 @@ func (s *benchService) BytesReceived(num int64) {
 
 // estimateZeroCosts measures the cost of doing nothing.
 func (s *benchService) estimateZeroCosts() {
-	for c := 1; c <= maxConcurrency; c++ {
+	for c := 1; c <= maxConcurrency; c *= 2 {
 		var st benchlib.TimingStats
 		for j := 0; j < testIteration; j++ {
 			tm := s.run(&benchlib.Control{
@@ -342,7 +344,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 			btotal := s.current.bytesReceived - bbefore
 			actualSleep := tm.Sleeps.Sum()
 
-			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).SubFactor(s.current.roundCost, total)
+			adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, total)
 			impairment := (adjusted.Wall.Seconds() - (total * workTime.Seconds()) - actualSleep) / adjusted.Wall.Seconds()
 
 			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%% (sleep time %s)",
