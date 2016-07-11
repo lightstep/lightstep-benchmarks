@@ -70,21 +70,27 @@ function on_exit()
     gcloud config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
 }
 
+DMARGS="--driver google --google-project ${PROJECT_ID} --google-zone ${CLOUD_ZONE} --google-machine-type ${CLOUD_MACH_BASE}${CPUS}"
+
+function create_machine()
+{
+    docker-machine create ${DMARGS} ${VM}
+}
+
 function dockerize()
 {
-    docker-machine create \
-        --driver google \
-        --google-project ${PROJECT_ID} \
-        --google-zone ${CLOUD_ZONE} \
-        --google-machine-type ${CLOUD_MACH_BASE}${CPUS} \
-        ${VM} \
-    || true
+    if docker-machine ssh ${DMARGS} ${VM} true 1> /dev/null 2> /dev/null; then
+	:
+    else
+	docker-machine stop ${VM} || true
+	docker-machine rm -f ${VM} || true
+	create_machine
+    fi
 
-    eval $(docker-machine env ${VM})
-    # N.B. eval ignores the return value, so check if the above worked
+    eval $(docker-machine env ${VM})	
     if [ "$(docker-machine active)" != "${VM}" ]; then
-      echo "Docker-machine failed to setup env";
-      exit 1;
+	echo "Docker-machine failed to setup env"
+	exit 1
     fi
 
     local PROCS=`docker ps -q -all`

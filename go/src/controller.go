@@ -55,6 +55,8 @@ const (
 	// reasonable execution time during calibration.
 	testTimeSlice = time.Second / 2
 
+	completeThreshold = 0.99
+
 	testRounds = 20
 )
 
@@ -239,7 +241,7 @@ func (s *benchService) estimateWorkCost() {
 			})
 			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).Sub(s.current.roundCost)
 			st.Update(adjusted)
-			glog.V(1).Info("Measured work for rounds=", multiplier, " in ", adjusted,
+			glog.V(2).Info("Measured work for rounds=", multiplier, " in ", adjusted,
 				" == ", float64(adjusted.Wall)/float64(multiplier))
 		}
 		s.current.workCost = st.Mean().Div(float64(multiplier))
@@ -314,10 +316,13 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 
 // Returns the CPU impairment as a ratio (e.g., 0.01 for 1% impairment).
 func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
-	workTime := benchlib.Time(opts.load / opts.qps)
-	sleepTime := benchlib.Time((1 - opts.load) / opts.qps)
+	qpsPerCpu := opts.qps / float64(opts.concurrency)
+
+	workTime := benchlib.Time(opts.load / qpsPerCpu)
+	sleepTime := benchlib.Time((1 - opts.load) / qpsPerCpu)
 	sleepTime0 := sleepTime
-	total := opts.seconds * opts.qps
+	totalSpans := opts.qps * opts.seconds
+	totalPerCpu := opts.seconds * qpsPerCpu
 
 	tr := "untraced"
 	if opts.trace {
@@ -332,10 +337,10 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 			sbefore := s.current.spansReceived
 			bbefore := s.current.bytesReceived
 			tm := s.run(&benchlib.Control{
-				Concurrent:  1,
+				Concurrent:  opts.concurrency,
 				Work:        int64(workTime / s.current.workCost.Wall),
 				Sleep:       time.Duration(sleepTime * nanosPerSecond),
-				Repeat:      int64(total),
+				Repeat:      int64(totalPerCpu),
 				Trace:       opts.trace,
 				NumLogs:     opts.lognum,
 				BytesPerLog: opts.logsize,
@@ -344,8 +349,8 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 			btotal := s.current.bytesReceived - bbefore
 			actualSleep := tm.Sleeps.Sum()
 
-			adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, total)
-			impairment := (adjusted.Wall.Seconds() - (total * workTime.Seconds()) - actualSleep) / adjusted.Wall.Seconds()
+			adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, totalPerCpu)
+			impairment := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (actualSleep / float64(opts.concurrency))) / adjusted.Wall.Seconds()
 
 			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%% (sleep time %s)",
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
@@ -356,11 +361,12 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 				return nil, nil, nil, nil
 			}
 
-			glog.V(2).Info("Sleep total ", benchlib.Time(actualSleep),
-				" i.e. ", actualSleep/opts.seconds*100.0, "%")
+			sleepPerCpu := actualSleep / float64(opts.concurrency)
+			glog.V(2).Info("Sleep total ", benchlib.Time(sleepPerCpu),
+				" i.e. ", sleepPerCpu/opts.seconds*100.0, "%")
 
 			ss.Update(adjusted)
-			sleeps.Update(actualSleep)
+			sleeps.Update(sleepPerCpu)
 			spans.Update(float64(stotal))
 			bytes.Update(float64(btotal))
 		}
@@ -387,7 +393,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 		offBy := ss.Wall.Mean() - opts.seconds
 		ratio := offBy / opts.seconds
 		if math.Abs(ratio) > timingTolerance {
-			adjust := -benchlib.Time(offBy / float64(total))
+			adjust := -benchlib.Time(offBy / float64(totalPerCpu))
 			if adjust < 0 {
 				if sleepTime == 0 {
 					// The load factor precludes this test from succeeding.
@@ -412,11 +418,19 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 			continue
 		}
 
-		impairment := (ss.Wall.Mean() - (total * workTime.Seconds()) - sleeps.Mean()) / ss.Wall.Mean()
+		completeRatio := spans.Mean() / totalSpans
+
+		if opts.trace && completeRatio < completeThreshold {
+			glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) INSUFFICIENT completion %.2f%%",
+				opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr, 100*completeRatio)
+			return nil
+		}
+
+		impairment := (ss.Wall.Mean() - (totalPerCpu * workTime.Seconds()) - (sleeps.Mean())) / ss.Wall.Mean()
 		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) impaired %.2f%% completed %.2f%% @ %.2fB/span",
 			opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr,
 			100*impairment,
-			100*(spans.Mean()/total),
+			100*completeRatio,
 			bytes.Mean()/spans.Mean())
 		return &impairment
 	}
