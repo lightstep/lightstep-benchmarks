@@ -72,6 +72,10 @@ var (
 			"--always_opt",
 			//"--trace-gc", "--trace-gc-verbose", "--trace-gc-ignore-scavenger",
 			"./jsclient.js"}},
+		"java": {[]string{
+			"java", "-classpath", "github.com/lightstep/lightstep-tracer-java/" +
+				"lightstep-tracer-jre/build/libs/lightstep-benchmark-0.1.28.jar",
+			"com.lightstep.benchmark.BenchmarkClient"}},
 	}
 
 	// requestCh is used to serialize HTTP requests
