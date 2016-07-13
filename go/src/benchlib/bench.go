@@ -69,6 +69,23 @@ type Result struct {
 	Sleeps stats.Stats
 }
 
+// Finished results format.
+type Output struct {
+	// Settings
+	Title      string  // Test title
+	Name       string  // Test config name
+	Client     string  // Test client name
+	Load       float64 // CPU utilization
+	Concurrent int     // Number of concurrent threads
+	Rate       float64 // Number of spans / second
+	LogBytes   int64   // Number of bytes of log per span
+
+	// Computed
+	Baseline   float64 // Baseline impairment (w/o tracing)
+	Impairment float64 // Impairment (w/ tracing)
+	Completion float64 // Fraction of spans received (w/ tracing)
+}
+
 type Time float64
 
 // TODO: User and Sys times are not presently being set, always zero

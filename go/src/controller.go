@@ -7,14 +7,21 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/context"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/cloud"
+	"google.golang.org/cloud/storage"
 
 	"benchlib"
 
@@ -59,6 +66,8 @@ const (
 	completeThreshold = 0.99
 
 	testRounds = 20
+
+	storageBucket = "gs://lightstep-client-benchmarks"
 )
 
 var (
@@ -119,6 +128,8 @@ type benchService struct {
 	protocolFactory  thrift.TProtocolFactory
 	controlCh        chan *benchlib.Control
 	resultCh         chan *benchlib.Result
+	storage          *storage.Client
+	bucket           *storage.BucketHandle
 
 	// outstanding request state
 	controlling bool
@@ -322,7 +333,7 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 }
 
 // Returns the CPU impairment as a ratio (e.g., 0.01 for 1% impairment).
-func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
+func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, completion float64) {
 	qpsPerCpu := opts.qps / float64(opts.concurrency)
 
 	workTime := benchlib.Time(opts.load / qpsPerCpu)
@@ -405,7 +416,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 				if sleepTime == 0 {
 					// The load factor precludes this test from succeeding.
 					glog.Info("Load factor is too high to continue")
-					return nil
+					return 1, 0
 				}
 				if sleepTime+adjust <= 0 {
 					glog.V(1).Info("Adjust timing to zero (", sleepTime, " adjust ", adjust, ") off by ", offBy)
@@ -430,7 +441,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 		if opts.trace && completeRatio < completeThreshold {
 			glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) INSUFFICIENT completion %.2f%%",
 				opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr, 100*completeRatio)
-			return nil
+			return 1, 0
 		}
 
 		impairment := (ss.Wall.Mean() - (totalPerCpu * workTime.Seconds()) - (sleeps.Mean())) / ss.Wall.Mean()
@@ -439,26 +450,62 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) *float64 {
 			100*impairment,
 			100*completeRatio,
 			bytes.Mean()/spans.Mean())
-		return &impairment
+		return impairment, completeRatio
 	}
 }
 
 func (s *benchService) measureImpairment(c conf) {
 	for _, qps := range c.Rates {
-		glog.Infof("Starting %v@%3f%%", qps, 100*c.Load)
-		untracedImpaired := s.measureSpanSaturation(saturationTest{
-			trace:       false,
-			concurrency: c.Concurrency,
-			seconds:     c.Seconds,
-			qps:         qps,
-			load:        c.Load,
-			lognum:      c.LogNum,
-			logsize:     c.LogSize,
-		})
-		if untracedImpaired == nil {
-			continue
-		}
-		tracedImpaired := s.measureSpanSaturation(saturationTest{
+		s.saveResult(s.measureImpairmentAtLoad(c, qps))
+	}
+}
+
+func (s *benchService) saveResult(result benchlib.Output) {
+	encoded, err := json.MarshalIndent(result, "", "")
+	if err != nil {
+		glog.Fatal("Couldn't encode JSON! " + err.Error())
+	}
+	withNewline := append(encoded, '\n')
+	fmt.Print(string(withNewline))
+	object := s.bucket.Object(result.Title + "-" + result.Client + "-" + result.Name)
+	w := object.NewWriter(context.Background())
+	_, err = w.Write(withNewline)
+	if err != nil {
+		glog.Fatal("Couldn't write storage bucket! " + err.Error())
+	}
+	err = w.Close()
+	if err != nil {
+		glog.Fatal("Couldn't close storage bucket! " + err.Error())
+	}
+}
+
+func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Output {
+	var output benchlib.Output
+
+	output.Title = "placeholder" // TODO
+	output.Name = path.Base(*configFile)
+	if strings.HasSuffix(output.Name, ".json") {
+		output.Name = output.Name[0 : len(output.Name)-5]
+	}
+	output.Client = *client
+	output.Load = c.Load
+	output.Concurrent = c.Concurrency
+	output.Rate = qps
+	output.LogBytes = c.LogNum * c.LogSize
+
+	glog.Infof("Starting %v@%3f%%", qps, 100*c.Load)
+
+	output.Baseline, _ = s.measureSpanSaturation(saturationTest{
+		trace:       false,
+		concurrency: c.Concurrency,
+		seconds:     c.Seconds,
+		qps:         qps,
+		load:        c.Load,
+		lognum:      c.LogNum,
+		logsize:     c.LogSize,
+	})
+	if output.Baseline != 1 {
+		output.Impairment, output.Completion = s.measureSpanSaturation(saturationTest{
 			trace:       true,
 			concurrency: c.Concurrency,
 			seconds:     c.Seconds,
@@ -467,12 +514,10 @@ func (s *benchService) measureImpairment(c conf) {
 			lognum:      c.LogNum,
 			logsize:     c.LogSize,
 		})
-		if tracedImpaired == nil {
-			continue
-		}
-		glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
-			qps, 100*c.Load, 100*(*tracedImpaired-*untracedImpaired))
 	}
+	glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
+		qps, 100*c.Load, 100*(output.Impairment-output.Baseline))
+	return output
 }
 
 func (s *benchService) warmup() {
@@ -708,10 +753,23 @@ func main() {
 		glog.Fatal("Error JSON-parsing ", *configFile, ": ", err.Error())
 	}
 
+	ctx := context.Background()
+	gcpClient, err := google.DefaultClient(ctx, storage.ScopeFullControl)
+	if err != nil {
+		glog.Fatal("GCP Default client: ", err)
+	}
+	storageClient, err := storage.NewClient(ctx, cloud.WithBaseHTTP(gcpClient))
+	if err != nil {
+		log.Fatal("GCP Storage client", err)
+	}
+	defer storageClient.Close()
+
 	service := &benchService{}
 	service.processor = lst.NewReportingServiceProcessor(service)
 	service.resultCh = make(chan *benchlib.Result)
 	service.controlCh = make(chan *benchlib.Control)
+	service.storage = storageClient
+	service.bucket = storageClient.Bucket(storageBucket)
 
 	go func() {
 		for req := range requestCh {
