@@ -73,8 +73,10 @@ var (
 			//"--trace-gc", "--trace-gc-verbose", "--trace-gc-ignore-scavenger",
 			"./jsclient.js"}},
 		"java": {[]string{
-			"java", "-classpath", "github.com/lightstep/lightstep-tracer-java/" +
-				"lightstep-tracer-jre/build/libs/lightstep-benchmark-0.1.28.jar",
+			"java",
+			// "-classpath",
+			// "lightstep-benchmark-0.1.28.jar",
+			// "-Xdebug", "-Xrunjdwp:transport=dt_socket,address=7000,server=y,suspend=n",
 			"com.lightstep.benchmark.BenchmarkClient"}},
 	}
 
