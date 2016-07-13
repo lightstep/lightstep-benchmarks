@@ -84,10 +84,8 @@ function exec_control(c, tracer) {
 		span.logEvent("testlog", log_input_string.substr(0, c.BytesPerLog));
 	    }
 	    span.finish()
-	    // Note: We go through this code section even when c.Sleep == 0
-	    // for measurement consistency.
 	    sleep_debt += c.Sleep
-	    if (sleep_debt >= c.SleepInterval)  {
+	    if (sleep_debt > c.SleepInterval)  {
 		sleep_at = process.hrtime()
 		return setTimeout(body_func, sleep_debt / millis_per_nano, r - 1)
 	    }
