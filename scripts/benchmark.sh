@@ -80,6 +80,8 @@ function create_machine()
 
 function dockerize()
 {
+    # TODO does the ssh below need --google-zone ${CLOUD_ZONE}?
+    # The full ${DMARGS} does not work.
     if docker-machine ssh ${VM} true; then
 	:
     else
