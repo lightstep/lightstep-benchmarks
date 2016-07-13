@@ -24,8 +24,9 @@ import (
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
 )
 
-// TODO remove the if (Sleep != 0) test from each loadtest client, remove
-// the hacky Sleep = 1; SleepInterval = BIG; hack in this file.
+// TODO remove the if (Sleep != 0) test from each loadtest client
+// (should use a <=, see goclient, jsclient, pyclient. Remove the
+// hacky Sleep = 1; SleepInterval = BIG; hack in this file.
 
 const (
 	// collectorBinaryPath is the path of the Thrift collector service
