@@ -7,6 +7,7 @@ CLIENT="$1"
 CPUS="$2"
 TEST_CONFIG_BASE="$3"
 
+BUCKET="gs://lightstep-client-benchmarks"
 GCLOUD_CONFIG="devel"
 CLOUD_ZONE="us-central1-a"
 PROJECT_ID="lightstep-dev"
@@ -79,7 +80,7 @@ function create_machine()
 
 function dockerize()
 {
-    if docker-machine ssh ${DMARGS} ${VM} true 1> /dev/null 2> /dev/null; then
+    if docker-machine ssh ${VM} true; then
 	:
     else
 	docker-machine stop ${VM} || true
