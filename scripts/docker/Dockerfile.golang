@@ -1,6 +1,10 @@
-FROM alpine:latest
+FROM ubuntu:15.04
 
 WORKDIR /data
+
+RUN apt-get update && \
+    apt-get install -qqy \
+	ca-certificates
 
 COPY controller /data
 COPY config.json /data

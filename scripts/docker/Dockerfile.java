@@ -2,6 +2,10 @@ FROM java:latest
 
 WORKDIR /data
 
+RUN apt-get update && \
+    apt-get install -qqy \
+	ca-certificates
+
 COPY controller /data
 COPY config.json /data
 COPY lightstep-benchmark.jar /data
