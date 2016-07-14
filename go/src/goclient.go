@@ -111,7 +111,7 @@ func testBody(control *benchlib.Control) ([]time.Duration, int64) {
 		}
 		span.Finish()
 		sleep_debt += control.Sleep
-		if sleep_debt < control.SleepInterval {
+		if sleep_debt <= control.SleepInterval {
 			continue
 		}
 		begin := time.Now()

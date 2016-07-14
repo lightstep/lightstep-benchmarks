@@ -2,10 +2,14 @@ FROM node:6.2.1-slim
 
 WORKDIR /data/app
 
+RUN apt-get update && \
+    apt-get install -qqy \
+	ca-certificates
+
 COPY jsclient.js /data/app
 COPY package.json /data/app
 COPY node_modules /data/app
 COPY controller /data/app
-COPY config.json /data
+COPY config.json /data/app
 
 CMD ["./controller", "--logtostderr", "-v=1", "--client=nodejs", "--config=./config.json"]
