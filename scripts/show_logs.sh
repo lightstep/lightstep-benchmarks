@@ -2,10 +2,11 @@
 
 set -e
 
-CLIENT=${1}
-CPUS=${2}
-TEST_CONFIG_BASE=${3}
-MACHINE=bench-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}
+TITLE=${1}
+CLIENT=${2}
+CPUS=${3}
+TEST_CONFIG_BASE=${4}
+MACHINE=bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}
 
 eval $(docker-machine env ${MACHINE})
 

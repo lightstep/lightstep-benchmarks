@@ -2,18 +2,18 @@
 
 set -e
 
-# Name of the client, usually language or runtime (e.g., nodejs, golang).
-CLIENT="$1"
-CPUS="$2"
-TEST_CONFIG_BASE="$3"
+TITLE=${1}
+CLIENT=${2}
+CPUS=${3}
+TEST_CONFIG_BASE=${4}
 
-BUCKET="gs://lightstep-client-benchmarks"
+BUCKET="lightstep-client-benchmarks"
 GCLOUD_CONFIG="devel"
 CLOUD_ZONE="us-central1-a"
 PROJECT_ID="lightstep-dev"
 CLOUD_MACH_BASE="n1-standard-"
 IMG_BASE="bench-${CLIENT}"
-VM="bench-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}"
+VM="bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}"
 
 STANDING_GCLOUD_CONFIG=`gcloud config configurations list | grep True | awk '{print $1}'`
 
@@ -71,17 +71,19 @@ function on_exit()
     gcloud config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
 }
 
-DMARGS="--driver google --google-project ${PROJECT_ID} --google-zone ${CLOUD_ZONE} --google-machine-type ${CLOUD_MACH_BASE}${CPUS}"
-
 function create_machine()
 {
-    docker-machine create ${DMARGS} ${VM}
+    docker-machine create \
+		   --driver google \
+		   --google-project ${PROJECT_ID} \
+		   --google-zone ${CLOUD_ZONE} \
+		   --google-machine-type ${CLOUD_MACH_BASE}${CPUS} \
+		   --google-scopes https://www.googleapis.com/auth/devstorage.read_write \
+		   ${VM}
 }
 
 function dockerize()
 {
-    # TODO does the ssh below need --google-zone ${CLOUD_ZONE}?
-    # The full ${DMARGS} does not work.
     if docker-machine ssh ${VM} true; then
 	:
     else
@@ -101,11 +103,22 @@ function dockerize()
     docker rm ${PROCS} 2> /dev/null || true
 
     docker build -t ${IMG_BASE}:latest ${DBUILD}
-    docker run --name ${VM} -d ${IMG_BASE}:latest
+    docker run \
+	   -d \
+	   -e BENCHMARK_CONFIG=${TEST_CONFIG_BASE} \
+	   -e BENCHMARK_TITLE=${TEST_TITLE} \
+	   -e BENCHMARK_BUCKET=${BUCKET} \
+	   --name ${VM} \
+	   ${IMG_BASE}:latest
+
+    # TODO remove -d above
+    # docker-machine rm ${VM}
 }
 
 trap on_exit EXIT
 
 set_config
+
+# TODO Refactor this code to build once, then run one VM per client test
 build
 dockerize

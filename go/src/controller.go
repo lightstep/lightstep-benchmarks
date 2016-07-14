@@ -66,8 +66,6 @@ const (
 	completeThreshold = 0.99
 
 	testRounds = 20
-
-	storageBucket = "gs://lightstep-client-benchmarks"
 )
 
 var (
@@ -95,6 +93,10 @@ var (
 
 	client     = flag.String("client", "", "Name of the client library being tested")
 	configFile = flag.String("config", "", "Name of the configuration file")
+
+	storageBucket  = getEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
+	testTitle      = getEnv("BENCHMARK_TITLE", "untitled")
+	testConfigName = getEnv("BENCHMARK_CONFIG", "unnamed")
 )
 
 type conf struct {
@@ -165,6 +167,13 @@ type benchStats struct {
 
 type benchClient struct {
 	Args []string
+}
+
+func getEnv(name, defval string) string {
+	if r := os.Getenv(name); r != "" {
+		return r
+	}
+	return defval
 }
 
 func newBenchStats(bc benchClient) *benchStats {
@@ -467,9 +476,13 @@ func (s *benchService) saveResult(result benchlib.Output) {
 	}
 	withNewline := append(encoded, '\n')
 	fmt.Print(string(withNewline))
-	object := s.bucket.Object(result.Title + "-" + result.Client + "-" + result.Name)
+	s.writeTo(path.Join(result.Title, result.Client, result.Name), withNewline)
+}
+
+func (s *benchService) writeTo(name string, data []byte) {
+	object := s.bucket.Object(name)
 	w := object.NewWriter(context.Background())
-	_, err = w.Write(withNewline)
+	_, err := w.Write(data)
 	if err != nil {
 		glog.Fatal("Couldn't write storage bucket! " + err.Error())
 	}
@@ -482,11 +495,8 @@ func (s *benchService) saveResult(result benchlib.Output) {
 func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Output {
 	var output benchlib.Output
 
-	output.Title = "placeholder" // TODO
-	output.Name = path.Base(*configFile)
-	if strings.HasSuffix(output.Name, ".json") {
-		output.Name = output.Name[0 : len(output.Name)-5]
-	}
+	output.Title = testTitle
+	output.Name = testConfigName
 	output.Client = *client
 	output.Load = c.Load
 	output.Concurrent = c.Concurrency
@@ -770,6 +780,9 @@ func main() {
 	service.controlCh = make(chan *benchlib.Control)
 	service.storage = storageClient
 	service.bucket = storageClient.Bucket(storageBucket)
+
+	// Test the storage service, auth, etc.
+	service.writeTo("test-empty", []byte{})
 
 	go func() {
 		for req := range requestCh {
