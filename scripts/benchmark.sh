@@ -104,15 +104,19 @@ function dockerize()
 
     docker build -t ${IMG_BASE}:latest ${DBUILD}
     docker run \
-	   -d \
 	   -e BENCHMARK_CONFIG=${TEST_CONFIG_BASE} \
-	   -e BENCHMARK_TITLE=${TEST_TITLE} \
+	   -e BENCHMARK_TITLE=${TITLE} \
 	   -e BENCHMARK_BUCKET=${BUCKET} \
 	   --name ${VM} \
-	   ${IMG_BASE}:latest
+	   ${IMG_BASE}:latest 2>&1 > /tmp/log.${VM}
 
-    # TODO remove -d above
-    # docker-machine rm ${VM}
+    if [ "$?" -ne "0" ]; then
+	echo "FAILED"
+	cat /tmp/log.${VM}
+	# docker logs ${VM} 2>&1 > /tmp/log.${VM}
+    fi
+
+    docker-machine rm ${VM}
 }
 
 trap on_exit EXIT
