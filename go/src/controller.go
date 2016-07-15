@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"flag"
@@ -97,6 +98,11 @@ var (
 	storageBucket  = getEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
 	testTitle      = getEnv("BENCHMARK_TITLE", "untitled")
 	testConfigName = getEnv("BENCHMARK_CONFIG", "unnamed")
+
+	// These two could be inferred from the running VM, but passed in here.
+	testZone     = getEnv("BENCHMARK_ZONE", "")
+	testProject  = getEnv("BENCHMARK_PROJECT", "")
+	testInstance = getEnv("BENCHMARK_INSTANCE", "")
 )
 
 type conf struct {
@@ -132,6 +138,7 @@ type benchService struct {
 	resultCh         chan *benchlib.Result
 	storage          *storage.Client
 	bucket           *storage.BucketHandle
+	gcpClient        *http.Client
 
 	// outstanding request state
 	controlling bool
@@ -563,7 +570,7 @@ func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 
 func (s *benchService) runTests(b benchClient, c conf) {
 	s.runTest(b, c)
-	os.Exit(0)
+	s.tearDown()
 }
 
 func (s *benchService) recalibrate() {
@@ -734,6 +741,24 @@ func (s *benchService) ServeDefaultHTTP(res http.ResponseWriter, req *http.Reque
 	glog.Fatal("Unexpected HTTP request", req.URL)
 }
 
+func (s *benchService) tearDown() {
+	if testZone != "" && testProject != "" && testInstance != "" {
+		// Delete this VM
+		url := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s",
+			testProject, testZone, testInstance)
+		glog.Info("Asking to delete this VM... ", url)
+		req, err := http.NewRequest("DELETE", url, bytes.NewReader(nil))
+		if err != nil {
+			glog.Fatal("Invalid request ", err)
+		}
+		if _, err := s.gcpClient.Do(req); err != nil {
+			glog.Fatal("Error deleting this VM ", err)
+		}
+		glog.Info("Done! This VM may...")
+	}
+	os.Exit(0)
+}
+
 func main() {
 	flag.Parse()
 	address := fmt.Sprintf(":%v", benchlib.ControllerPort)
@@ -779,6 +804,7 @@ func main() {
 	service.resultCh = make(chan *benchlib.Result)
 	service.controlCh = make(chan *benchlib.Control)
 	service.storage = storageClient
+	service.gcpClient = gcpClient
 	service.bucket = storageClient.Bucket(storageBucket)
 
 	// Test the storage service, auth, etc.

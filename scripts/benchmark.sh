@@ -17,39 +17,25 @@ VM="bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}"
 
 STANDING_GCLOUD_CONFIG=`gcloud config configurations list | grep True | awk '{print $1}'`
 
-if [ "${CLIENT}" = "" ]; then
-    usage
-    exit 1
-fi
-if [ "${CPUS}" = "" ]; then
-    usage
-    exit 1
-fi
-
-if [ ! -d "${GOPATH}/src" ]; then
-    usage
-    exit 1
-fi
-
 DBUILD="${GOPATH}/build.$$"
 SCRIPTS="${GOPATH}/../scripts"
 TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_BASE}.json"
+SCOPED="https://www.googleapis.com/auth"
 
-if [ ! -d "${SCRIPTS}" ]; then
-    echo "Scripts directory not found (${SCRIPTS})"
-    exit 1
-fi
+GCLOUD="gcloud"
+SSH="${GCLOUD} compute ssh"
+DOCKER="${GCLOUD} docker --"
+
+function usage()
+{
+    echo "usage: $0 title client cpus config"
+    echo "  GOPATH must be set"
+    echo "  Configuration in \$GOPATH/../scripts"
+}
 
 function set_config()
 {
     gcloud config configurations activate ${GCLOUD_CONFIG} 2> /dev/null
-}
-
-function usage()
-{
-    echo "usage: $0 client_name cpus config"
-    echo "  GOPATH must be set"
-    echo "  Configuration in \$GOPATH/../scripts"
 }
 
 function build()
@@ -71,49 +57,59 @@ function on_exit()
     gcloud config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
 }
 
-function create_machine()
-{
-    docker-machine create \
-		   --driver google \
-		   --google-project ${PROJECT_ID} \
-		   --google-zone ${CLOUD_ZONE} \
-		   --google-machine-type ${CLOUD_MACH_BASE}${CPUS} \
-		   --google-scopes https://www.googleapis.com/auth/devstorage.read_write \
-		   ${VM}
-}
-
 function dockerize()
 {
-    if docker-machine ssh ${VM} true; then
+    if ${SSH} ${VM} true 2> /dev/null; then
 	:
     else
-	docker-machine stop ${VM} || true
-	docker-machine rm -f ${VM} || true
-	create_machine
+	${GCLOUD} compute instances stop ${VM} 2> /dev/null || true
+	(yes | ${GCLOUD} compute instances delete ${VM} 2> /dev/null) || true
+	${GCLOUD} compute instances create ${VM} \
+		  --project ${PROJECT_ID} \
+		  --zone ${CLOUD_ZONE} \
+		  --machine-type ${CLOUD_MACH_BASE}${CPUS} \
+		  --scopes ${SCOPED}/devstorage.read_write,${SCOPED}/compute,${SCOPED}/cloud-platform \
+		  --image-family client-benchmarks \
+		  --boot-disk-auto-delete
     fi
 
-    eval $(docker-machine env ${VM})	
-    if [ "$(docker-machine active)" != "${VM}" ]; then
-	echo "Docker-machine failed to setup env"
-	exit 1
-    fi
+    local PROCS=`${DOCKER} ps -q -all`
+    ${DOCKER} kill ${PROCS} 2> /dev/null || true
+    ${DOCKER} rm ${PROCS} 2> /dev/null || true
 
-    local PROCS=`docker ps -q -all`
-    docker kill ${PROCS} 2> /dev/null || true
-    docker rm ${PROCS} 2> /dev/null || true
-
-    docker build -t ${IMG_BASE}:latest ${DBUILD}
-    docker run \
+    ${DOCKER} build -t ${IMG_BASE}:latest ${DBUILD}
+    ${DOCKER} run \
 	   -d \
 	   -e BENCHMARK_CONFIG=${TEST_CONFIG_BASE} \
-	   -e BENCHMARK_TITLE=${TEST_TITLE} \
+	   -e BENCHMARK_TITLE=${TITLE} \
 	   -e BENCHMARK_BUCKET=${BUCKET} \
+	   -e BENCHMARK_ZONE=${CLOUD_ZONE} \
+	   -e BENCHMARK_PROJECT=${PROJECT_ID} \
+	   -e BENCHMARK_INSTANCE=${VM} \
 	   --name ${VM} \
 	   ${IMG_BASE}:latest
 
-    # TODO remove -d above
-    # docker-machine rm ${VM}
+    # Note: the controller deletes its own VM
 }
+
+if [ "${CLIENT}" = "" ]; then
+    usage
+    exit 1
+fi
+if [ "${CPUS}" = "" ]; then
+    usage
+    exit 1
+fi
+
+if [ ! -d "${GOPATH}/src" ]; then
+    usage
+    exit 1
+fi
+
+if [ ! -d "${SCRIPTS}" ]; then
+    echo "Scripts directory not found (${SCRIPTS})"
+    exit 1
+fi
 
 trap on_exit EXIT
 
