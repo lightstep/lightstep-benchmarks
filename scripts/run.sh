@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# By exporting TAG, benchmark.sh uses the same tag, which avoids
+# repeating the same build.
+export TAG
+TAG=$(date "+%Y-%m-%d-%H-%M-%S")
+
 # Give a title to this run
 TITLE=${1}
 
@@ -30,7 +35,7 @@ function runtest()
 
     local conc=`${JQ} .Concurrency ${SCRIPTS}/config/${config}.json`
     
-    echo ./benchmark.sh ${TITLE} ${language} ${conc} ${config}
+    ./benchmark.sh ${TITLE} ${language} ${conc} ${config}
 }
 
 if [ "${TITLE}" = "" ]; then
