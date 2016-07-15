@@ -1,4 +1,13 @@
 #!/bin/bash
+#
+# This script runs a complete set of benchmarks from the current
+# workstation using its working copies of the repositories.
+#
+# This takes a while to run because it builds images, provisions VMs,
+# and kicks off the benchmarks itself.
+#
+# The script run_cloud.sh starts a container that clones the repos and
+# runs this script using HEAD from each client repo.
 set -e
 
 # By exporting TAG, benchmark.sh uses the same tag, which avoids
@@ -12,8 +21,9 @@ TITLE=${1}
 # Source location
 SCRIPTS=${GOPATH}/../scripts
 
-# This script uses 'jq'
-JQ=jq
+function json() {
+    python -c "import sys, json; print json.load(sys.stdin)$2" < $1
+}
 
 # TODO Update benchmark clients for: cpp ruby
 LANGUAGES="golang python nodejs java"
@@ -32,8 +42,7 @@ function runtest()
 {
     local language=${1}
     local config=${2}
-
-    local conc=`${JQ} .Concurrency ${SCRIPTS}/config/${config}.json`
+    local conc=$(json ${SCRIPTS}/config/${config}.json '["Concurrency"]')
     
     ./benchmark.sh ${TITLE} ${language} ${conc} ${config}
 }
