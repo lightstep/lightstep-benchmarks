@@ -46,7 +46,6 @@ apt-cache policy docker-engine
 apt-get install -y linux-image-extra-$(uname -r)
 apt-get install -y docker-engine
 service docker start
-chmod a+rw /var/run/docker.sock
 EOF
 
 yes | gcloud compute instances stop ${INSTANCE} \

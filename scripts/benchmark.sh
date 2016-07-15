@@ -7,15 +7,17 @@ CLIENT=${2}
 CPUS=${3}
 TEST_CONFIG_BASE=${4}
 
+if [ -z "${TAG}" ]; then
+    TAG=$(date "+%Y-%m-%d-%H-%M-%S")
+fi
+
 BUCKET="lightstep-client-benchmarks"
 GCLOUD_CONFIG="devel"
 CLOUD_ZONE="us-central1-a"
 PROJECT_ID="lightstep-dev"
 CLOUD_MACH_BASE="n1-standard-"
-IMG_BASE="bench-${CLIENT}"
+IMG_BASE="gcr.io/${PROJECT_ID}/bench-${CLIENT}"
 VM="bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}"
-
-STANDING_GCLOUD_CONFIG=`gcloud config configurations list | grep True | awk '{print $1}'`
 
 DBUILD="${GOPATH}/build.$$"
 SCRIPTS="${GOPATH}/../scripts"
@@ -23,8 +25,13 @@ TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_BASE}.json"
 SCOPED="https://www.googleapis.com/auth"
 
 GCLOUD="gcloud"
-SSH="${GCLOUD} compute ssh"
-DOCKER="${GCLOUD} docker --"
+SSH="${GCLOUD} compute ssh --project ${PROJECT_ID} --zone ${CLOUD_ZONE}"
+GDOCKER="${SSH} ${VM} -- sudo docker"
+GBASH="${SSH} ${VM} -- sudo bash"
+LDOCKER="docker"
+GLDOCKER="${GCLOUD} ${LDOCKER}"
+
+STANDING_GCLOUD_CONFIG=`${GCLOUD} config configurations list | grep True | awk '{print $1}'`
 
 function usage()
 {
@@ -35,11 +42,17 @@ function usage()
 
 function set_config()
 {
-    gcloud config configurations activate ${GCLOUD_CONFIG} 2> /dev/null
+    ${GCLOUD} config configurations activate ${GCLOUD_CONFIG} 2> /dev/null
 }
 
 function build()
 {
+    HAVE_IT=`${GLDOCKER} images -- -q ${IMG_BASE}:${TAG}`
+    if [ ! -z "${HAVE_IT}" ]; then
+	echo "${IMG_BASE}:${TAG} was already built"
+	return
+    fi
+
     rm -rf ${DBUILD}
     mkdir ${DBUILD}
 
@@ -49,17 +62,22 @@ function build()
 
     ln ${SCRIPTS}/docker/Dockerfile.${CLIENT} ${DBUILD}/Dockerfile
     ln ${TEST_CONFIG} ${DBUILD}/config.json
+
+    ${LDOCKER} build -t ${IMG_BASE}:${TAG} ${DBUILD}
+    ${LDOCKER} tag ${IMG_BASE}:${TAG} ${IMG_BASE}:latest
+    ${GCLOUD} docker push ${IMG_BASE}:${TAG}
+    ${GCLOUD} docker push ${IMG_BASE}:latest
 }
 
 function on_exit()
 {
     rm -rf "${DBUILD}"
-    gcloud config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
+    ${GCLOUD} config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
 }
 
 function dockerize()
 {
-    if ${SSH} ${VM} true 2> /dev/null; then
+    if ${SSH} ${VM} -- true 2> /dev/null; then
 	:
     else
 	${GCLOUD} compute instances stop ${VM} 2> /dev/null || true
@@ -71,14 +89,21 @@ function dockerize()
 		  --scopes ${SCOPED}/devstorage.read_write,${SCOPED}/compute,${SCOPED}/cloud-platform \
 		  --image-family client-benchmarks \
 		  --boot-disk-auto-delete
+
+	# Wait for sshd to come up
+	while true; do
+	    if ${SSH} ${VM} -- true; then
+		break
+	    fi
+	    sleep 2
+	done
     fi
 
-    local PROCS=`${DOCKER} ps -q -all`
-    ${DOCKER} kill ${PROCS} 2> /dev/null || true
-    ${DOCKER} rm ${PROCS} 2> /dev/null || true
-
-    ${DOCKER} build -t ${IMG_BASE}:latest ${DBUILD}
-    ${DOCKER} run \
+    ${GBASH} <<EOF
+${LDOCKER} ps -q -all | xargs docker kill 2> /dev/null
+${LDOCKER} ps -q -all | xargs docker rm  2> /dev/null
+${GLDOCKER} pull ${IMG_BASE}:latest
+${LDOCKER} run \
 	   -d \
 	   -e BENCHMARK_CONFIG=${TEST_CONFIG_BASE} \
 	   -e BENCHMARK_TITLE=${TITLE} \
@@ -88,6 +113,7 @@ function dockerize()
 	   -e BENCHMARK_INSTANCE=${VM} \
 	   --name ${VM} \
 	   ${IMG_BASE}:latest
+EOF
 
     # Note: the controller deletes its own VM
 }
