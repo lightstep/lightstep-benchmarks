@@ -22,7 +22,9 @@ SCRIPTS="${GOPATH}/../scripts"
 TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_BASE}.json"
 SCOPED="https://www.googleapis.com/auth"
 
-DOCKER="gcloud docker"
+GCLOUD="gcloud"
+SSH="${GCLOUD} compute ssh"
+DOCKER="${GCLOUD} docker --"
 
 function usage()
 {
@@ -57,24 +59,18 @@ function on_exit()
 
 function dockerize()
 {
-    if docker-machine ssh ${VM} true; then
+    if ${SSH} ${VM} true 2> /dev/null; then
 	:
     else
-	docker-machine stop ${VM} || true
-	docker-machine rm -f ${VM} || true
-	docker-machine create \
-		   --driver google \
-		   --google-project ${PROJECT_ID} \
-		   --google-zone ${CLOUD_ZONE} \
-		   --google-machine-type ${CLOUD_MACH_BASE}${CPUS} \
-		   --google-scopes ${SCOPED}/devstorage.read_write,${SCOPED}/compute,${SCOPED}/cloud-platform \
-		   ${VM}
-    fi
-
-    eval $(docker-machine env ${VM})	
-    if [ "$(docker-machine active)" != "${VM}" ]; then
-	echo "Docker-machine failed to setup env"
-	exit 1
+	${GCLOUD} compute instances stop ${VM} 2> /dev/null || true
+	(yes | ${GCLOUD} compute instances delete ${VM} 2> /dev/null) || true
+	${GCLOUD} compute instances create ${VM} \
+		  --project ${PROJECT_ID} \
+		  --zone ${CLOUD_ZONE} \
+		  --machine-type ${CLOUD_MACH_BASE}${CPUS} \
+		  --scopes ${SCOPED}/devstorage.read_write,${SCOPED}/compute,${SCOPED}/cloud-platform \
+		  --image-family client-benchmarks \
+		  --boot-disk-auto-delete
     fi
 
     local PROCS=`${DOCKER} ps -q -all`
