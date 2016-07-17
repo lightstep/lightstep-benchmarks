@@ -25,7 +25,7 @@ function json() {
     python -c "import sys, json; print json.load(sys.stdin)$2" < $1
 }
 
-# TODO Update benchmark clients for: cpp ruby
+# TODO Update benchmark clients for: cpp ruby objc php ...
 LANGUAGES="golang python nodejs java"
 
 # List of configurations

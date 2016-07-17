@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -92,12 +91,12 @@ var (
 	// requestCh is used to serialize HTTP requests
 	requestCh = make(chan sreq)
 
-	client     = flag.String("client", "", "Name of the client library being tested")
-	configFile = flag.String("config", "", "Name of the configuration file")
+	client     = getEnv("BENCHMARK_CLIENT", "unknown")
+	configFile = getEnv("BENCHMARK_CONFIG_FILE", "/tmp/config/config.json")
 
 	storageBucket  = getEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
 	testTitle      = getEnv("BENCHMARK_TITLE", "untitled")
-	testConfigName = getEnv("BENCHMARK_CONFIG", "unnamed")
+	testConfigName = getEnv("BENCHMARK_CONFIG_NAME", "unnamed")
 
 	// These two could be inferred from the running VM, but passed in here.
 	testZone     = getEnv("BENCHMARK_ZONE", "")
@@ -483,7 +482,7 @@ func (s *benchService) saveResult(result benchlib.Output) {
 	}
 	withNewline := append(encoded, '\n')
 	fmt.Print(string(withNewline))
-	s.writeTo(path.Join(result.Title, result.Client, result.Name), withNewline)
+	s.writeTo(path.Join(result.Title, result.Client, result.Name, fmt.Sprint("qps=", result.Rate)), withNewline)
 }
 
 func (s *benchService) writeTo(name string, data []byte) {
@@ -760,7 +759,6 @@ func (s *benchService) tearDown() {
 }
 
 func main() {
-	flag.Parse()
 	address := fmt.Sprintf(":%v", benchlib.ControllerPort)
 	mux := http.NewServeMux()
 	server := &http.Server{
@@ -787,6 +785,7 @@ func main() {
 	if err != nil {
 		glog.Fatal("Error JSON-parsing ", *configFile, ": ", err.Error())
 	}
+	fmt.Println("Config:", string(cdata))
 
 	ctx := context.Background()
 	gcpClient, err := google.DefaultClient(ctx, storage.ScopeFullControl)
