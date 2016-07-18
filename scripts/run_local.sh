@@ -25,9 +25,10 @@ function json() {
     python -c "import sys, json; print json.load(sys.stdin)$2" < $1
 }
 
-# TODO Update benchmark clients for: cpp ruby objc php ...
-LANGUAGES="java nodejs" # nodejs golang python
+# TODO Update benchmark clients for: cpp objc php ...
+LANGUAGES="java nodejs ruby" # golang python
 
+# Languages that do not support concurrent testing
 NON_CONCURRENT="nodejs ruby"
 
 # List of configurations
