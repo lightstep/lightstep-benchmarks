@@ -166,6 +166,7 @@ type benchStats struct {
 	spanCost benchlib.Timing
 
 	spansReceived int64
+	spansDropped  int64
 	bytesReceived int64
 }
 
@@ -202,7 +203,16 @@ func fakeReportResponse() *lst.ReportResponse {
 func (s *benchService) Report(auth *lst.Auth, request *lst.ReportRequest) (
 	r *lst.ReportResponse, err error) {
 	s.current.spansReceived += int64(len(request.SpanRecords))
+	s.countDroppedSpans(request)
 	return fakeReportResponse(), nil
+}
+
+func (s *benchService) countDroppedSpans(request *lst.ReportRequest) {
+	for _, c := range request.InternalMetrics.Counts {
+		if c.Name == "spans.dropped" {
+			s.current.spansDropped += *c.Int64Value
+		}
+	}
 }
 
 // BytesReceived is called from the HTTP layer before Thrift
@@ -359,14 +369,16 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 	if opts.trace {
 		tr = "traced"
 	}
-	runOnce := func() (*benchlib.TimingStats, *stats.Stats, *stats.Stats, *stats.Stats) {
+	runOnce := func() (*benchlib.TimingStats, *stats.Stats, *stats.Stats, *stats.Stats, *stats.Stats) {
 		var ss benchlib.TimingStats
 		var spans stats.Stats
+		var dropped stats.Stats
 		var bytes stats.Stats
 		var sleeps stats.Stats
 		for ss.Count() != experimentRounds {
 			sbefore := s.current.spansReceived
 			bbefore := s.current.bytesReceived
+			dbefore := s.current.spansDropped
 			tm := s.run(&benchlib.Control{
 				Concurrent:  opts.concurrency,
 				Work:        int64(workTime / s.current.workCost.Wall),
@@ -378,18 +390,22 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			})
 			stotal := s.current.spansReceived - sbefore
 			btotal := s.current.bytesReceived - bbefore
+			dtotal := s.current.spansDropped - dbefore
 			actualSleep := tm.Sleeps.Sum()
 
 			adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, totalPerCpu)
-			impairment := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (actualSleep / float64(opts.concurrency))) / adjusted.Wall.Seconds()
+			traceCost := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (actualSleep / float64(opts.concurrency)))
+			impairment := traceCost / adjusted.Wall.Seconds()
+			supposedWork := (totalPerCpu * workTime.Seconds())
+			effectiveLoad := supposedWork / adjusted.Wall.Seconds()
 
-			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%% (sleep time %s)",
+			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) actual load %.2f%% impairment %.2f%% (sleep time %s, sleep total %.2f, adjusted %.2f)",
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
-				100*impairment, sleepTime)
+				100*effectiveLoad, 100*impairment, sleepTime, actualSleep, adjusted)
 
 			// If more than 10% under, recalibrate
 			if impairment < -0.1 {
-				return nil, nil, nil, nil
+				return nil, nil, nil, nil, nil
 			}
 
 			sleepPerCpu := actualSleep / float64(opts.concurrency)
@@ -399,9 +415,10 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			ss.Update(adjusted)
 			sleeps.Update(sleepPerCpu)
 			spans.Update(float64(stotal))
+			dropped.Update(float64(dtotal))
 			bytes.Update(float64(btotal))
 		}
-		return &ss, &spans, &bytes, &sleeps
+		return &ss, &spans, &dropped, &bytes, &sleeps
 	}
 	for {
 		if s.current.calibrations < minimumCalibrations {
@@ -410,7 +427,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			s.recalibrate()
 		}
 
-		ss, spans, bytes, sleeps := runOnce()
+		ss, spans, drops, bytes, sleeps := runOnce()
 
 		if ss == nil {
 			s.recalibrate()
@@ -450,10 +467,11 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 		}
 
 		completeRatio := spans.Mean() / totalSpans
+		dropRatio := drops.Mean() / totalSpans
 
 		if opts.trace && completeRatio < completeThreshold {
-			glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) INSUFFICIENT completion %.2f%%",
-				opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr, 100*completeRatio)
+			glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) INSUFFICIENT completion %.2f%% dropped %.2f%%",
+				opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr, 100*completeRatio, 100*dropRatio)
 			return 1, 0
 		}
 
@@ -731,6 +749,8 @@ func (s *benchService) ServeJSONHTTP(res http.ResponseWriter, req *http.Request)
 
 	s.current.spansReceived += int64(len(reportRequest.SpanRecords))
 	s.current.bytesReceived += int64(len(body))
+
+	s.countDroppedSpans(reportRequest)
 
 	res.Header().Set("Content-Type", "application/json")
 	if err = json.NewEncoder(res).Encode(fakeReportResponse()); err != nil {
