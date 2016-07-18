@@ -519,7 +519,7 @@ func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Out
 		logsize:     c.LogSize,
 	})
 	if output.Baseline != 1 {
-		output.Impairment, output.Completion = s.measureSpanSaturation(saturationTest{
+		output.GrossImpairment, output.Completion = s.measureSpanSaturation(saturationTest{
 			trace:       true,
 			concurrency: c.Concurrency,
 			seconds:     c.Seconds,
@@ -529,8 +529,12 @@ func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Out
 			logsize:     c.LogSize,
 		})
 	}
-	glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
-		qps, 100*c.Load, 100*(output.Impairment-output.Baseline))
+	if output.Baseline != 1 && output.GrossImpairment != 1 {
+		glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
+			qps, 100*c.Load, 100*(output.GrossImpairment-output.Baseline))
+	} else {
+		glog.Infof("Load %v@%3f%%: Testing incomplete", qps, 100*c.Load)
+	}
 	return output
 }
 

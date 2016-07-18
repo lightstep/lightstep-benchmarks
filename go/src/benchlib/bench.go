@@ -81,9 +81,9 @@ type Output struct {
 	LogBytes   int64   // Number of bytes of log per span
 
 	// Computed
-	Baseline   float64 // Baseline impairment (w/o tracing)
-	Impairment float64 // Impairment (w/ tracing)
-	Completion float64 // Fraction of spans received (w/ tracing)
+	Baseline        float64 // Baseline impairment (w/o tracing)
+	GrossImpairment float64 // Gross impairment (w/ tracing, includes baseline impairment)
+	Completion      float64 // Fraction of spans received (w/ tracing)
 }
 
 type Time float64
