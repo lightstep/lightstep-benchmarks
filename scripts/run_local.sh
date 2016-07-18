@@ -26,7 +26,7 @@ function json() {
 }
 
 # TODO Update benchmark clients for: cpp ruby objc php ...
-LANGUAGES="golang python nodejs java"
+LANGUAGES="java" # nodejs golang python 
 
 # List of configurations
 CONFIGS=`cd ${SCRIPTS}/config && ls -1 *.json | grep -v test`

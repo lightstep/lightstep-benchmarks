@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -91,17 +92,14 @@ var (
 	// requestCh is used to serialize HTTP requests
 	requestCh = make(chan sreq)
 
-	client     = getEnv("BENCHMARK_CLIENT", "unknown")
-	configFile = getEnv("BENCHMARK_CONFIG_FILE", "/tmp/config/config.json")
-
-	storageBucket  = getEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
-	testTitle      = getEnv("BENCHMARK_TITLE", "untitled")
-	testConfigName = getEnv("BENCHMARK_CONFIG_NAME", "unnamed")
-
-	// These two could be inferred from the running VM, but passed in here.
-	testZone     = getEnv("BENCHMARK_ZONE", "")
-	testProject  = getEnv("BENCHMARK_PROJECT", "")
-	testInstance = getEnv("BENCHMARK_INSTANCE", "")
+	testStorageBucket = getEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
+	testTitle         = getEnv("BENCHMARK_TITLE", "untitled")
+	testConfigName    = getEnv("BENCHMARK_CONFIG_NAME", "unnamed")
+	testConfigFile    = getEnv("BENCHMARK_CONFIG_FILE", "config.json")
+	testClient        = getEnv("BENCHMARK_CLIENT", "unknown")
+	testZone          = getEnv("BENCHMARK_ZONE", "")
+	testProject       = getEnv("BENCHMARK_PROJECT", "")
+	testInstance      = getEnv("BENCHMARK_INSTANCE", "")
 )
 
 type conf struct {
@@ -503,7 +501,7 @@ func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Out
 
 	output.Title = testTitle
 	output.Name = testConfigName
-	output.Client = *client
+	output.Client = testClient
 	output.Load = c.Load
 	output.Concurrent = c.Concurrency
 	output.Rate = qps
@@ -593,7 +591,7 @@ func (s *benchService) recalibrate() {
 func (s *benchService) runTest(bc benchClient, c conf) {
 	s.current = newBenchStats(bc)
 
-	glog.Info("Testing ", *client)
+	glog.Info("Testing ", testClient)
 	ch := make(chan bool)
 
 	defer func() {
@@ -759,6 +757,7 @@ func (s *benchService) tearDown() {
 }
 
 func main() {
+	flag.Parse()
 	address := fmt.Sprintf(":%v", benchlib.ControllerPort)
 	mux := http.NewServeMux()
 	server := &http.Server{
@@ -770,20 +769,20 @@ func main() {
 
 	var c conf
 
-	bc, ok := allClients[*client]
+	bc, ok := allClients[testClient]
 	if !ok {
-		glog.Fatal("Please set the --client=<...> client name")
+		glog.Fatal("Please set the BENCHMARK_CLIENT client name")
 	}
-	if *configFile == "" {
-		glog.Fatal("Please set the --config=<...> configuration filename")
+	if testConfigFile == "" {
+		glog.Fatal("Please set the BENCHMARK_CONFIG_FILE filename")
 	}
-	cdata, err := ioutil.ReadFile(*configFile)
+	cdata, err := ioutil.ReadFile(testConfigFile)
 	if err != nil {
-		glog.Fatal("Error reading ", *configFile, ": ", err.Error())
+		glog.Fatal("Error reading ", testConfigFile, ": ", err.Error())
 	}
 	err = json.Unmarshal(cdata, &c)
 	if err != nil {
-		glog.Fatal("Error JSON-parsing ", *configFile, ": ", err.Error())
+		glog.Fatal("Error JSON-parsing ", testConfigFile, ": ", err.Error())
 	}
 	fmt.Println("Config:", string(cdata))
 
@@ -804,7 +803,7 @@ func main() {
 	service.controlCh = make(chan *benchlib.Control)
 	service.storage = storageClient
 	service.gcpClient = gcpClient
-	service.bucket = storageClient.Bucket(storageBucket)
+	service.bucket = storageClient.Bucket(testStorageBucket)
 
 	// Test the storage service, auth, etc.
 	service.writeTo("test-empty", []byte{})
