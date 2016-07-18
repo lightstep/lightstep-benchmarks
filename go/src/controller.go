@@ -208,6 +208,9 @@ func (s *benchService) Report(auth *lst.Auth, request *lst.ReportRequest) (
 }
 
 func (s *benchService) countDroppedSpans(request *lst.ReportRequest) {
+	if request.InternalMetrics == nil {
+		return
+	}
 	for _, c := range request.InternalMetrics.Counts {
 		if c.Name == "spans.dropped" {
 			s.current.spansDropped += *c.Int64Value
