@@ -689,6 +689,7 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 
 	var sstat stats.Stats
 	sleep_info := params.Get("s")
+
 	if len(sleep_info) != 0 {
 		for _, s := range strings.Split(sleep_info, ",") {
 			if len(s) == 0 {

@@ -1,7 +1,7 @@
 {
     "Seconds":     900,
     "Concurrency": 16,
-    "Load":        0.7,
+    "Load":        0.5,
     "Rates":       [1600, 8000, 16000],
     "LogNum":      0,
     "LogSize":     0
