@@ -92,17 +92,14 @@ var (
 	// requestCh is used to serialize HTTP requests
 	requestCh = make(chan sreq)
 
-	client     = flag.String("client", "", "Name of the client library being tested")
-	configFile = flag.String("config", "", "Name of the configuration file")
-
-	storageBucket  = getEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
-	testTitle      = getEnv("BENCHMARK_TITLE", "untitled")
-	testConfigName = getEnv("BENCHMARK_CONFIG", "unnamed")
-
-	// These two could be inferred from the running VM, but passed in here.
-	testZone     = getEnv("BENCHMARK_ZONE", "")
-	testProject  = getEnv("BENCHMARK_PROJECT", "")
-	testInstance = getEnv("BENCHMARK_INSTANCE", "")
+	testStorageBucket = getEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
+	testTitle         = getEnv("BENCHMARK_TITLE", "untitled")
+	testConfigName    = getEnv("BENCHMARK_CONFIG_NAME", "unnamed")
+	testConfigFile    = getEnv("BENCHMARK_CONFIG_FILE", "config.json")
+	testClient        = getEnv("BENCHMARK_CLIENT", "unknown")
+	testZone          = getEnv("BENCHMARK_ZONE", "")
+	testProject       = getEnv("BENCHMARK_PROJECT", "")
+	testInstance      = getEnv("BENCHMARK_INSTANCE", "")
 )
 
 type conf struct {
@@ -169,6 +166,7 @@ type benchStats struct {
 	spanCost benchlib.Timing
 
 	spansReceived int64
+	spansDropped  int64
 	bytesReceived int64
 }
 
@@ -205,7 +203,19 @@ func fakeReportResponse() *lst.ReportResponse {
 func (s *benchService) Report(auth *lst.Auth, request *lst.ReportRequest) (
 	r *lst.ReportResponse, err error) {
 	s.current.spansReceived += int64(len(request.SpanRecords))
+	s.countDroppedSpans(request)
 	return fakeReportResponse(), nil
+}
+
+func (s *benchService) countDroppedSpans(request *lst.ReportRequest) {
+	if request.InternalMetrics == nil {
+		return
+	}
+	for _, c := range request.InternalMetrics.Counts {
+		if c.Name == "spans.dropped" {
+			s.current.spansDropped += *c.Int64Value
+		}
+	}
 }
 
 // BytesReceived is called from the HTTP layer before Thrift
@@ -362,14 +372,16 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 	if opts.trace {
 		tr = "traced"
 	}
-	runOnce := func() (*benchlib.TimingStats, *stats.Stats, *stats.Stats, *stats.Stats) {
+	runOnce := func() (*benchlib.TimingStats, *stats.Stats, *stats.Stats, *stats.Stats, *stats.Stats) {
 		var ss benchlib.TimingStats
 		var spans stats.Stats
+		var dropped stats.Stats
 		var bytes stats.Stats
 		var sleeps stats.Stats
 		for ss.Count() != experimentRounds {
 			sbefore := s.current.spansReceived
 			bbefore := s.current.bytesReceived
+			dbefore := s.current.spansDropped
 			tm := s.run(&benchlib.Control{
 				Concurrent:  opts.concurrency,
 				Work:        int64(workTime / s.current.workCost.Wall),
@@ -381,18 +393,22 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			})
 			stotal := s.current.spansReceived - sbefore
 			btotal := s.current.bytesReceived - bbefore
+			dtotal := s.current.spansDropped - dbefore
 			actualSleep := tm.Sleeps.Sum()
 
 			adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, totalPerCpu)
-			impairment := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (actualSleep / float64(opts.concurrency))) / adjusted.Wall.Seconds()
+			traceCost := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (actualSleep / float64(opts.concurrency)))
+			impairment := traceCost / adjusted.Wall.Seconds()
+			supposedWork := (totalPerCpu * workTime.Seconds())
+			effectiveLoad := supposedWork / adjusted.Wall.Seconds()
 
-			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) impairment %.2f%% (sleep time %s)",
+			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) actual load %.2f%% impairment %.2f%% (sleep time %s, sleep total %.2f, adjusted %.2f)",
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
-				100*impairment, sleepTime)
+				100*effectiveLoad, 100*impairment, sleepTime, actualSleep, adjusted)
 
 			// If more than 10% under, recalibrate
 			if impairment < -0.1 {
-				return nil, nil, nil, nil
+				return nil, nil, nil, nil, nil
 			}
 
 			sleepPerCpu := actualSleep / float64(opts.concurrency)
@@ -402,9 +418,10 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			ss.Update(adjusted)
 			sleeps.Update(sleepPerCpu)
 			spans.Update(float64(stotal))
+			dropped.Update(float64(dtotal))
 			bytes.Update(float64(btotal))
 		}
-		return &ss, &spans, &bytes, &sleeps
+		return &ss, &spans, &dropped, &bytes, &sleeps
 	}
 	for {
 		if s.current.calibrations < minimumCalibrations {
@@ -413,7 +430,7 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			s.recalibrate()
 		}
 
-		ss, spans, bytes, sleeps := runOnce()
+		ss, spans, drops, bytes, sleeps := runOnce()
 
 		if ss == nil {
 			s.recalibrate()
@@ -453,10 +470,11 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 		}
 
 		completeRatio := spans.Mean() / totalSpans
+		dropRatio := drops.Mean() / totalSpans
 
 		if opts.trace && completeRatio < completeThreshold {
-			glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) INSUFFICIENT completion %.2f%%",
-				opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr, 100*completeRatio)
+			glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) INSUFFICIENT completion %.2f%% dropped %.2f%%",
+				opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr, 100*completeRatio, 100*dropRatio)
 			return 1, 0
 		}
 
@@ -483,7 +501,7 @@ func (s *benchService) saveResult(result benchlib.Output) {
 	}
 	withNewline := append(encoded, '\n')
 	fmt.Print(string(withNewline))
-	s.writeTo(path.Join(result.Title, result.Client, result.Name), withNewline)
+	s.writeTo(path.Join(result.Title, result.Client, result.Name, fmt.Sprint("qps=", result.Rate)), withNewline)
 }
 
 func (s *benchService) writeTo(name string, data []byte) {
@@ -504,7 +522,7 @@ func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Out
 
 	output.Title = testTitle
 	output.Name = testConfigName
-	output.Client = *client
+	output.Client = testClient
 	output.Load = c.Load
 	output.Concurrent = c.Concurrency
 	output.Rate = qps
@@ -522,7 +540,7 @@ func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Out
 		logsize:     c.LogSize,
 	})
 	if output.Baseline != 1 {
-		output.Impairment, output.Completion = s.measureSpanSaturation(saturationTest{
+		output.GrossImpairment, output.Completion = s.measureSpanSaturation(saturationTest{
 			trace:       true,
 			concurrency: c.Concurrency,
 			seconds:     c.Seconds,
@@ -532,8 +550,12 @@ func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Out
 			logsize:     c.LogSize,
 		})
 	}
-	glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
-		qps, 100*c.Load, 100*(output.Impairment-output.Baseline))
+	if output.Baseline != 1 && output.GrossImpairment != 1 {
+		glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
+			qps, 100*c.Load, 100*(output.GrossImpairment-output.Baseline))
+	} else {
+		glog.Infof("Load %v@%3f%%: Testing incomplete", qps, 100*c.Load)
+	}
 	return output
 }
 
@@ -594,7 +616,7 @@ func (s *benchService) recalibrate() {
 func (s *benchService) runTest(bc benchClient, c conf) {
 	s.current = newBenchStats(bc)
 
-	glog.Info("Testing ", *client)
+	glog.Info("Testing ", testClient)
 	ch := make(chan bool)
 
 	defer func() {
@@ -667,6 +689,7 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 
 	var sstat stats.Stats
 	sleep_info := params.Get("s")
+
 	if len(sleep_info) != 0 {
 		for _, s := range strings.Split(sleep_info, ",") {
 			if len(s) == 0 {
@@ -731,6 +754,8 @@ func (s *benchService) ServeJSONHTTP(res http.ResponseWriter, req *http.Request)
 	s.current.spansReceived += int64(len(reportRequest.SpanRecords))
 	s.current.bytesReceived += int64(len(body))
 
+	s.countDroppedSpans(reportRequest)
+
 	res.Header().Set("Content-Type", "application/json")
 	if err = json.NewEncoder(res).Encode(fakeReportResponse()); err != nil {
 		http.Error(res, "Unable to encode response: "+err.Error(), http.StatusBadRequest)
@@ -772,21 +797,22 @@ func main() {
 
 	var c conf
 
-	bc, ok := allClients[*client]
+	bc, ok := allClients[testClient]
 	if !ok {
-		glog.Fatal("Please set the --client=<...> client name")
+		glog.Fatal("Please set the BENCHMARK_CLIENT client name")
 	}
-	if *configFile == "" {
-		glog.Fatal("Please set the --config=<...> configuration filename")
+	if testConfigFile == "" {
+		glog.Fatal("Please set the BENCHMARK_CONFIG_FILE filename")
 	}
-	cdata, err := ioutil.ReadFile(*configFile)
+	cdata, err := ioutil.ReadFile(testConfigFile)
 	if err != nil {
-		glog.Fatal("Error reading ", *configFile, ": ", err.Error())
+		glog.Fatal("Error reading ", testConfigFile, ": ", err.Error())
 	}
 	err = json.Unmarshal(cdata, &c)
 	if err != nil {
-		glog.Fatal("Error JSON-parsing ", *configFile, ": ", err.Error())
+		glog.Fatal("Error JSON-parsing ", testConfigFile, ": ", err.Error())
 	}
+	fmt.Println("Config:", string(cdata))
 
 	ctx := context.Background()
 	gcpClient, err := google.DefaultClient(ctx, storage.ScopeFullControl)
@@ -805,7 +831,7 @@ func main() {
 	service.controlCh = make(chan *benchlib.Control)
 	service.storage = storageClient
 	service.gcpClient = gcpClient
-	service.bucket = storageClient.Bucket(storageBucket)
+	service.bucket = storageClient.Bucket(testStorageBucket)
 
 	// Test the storage service, auth, etc.
 	service.writeTo("test-empty", []byte{})

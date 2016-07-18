@@ -1,36 +1,52 @@
 #!/bin/bash
+#
+# usage:
+#   benchmark.sh <title> <client-lang> <num-cpus> <config-name>
+#
+# e.g.:
+#   benchmark.sh jvm_9_0_8 java 4 four-cpus-1kb-logs
 
 set -e
 
+# arguments
 TITLE=${1}
 CLIENT=${2}
 CPUS=${3}
-TEST_CONFIG_BASE=${4}
+TEST_CONFIG_NAME=${4}
 
+# TAG may be set in run_local.sh
 if [ -z "${TAG}" ]; then
     TAG=$(date "+%Y-%m-%d-%H-%M-%S")
 fi
 
+# naming constants
 BUCKET="lightstep-client-benchmarks"
-GCLOUD_CONFIG="devel"
 CLOUD_ZONE="us-central1-a"
 PROJECT_ID="lightstep-dev"
 CLOUD_MACH_BASE="n1-standard-"
 IMG_BASE="gcr.io/${PROJECT_ID}/bench-${CLIENT}"
-VM="bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_BASE}"
+VM="bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_NAME}"
 
+# file system paths
 DBUILD="${GOPATH}/build.$$"
 SCRIPTS="${GOPATH}/../scripts"
-TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_BASE}.json"
+TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_NAME}.json"
+
+# gcp constants
 SCOPED="https://www.googleapis.com/auth"
 
+# command-line tools
 GCLOUD="gcloud"
-SSH="${GCLOUD} compute ssh --project ${PROJECT_ID} --zone ${CLOUD_ZONE}"
-GDOCKER="${SSH} ${VM} -- sudo docker"
-GBASH="${SSH} ${VM} -- sudo bash"
 LDOCKER="docker"
-GLDOCKER="${GCLOUD} ${LDOCKER}"
+GLDOCKER="${GCLOUD} docker"
 
+SSH="${GCLOUD} compute ssh --project ${PROJECT_ID} --zone ${CLOUD_ZONE}"
+SSH_TO="${SSH} ${VM} --"         # ssh to the VM
+GBASH="${SSH_TO} sudo bash"      # root shell on the VM
+GDOCKER="${SSH_TO} sudo docker"  # docker on the VM
+
+# use the developer gcloud profile, restore it on exit
+GCLOUD_CONFIG="devel"
 STANDING_GCLOUD_CONFIG=`${GCLOUD} config configurations list | grep True | awk '{print $1}'`
 
 function usage()
@@ -43,6 +59,12 @@ function usage()
 function set_config()
 {
     ${GCLOUD} config configurations activate ${GCLOUD_CONFIG} 2> /dev/null
+}
+
+function on_exit()
+{
+    rm -rf "${DBUILD}"
+    ${GCLOUD} config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
 }
 
 function build()
@@ -61,23 +83,19 @@ function build()
     . ${SCRIPTS}/docker/${CLIENT}.sh
 
     ln ${SCRIPTS}/docker/Dockerfile.${CLIENT} ${DBUILD}/Dockerfile
-    ln ${TEST_CONFIG} ${DBUILD}/config.json
 
     ${LDOCKER} build -t ${IMG_BASE}:${TAG} ${DBUILD}
     ${LDOCKER} tag ${IMG_BASE}:${TAG} ${IMG_BASE}:latest
+    echo Push ${IMG_BASE}:${TAG}
     ${GCLOUD} docker push ${IMG_BASE}:${TAG}
+    echo Push ${IMG_BASE}:latest
     ${GCLOUD} docker push ${IMG_BASE}:latest
-}
-
-function on_exit()
-{
-    rm -rf "${DBUILD}"
-    ${GCLOUD} config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
+    echo Built!
 }
 
 function dockerize()
 {
-    if ${SSH} ${VM} -- true 2> /dev/null; then
+    if ${SSH_TO} true 2> /dev/null; then
 	:
     else
 	${GCLOUD} compute instances stop ${VM} 2> /dev/null || true
@@ -92,28 +110,39 @@ function dockerize()
 
 	# Wait for sshd to come up
 	while true; do
-	    if ${SSH} ${VM} -- true; then
+	    if ${SSH_TO} true; then
 		break
 	    fi
 	    sleep 2
 	done
     fi
 
+    # Reset the VM.
     ${GBASH} <<EOF
 ${LDOCKER} ps -q -all | xargs docker kill 2> /dev/null
 ${LDOCKER} ps -q -all | xargs docker rm  2> /dev/null
 ${GLDOCKER} pull ${IMG_BASE}:latest
-${LDOCKER} run \
-	   -d \
-	   -e BENCHMARK_CONFIG=${TEST_CONFIG_BASE} \
-	   -e BENCHMARK_TITLE=${TITLE} \
-	   -e BENCHMARK_BUCKET=${BUCKET} \
-	   -e BENCHMARK_ZONE=${CLOUD_ZONE} \
-	   -e BENCHMARK_PROJECT=${PROJECT_ID} \
-	   -e BENCHMARK_INSTANCE=${VM} \
-	   --name ${VM} \
-	   ${IMG_BASE}:latest
+mkdir -p /tmp/config
+chmod 0777 /tmp/config
 EOF
+
+    # Place the configuration
+    ${GCLOUD} compute copy-files ${TEST_CONFIG} ${VM}:/tmp/config/config.json
+
+    # Daemonize
+    ${GDOCKER} run -d \
+	       -v /tmp/config:/tmp/config \
+	       -e BENCHMARK_CONFIG_NAME=${TEST_CONFIG_NAME} \
+	       -e BENCHMARK_CONFIG_FILE=/tmp/config/config.json \
+	       -e BENCHMARK_TITLE=${TITLE} \
+	       -e BENCHMARK_BUCKET=${BUCKET} \
+	       -e BENCHMARK_ZONE=${CLOUD_ZONE} \
+	       -e BENCHMARK_PROJECT=${PROJECT_ID} \
+	       -e BENCHMARK_INSTANCE=${VM} \
+	       -e BENCHMARK_CLIENT=${CLIENT} \
+	       --name ${VM} \
+	       ${IMG_BASE}:latest \
+	       ./controller --logtostderr -v=1
 
     # Note: the controller deletes its own VM
 }
@@ -140,7 +169,5 @@ fi
 trap on_exit EXIT
 
 set_config
-
-# TODO Refactor this code to build once, then run one VM per client test
 build
 dockerize

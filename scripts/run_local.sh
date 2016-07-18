@@ -25,8 +25,11 @@ function json() {
     python -c "import sys, json; print json.load(sys.stdin)$2" < $1
 }
 
-# TODO Update benchmark clients for: cpp ruby
-LANGUAGES="golang python nodejs java"
+# TODO Update benchmark clients for: cpp objc php ...
+LANGUAGES="java nodejs ruby" # golang python
+
+# Languages that do not support concurrent testing
+NON_CONCURRENT="nodejs ruby"
 
 # List of configurations
 CONFIGS=`cd ${SCRIPTS}/config && ls -1 *.json | grep -v test`
@@ -43,8 +46,15 @@ function runtest()
     local language=${1}
     local config=${2}
     local conc=$(json ${SCRIPTS}/config/${config}.json '["Concurrency"]')
+
+    if [ ${conc} != "1" ]; then
+	if echo ${NON_CONCURRENT} | grep ${language} > /dev/null; then
+	    echo "Skip concurrent ${language}/${config}"
+	    return
+	fi
+    fi
     
-    ./benchmark.sh ${TITLE} ${language} ${conc} ${config}
+    echo ./benchmark.sh ${TITLE} ${language} ${conc} ${config}
 }
 
 if [ "${TITLE}" = "" ]; then

@@ -34,6 +34,7 @@ while true; do
     sleep 2
 done
 
+# Note: a quoted "EOF" (heredoc) prevents expanding the $(uname -r) below.
 ${SSH} ${INSTANCE} -- sudo bash <<"EOF"
 set -e
 apt-get update
