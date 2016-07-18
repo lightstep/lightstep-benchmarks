@@ -6,8 +6,9 @@
 # This takes a while to run because it builds images, provisions VMs,
 # and kicks off the benchmarks itself.
 #
-# The script run_cloud.sh starts a container that clones the repos and
-# runs this script using HEAD from each client repo.
+# TODO write run_cloud.sh to starts polyglot container that clones the
+# repos, installs build tools, and runs this script using HEAD from
+# each client repo.
 set -e
 
 # By exporting TAG, benchmark.sh uses the same tag, which avoids
@@ -15,11 +16,27 @@ set -e
 export TAG
 TAG=$(date "+%Y-%m-%d-%H-%M-%S")
 
+# "test" or "logs"
+MODE=${1}
+
 # Give a title to this run
-TITLE=${1}
+TITLE=${2}
 
 # Source location
 SCRIPTS=${GOPATH}/../scripts
+
+case ${MODE} in
+    test)
+	CMD="./benchmark.sh"
+	;;
+    logs)
+	CMD="./show_logs.sh"
+	;;
+    *)
+	echo "Invalid mode ${MODE}, should be 'test' or 'logs'."
+	exit 1
+esac
+     
 
 function json() {
     python -c "import sys, json; print json.load(sys.stdin)$2" < $1
@@ -53,8 +70,10 @@ function runtest()
 	    return
 	fi
     fi
-    
-    echo ./benchmark.sh ${TITLE} ${language} ${conc} ${config}
+
+    echo ======================================================================
+    echo ${CMD} ${TITLE} ${language} ${conc} ${config}
+    ${CMD} ${TITLE} ${language} ${conc} ${config}
 }
 
 if [ "${TITLE}" = "" ]; then
