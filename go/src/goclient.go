@@ -2,7 +2,6 @@ package main
 
 import (
 	"benchlib"
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -55,7 +54,7 @@ func (t *testClient) getURL(path string) []byte {
 		glog.Fatal("Bench control request failed: ", err)
 	}
 	if resp.StatusCode != 200 {
-		glog.Fatal("Bench control status != 200: ", resp.Status)
+		glog.Fatal("Bench control status != 200: ", resp.Status, ": ", path)
 	}
 
 	defer resp.Body.Close()
@@ -78,30 +77,20 @@ func (t *testClient) loop() {
 			return
 		}
 		timing, flusht, sleeps, answer := t.run(&control)
-		var sleeps_buf bytes.Buffer
-		for _, s := range sleeps {
-			sleeps_buf.WriteString(fmt.Sprint(int64(s)))
-			sleeps_buf.WriteString(",")
-		}
-		t.getURL(fmt.Sprint(
+		t.getURL(fmt.Sprintf(
+			"%s?timing=%.9f&flush=%.9f&s=%.9f&a=%d",
 			benchlib.ResultPath,
-			"?timing=",
 			timing.Seconds(),
-			"&flush=",
 			flusht.Seconds(),
-			"&s=",
-			sleeps_buf.String(),
-			"&a=",
+			sleeps.Seconds(),
 			answer))
 	}
 }
 
-func testBody(control *benchlib.Control) ([]time.Duration, int64) {
+func testBody(control *benchlib.Control) (time.Duration, int64) {
 	var sleep_debt time.Duration
 	var answer int64
-	num_sleeps := (time.Duration(control.Repeat) * control.Sleep) / control.SleepInterval
-	sleeps := make([]time.Duration, num_sleeps)
-	sleep_cnt := 0
+	var totalSleep time.Duration
 	for i := int64(0); i < control.Repeat; i++ {
 		span := ot.StartSpan("span/test")
 		answer = work(control.Work)
@@ -118,13 +107,12 @@ func testBody(control *benchlib.Control) ([]time.Duration, int64) {
 		time.Sleep(sleep_debt)
 		elapsed := time.Now().Sub(begin)
 		sleep_debt -= elapsed
-		sleeps[sleep_cnt] = elapsed
-		sleep_cnt++
+		totalSleep += elapsed
 	}
-	return sleeps, answer
+	return totalSleep, answer
 }
 
-func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duration, []time.Duration, int64) {
+func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duration, time.Duration, int64) {
 	if control.Trace {
 		ot.InitGlobalTracer(t.tracer)
 	} else {
@@ -134,23 +122,26 @@ func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duratio
 	runtime.GOMAXPROCS(conc)
 	runtime.GC()
 
-	sleeps := make([][]time.Duration, conc, conc)
-	answer := make([]int64, conc, conc)
+	var sleeps time.Duration
+	var answer int64
 
 	beginTest := time.Now()
 	if conc == 1 {
-		sleeps[0], answer[0] = testBody(control)
+		s, a := testBody(control)
+		sleeps += s
+		answer += a
 	} else {
 		start := &sync.WaitGroup{}
 		finish := &sync.WaitGroup{}
 		start.Add(conc)
 		finish.Add(conc)
 		for c := 0; c < conc; c++ {
-			c := c
 			go func() {
 				start.Done()
 				start.Wait()
-				sleeps[c], answer[c] = testBody(control)
+				s, a := testBody(control)
+				sleeps += s
+				answer += a
 				finish.Done()
 			}()
 		}
@@ -163,17 +154,7 @@ func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duratio
 		recorder.Flush()
 		flushDur = time.Now().Sub(endTime)
 	}
-	var sleep_final []time.Duration
-	var answer_final int64
-	for c := 0; c < conc; c++ {
-		for _, s := range sleeps[c] {
-			if s != 0 {
-				sleep_final = append(sleep_final, s)
-			}
-		}
-		answer_final += answer[c]
-	}
-	return endTime.Sub(beginTest), flushDur, sleep_final, answer_final
+	return endTime.Sub(beginTest), flushDur, sleeps, answer
 }
 
 func main() {

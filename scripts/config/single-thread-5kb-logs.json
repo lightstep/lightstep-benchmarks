@@ -1,8 +1,0 @@
-{
-    "Seconds":     900,
-    "Concurrency": 1,
-    "Load":        0.5,
-    "Rates":       [100, 500, 1000],
-    "LogNum":      50,
-    "LogSize":     100
-}

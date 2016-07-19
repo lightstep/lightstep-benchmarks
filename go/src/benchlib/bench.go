@@ -66,7 +66,7 @@ type Result struct {
 
 	// Sleeps are statistics about the sleep operations observed
 	// by the client, in seconds of walltime.
-	Sleeps stats.Stats
+	Sleeps Time
 }
 
 // Finished results format.

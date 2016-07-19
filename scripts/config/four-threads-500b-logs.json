@@ -3,6 +3,6 @@
     "Concurrency": 4,
     "Load":        0.5,
     "Rates":       [400, 800, 1200],
-    "LogNum":      10,
+    "LogNum":      5,
     "LogSize":     100
 }
