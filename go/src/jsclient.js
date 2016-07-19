@@ -65,13 +65,13 @@ function exec_control(c, tracer) {
     var begin = process.hrtime();
     var sleep_debt = 0;
     var sleep_at;
-    var sleep_nanos = '';
+    var sleep_nanos = 0;
     var p = prime_work;
     var body_func = function(repeat) {
 	if (sleep_debt > 0) {
 	    var diff = process.hrtime(sleep_at);
 	    var nanos = diff[0] * 1e9 + diff[1];
-	    sleep_nanos = sleep_nanos + nanos + ','
+	    sleep_nanos += nanos 
 	    sleep_debt -= nanos
 	}
 	for (var r = repeat; r > 0; r--) {
@@ -97,7 +97,7 @@ function exec_control(c, tracer) {
 	    var flushDiff = process.hrtime(endTime);
 	    var flushElapsed = flushDiff[0] + flushDiff[1] * 1e9
 	    var path = '/result?timing=' + elapsed + '&flush=' + flushElapsed +
-		'&a=' + p + '&s=' + sleep_nanos;
+		'&s=' + (sleep_nanos / 1e9) + '&a=' + p;
 	    return http.get({
 		host: host,
 		port: port,

@@ -44,7 +44,7 @@ def test_body(tracer, control)
   logn      = control['NumLogs']
   logsz     = control['BytesPerLog']
   sleep_debt = 0  # Accumulated nanoseconds
-  sleeps    = []
+  sleeps    = 0
   answer    = 0
 
   (1..repeat).each do
@@ -60,8 +60,9 @@ def test_body(tracer, control)
     end
     before = Time.now.to_f
     sleep(sleep_debt / $nanos_per_second)
-    elapsed = ((Time.now.to_f - before) * $nanos_per_second).round
-    sleeps.push(elapsed)
+    elapsed_secs = Time.now.to_f - before
+    elapsed = (elapsed_secs * $nanos_per_second).round
+    sleeps += elapsed_secs
     sleep_debt -= elapsed
   end
   return sleeps, answer
@@ -90,7 +91,7 @@ def loop()
     before = Time.now.to_f
 
     # Note: Concurrency test not implemented
-    sleep_nanos, answer = test_body(tracer, control)
+    sleeps, answer = test_body(tracer, control)
     
     after = Time.now.to_f
     flush_dur = 0.0
@@ -102,7 +103,7 @@ def loop()
 
     elapsed = after - before
 
-    path = sprintf('/result?timing=%f&flush=%f&a=%s&s=%s', elapsed, flush_dur, answer, sleep_nanos.join(','))
+    path = sprintf('/result?timing=%f&flush=%f&s=%f&a=%s', elapsed, flush_dur, sleeps, answer)
 
     uri = URI.parse($base_url + path)
     resp = Net::HTTP.get(uri)

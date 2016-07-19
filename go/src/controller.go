@@ -15,8 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/net/context"
@@ -394,29 +392,28 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			stotal := s.current.spansReceived - sbefore
 			btotal := s.current.bytesReceived - bbefore
 			dtotal := s.current.spansDropped - dbefore
-			actualSleep := tm.Sleeps.Sum()
 
 			adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, totalPerCpu)
-			traceCost := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (actualSleep / float64(opts.concurrency)))
+			traceCost := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (tm.Sleeps.Seconds() / float64(opts.concurrency)))
 			impairment := traceCost / adjusted.Wall.Seconds()
 			supposedWork := (totalPerCpu * workTime.Seconds())
 			effectiveLoad := supposedWork / adjusted.Wall.Seconds()
 
 			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) actual load %.2f%% impairment %.2f%% (sleep time %s, sleep total %.2f, adjusted %.2f)",
 				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
-				100*effectiveLoad, 100*impairment, sleepTime, actualSleep, adjusted)
+				100*effectiveLoad, 100*impairment, sleepTime, tm.Sleeps, adjusted)
 
 			// If more than 10% under, recalibrate
 			if impairment < -0.1 {
 				return nil, nil, nil, nil, nil
 			}
 
-			sleepPerCpu := actualSleep / float64(opts.concurrency)
+			sleepPerCpu := tm.Sleeps / benchlib.Time(opts.concurrency)
 			glog.V(2).Info("Sleep total ", benchlib.Time(sleepPerCpu),
-				" i.e. ", sleepPerCpu/opts.seconds*100.0, "%")
+				" i.e. ", sleepPerCpu.Seconds()/opts.seconds*100.0, "%")
 
 			ss.Update(adjusted)
-			sleeps.Update(sleepPerCpu)
+			sleeps.Update(sleepPerCpu.Seconds())
 			spans.Update(float64(stotal))
 			dropped.Update(float64(dtotal))
 			bytes.Update(float64(btotal))
@@ -686,25 +683,6 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 		glog.Fatal("Error parsing URL params: ", req.URL.RawQuery)
 	}
 	s.controlling = false
-
-	var sstat stats.Stats
-	sleep_info := params.Get("s")
-
-	if len(sleep_info) != 0 {
-		for _, s := range strings.Split(sleep_info, ",") {
-			if len(s) == 0 {
-				continue
-			}
-			if snano, err := strconv.ParseUint(s, 10, 64); err != nil {
-				glog.Fatal("Could not parse timing: ", sleep_info)
-			} else {
-				sstat.Update(float64(snano) / nanosPerSecond)
-			}
-		}
-		glog.V(2).Info("Sleep timing: mean ", benchlib.Time(sstat.Mean()),
-			" stddev ", benchlib.Time(sstat.PopulationStandardDeviation()))
-		glog.V(3).Info("Sleep values: ", sleep_info)
-	}
 	s.resultCh <- &benchlib.Result{
 		Measured: benchlib.Timing{
 			Wall: benchlib.ParseTime(params.Get("timing")),
@@ -714,7 +692,7 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 		Flush: benchlib.Timing{
 			Wall: benchlib.ParseTime(params.Get("flush")),
 		},
-		Sleeps: sstat,
+		Sleeps: benchlib.ParseTime(params.Get("s")),
 	}
 	// The response body is not used, but some HTTP clients are
 	// troubled by 0-byte responses.

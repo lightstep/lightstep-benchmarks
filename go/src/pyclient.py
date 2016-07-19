@@ -57,7 +57,7 @@ def test_body(control):
     logsz     = control['BytesPerLog']
     answer    = None
     sleep_debt = 0  # Accumulated nanoseconds
-    sleep_nanos = []  # List of actual sleeps (nanoseconds)
+    sleep_total = 0  # Actual sleep sum (nanoseconds)
 
     for i in xrange(repeat):
         span = opentracing.tracer.start_span(operation_name='span/test')
@@ -74,9 +74,9 @@ def test_body(control):
         time.sleep(sleep_debt / nanos_per_second)
         elapsed = long((time.time() - begin) * nanos_per_second)
         sleep_debt -= elapsed
-        sleep_nanos.append(elapsed)
+        sleep_total += elapsed
     #end
-    return (sleep_nanos, answer)
+    return (sleep_total / 1e9, answer)
 #end
 
 class Worker(threading.Thread):
@@ -85,7 +85,7 @@ class Worker(threading.Thread):
         self.control = control
     #end
     def run(self):
-        self.sleep_nanos, self.answer = test_body(self.control)
+        self.sleep_total, self.answer = test_body(self.control)
     #end
 #end
 
@@ -116,11 +116,11 @@ def loop():
         #end
 
         begin = time.time()
-        sleep_nanos = []
-        answer = None
+        sleep_total = 0
+        answer = 0
 
         if concurrent == 1:
-            sleep_nanos, answer = test_body(control)
+            sleep_total, answer = test_body(control)
         else:
             threads = [Worker(control) for x in xrange(concurrent)]
             for x in threads:
@@ -128,9 +128,9 @@ def loop():
             #end
             for x in threads:
                 x.join()
+                sleep_total += x.sleep_total
+                answer += x.answer
             #end
-            sleep_nanos = [s for x in threads for s in x.sleep_nanos]
-            answer = '-'.join([str(x.answer) for x in threads])
         #end
 
         end = time.time()
@@ -142,8 +142,8 @@ def loop():
         #end
 
         elapsed = end - begin
-        path = '/result?timing=%f&flush=%f&s=%s&a=%s' % (
-            elapsed, flush_dur, ','.join([str(x) for x in sleep_nanos]), answer)
+        path = '/result?timing=%f&flush=%f&s=%f&a=%s' % (
+            elapsed, flush_dur, sleep_total, answer)
         request = urllib2.Request(base_url + path)
         response = urllib2.urlopen(request)
         response_body = response.read()
