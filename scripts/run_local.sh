@@ -44,7 +44,7 @@ function json() {
 
 if [ -z "${LANGUAGES}" ]; then
     # TODO Update benchmark clients for: cpp objc php ...
-    LANGUAGES="java nodejs ruby" # golang python
+    LANGUAGES="java nodejs ruby golang python"
 fi
 
 # Languages that do not support concurrent testing
