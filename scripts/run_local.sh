@@ -42,14 +42,18 @@ function json() {
     python -c "import sys, json; print json.load(sys.stdin)$2" < $1
 }
 
-# TODO Update benchmark clients for: cpp objc php ...
-LANGUAGES="java nodejs ruby" # golang python
+if [ -z "${LANGUAGES}" ]; then
+    # TODO Update benchmark clients for: cpp objc php ...
+    LANGUAGES="java nodejs ruby" # golang python
+fi
 
 # Languages that do not support concurrent testing
 NON_CONCURRENT="nodejs ruby"
 
 # List of configurations
-CONFIGS=`cd ${SCRIPTS}/config && ls -1 *.json | grep -v test`
+if [ -z "${CONFIGS}" ]; then
+    CONFIGS=`cd ${SCRIPTS}/config && ls -1 *.json | grep -v test`
+fi
 
 function usage()
 {

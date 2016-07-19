@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"flag"
@@ -498,7 +497,7 @@ func (s *benchService) saveResult(result benchlib.Output) {
 	}
 	withNewline := append(encoded, '\n')
 	fmt.Print(string(withNewline))
-	s.writeTo(path.Join(result.Title, result.Client, result.Name, fmt.Sprint("qps=", result.Rate)), withNewline)
+	s.writeTo(path.Join("/", result.Title, result.Client, result.Name, fmt.Sprint("qps=", result.Rate)), withNewline)
 }
 
 func (s *benchService) writeTo(name string, data []byte) {
@@ -745,20 +744,20 @@ func (s *benchService) ServeDefaultHTTP(res http.ResponseWriter, req *http.Reque
 }
 
 func (s *benchService) tearDown() {
-	if testZone != "" && testProject != "" && testInstance != "" {
-		// Delete this VM
-		url := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s",
-			testProject, testZone, testInstance)
-		glog.Info("Asking to delete this VM... ", url)
-		req, err := http.NewRequest("DELETE", url, bytes.NewReader(nil))
-		if err != nil {
-			glog.Fatal("Invalid request ", err)
-		}
-		if _, err := s.gcpClient.Do(req); err != nil {
-			glog.Fatal("Error deleting this VM ", err)
-		}
-		glog.Info("Done! This VM may...")
-	}
+	// if testZone != "" && testProject != "" && testInstance != "" {
+	// 	// Delete this VM
+	// 	url := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s",
+	// 		testProject, testZone, testInstance)
+	// 	glog.Info("Asking to delete this VM... ", url)
+	// 	req, err := http.NewRequest("DELETE", url, bytes.NewReader(nil))
+	// 	if err != nil {
+	// 		glog.Fatal("Invalid request ", err)
+	// 	}
+	// 	if _, err := s.gcpClient.Do(req); err != nil {
+	// 		glog.Fatal("Error deleting this VM ", err)
+	// 	}
+	// 	glog.Info("Done! This VM may...")
+	// }
 	os.Exit(0)
 }
 

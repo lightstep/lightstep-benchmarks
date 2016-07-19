@@ -2,7 +2,7 @@
     "Seconds":     900,
     "Concurrency": 4,
     "Load":        0.5,
-    "Rates":       [400, 2000, 4000],
+    "Rates":       [400, 800, 1200],
     "LogNum":      0,
     "LogSize":     0
 }
