@@ -9,7 +9,6 @@
 # TODO write run_cloud.sh to starts polyglot container that clones the
 # repos, installs build tools, and runs this script using HEAD from
 # each client repo.
-set -e
 
 # By exporting TAG, benchmark.sh uses the same tag, which avoids
 # repeating the same build.
@@ -28,6 +27,7 @@ SCRIPTS=${GOPATH}/../scripts
 case ${MODE} in
     test)
 	CMD="./benchmark.sh"
+	set -e
 	;;
     logs)
 	CMD="./show_logs.sh"
