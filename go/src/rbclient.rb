@@ -50,7 +50,7 @@ def test_body(tracer, control)
   (1..repeat).each do
     span = tracer.start_span('span/test')
     (1..logn).each do
-      span.log("testlog", $logs_memory[0..logsz])
+      span.log_event("testlog", $logs_memory[0..logsz])
     end
     answer += do_work(work)
     span.finish()
