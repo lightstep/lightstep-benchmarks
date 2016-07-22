@@ -55,7 +55,7 @@ def test_body(control):
     work      = control['Work']
     logn      = control['NumLogs']
     logsz     = control['BytesPerLog']
-    answer    = None
+    answer    = 0
     sleep_debt = 0  # Accumulated nanoseconds
     sleep_total = 0  # Actual sleep sum (nanoseconds)
 

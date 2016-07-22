@@ -498,7 +498,7 @@ func (s *benchService) saveResult(result benchlib.Output) {
 	}
 	withNewline := append(encoded, '\n')
 	fmt.Print(string(withNewline))
-	s.writeTo(path.Join("/", result.Title, result.Client, result.Name, fmt.Sprint("qps=", result.Rate)), withNewline)
+	s.writeTo(path.Join(result.Title, result.Client, result.Name, fmt.Sprint("qps=", result.Rate)), withNewline)
 }
 
 func (s *benchService) writeTo(name string, data []byte) {
