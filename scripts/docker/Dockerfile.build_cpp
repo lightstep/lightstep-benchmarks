@@ -1,0 +1,20 @@
+FROM ubuntu:16.04
+
+WORKDIR /data
+
+RUN apt-get update
+RUN apt-get install -y \
+	autoconf \
+	automake \
+	libboost-all-dev \
+	libcppnetlib-dev \
+	libssl-dev \
+	libtool \
+	pkg-config \
+	wget
+
+RUN wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+RUN apt-get install -y clang-3.8 lldb-3.8
+
+ENV CC=clang-3.8
+ENV CXX=clang++-3.8
