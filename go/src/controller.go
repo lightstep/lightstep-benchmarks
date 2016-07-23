@@ -70,7 +70,7 @@ const (
 var (
 	// client is a list of client programs for the benchmark
 	allClients = map[string]benchClient{
-		"cpp":    {[]string{"./github.com/lightstep/lightstep-tracer-cpp/test/c++11/cppclient"}},
+		"cpp":    {[]string{"./cppclient"}},
 		"ruby":   {[]string{"ruby", "./rbclient.rb"}},
 		"python": {[]string{"./pyclient.py"}},
 		"golang": {[]string{"./goclient"}},
