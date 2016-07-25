@@ -6,8 +6,8 @@ RUN apt-get update
 RUN apt-get install -y \
 	autoconf \
 	automake \
+	git-core \
 	libboost-all-dev \
-	libcppnetlib-dev \
 	libssl-dev \
 	libtool \
 	pkg-config \
