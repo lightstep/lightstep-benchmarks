@@ -8,7 +8,6 @@ RUN apt-get install -y \
 	cmake \
 	automake \
 	git-core \
-	libboost-all-dev \
 	libssl-dev \
 	libtool \
 	pkg-config \
