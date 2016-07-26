@@ -5,6 +5,7 @@ WORKDIR /data
 RUN apt-get update
 RUN apt-get install -y \
 	autoconf \
+	cmake \
 	automake \
 	git-core \
 	libboost-all-dev \
