@@ -5,9 +5,9 @@ WORKDIR /data
 RUN apt-get update
 RUN apt-get install -y \
 	autoconf \
+	cmake \
 	automake \
-	libboost-all-dev \
-	libcppnetlib-dev \
+	git-core \
 	libssl-dev \
 	libtool \
 	pkg-config \
