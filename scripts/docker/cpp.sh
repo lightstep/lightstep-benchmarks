@@ -1,5 +1,6 @@
 #!/bin/bash
 
+<<<<<<< HEAD
 JOBNAME="ls_cpp_builder"
 IMAGE="${JOBNAME}:latest"
 
@@ -9,6 +10,13 @@ MOUNT1="${GOPATH}/src/github.com/lightstep/lightstep-tracer-cpp:/data/lightstep-
 MOUNT2="/tmp/lightstep_downloads:/tmp/lightstep_downloads"
 
 export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl/1.0.2h_1
+=======
+IMAGE="ls_cpp_builder:latest"
+
+CBUILD="${GOPATH}/build.cpp.$$"
+
+MOUNT="${GOPATH}/src/github.com/lightstep/lightstep-tracer-cpp:/data/lightstep-tracer-cpp"
+>>>>>>> origin
 
 function on_exit()
 {
