@@ -48,7 +48,7 @@ is an arbitrary but brief, fixed-CPU-cost operation to perform
 After running the operation, the client responds with a Result structure containing:
 
 - `Timing` the number of seconds (walltime) the client observed to complete the operations and (maybe) flush the spans
-- `Sleeps` (Optional, for setting `SleepCorrection` in some runtimes) a comma-separated timeseries of the observed walltime of sleep operations, in nanoseconds
+- `Sleeps` (Optional, for setting `SleepCorrection` in some runtimes) a sum of the observed walltime of sleep operations, in nanoseconds
 - `Answer` (Optional) the result of the operation (to avoid optimization)
 
 ### Calibration
@@ -93,12 +93,7 @@ critical path for latency.
 
 Appropraiate values for this measurement are in the 1-100μs
 range.  We consider 10μs a good measurement, while a measurement
-of 100μs indicates a library that needs improvement.  Current
-measurements:
-
-- golang 0.5μs
-- nodejs 10μs
-- python 15μs
+of 100μs indicates a library that needs improvement. 
 
 Our goal is that unless the CPU is saturated, the empty span cost
 is the only additional user-perceived latency impact that results
@@ -152,56 +147,3 @@ By comparing the saturation point with and without tracing, we
 can separate tracing costs from other overheads in the system.
 This process will be repeated to construct a plot of CPU overhead
 vs. qps for every client library.
-
-Preliminary data:
-
-- golang @100qps 0%; @250 qps < 0.1%; @500qps < 0.2%; @750qps < 0.3%; @1000qps < 0.5%
-- python in progress following recent speedups, CPU-limits required for final measurements
-- nodejs unfinished, sleep correction logic needed
-
-Note: Because Python performance is showing glaring problems, I
-will prioritize fixing the Python client ahead of completing
-these measurements.
-
-Note: The numbers above are preliminary; longer tests will be needed
-for greater precision.
-
-### Concurrency Costs
-
-TODO planned work
-
-How much self-interference does the LightStep client library
-have?  The Total CPU Cost tests will be repeated for higher
-concurrency factors, to estimate the scaling function.
-
-### Rate Limit Config
-
-At what empty span rate does the client begins dropping spans?
-
-- python observed @ 500
-- nodejs not observed @ 1000
-- golang not observed @ 1000
-
-### Network Costs
-
-What is the outbound network cost per empty Span?
-
-XXX TODO these are payload sizes, not network sizes
-
-- nodejs 290 bytes
-- python 155 bytes
-- golang 125 bytes
-
-### Logging Costs
-
-TODO Implemented in Python only. The effect in Python is to inrease the span throughput, ironically, by slowing down the calling thread. Bad!
-
-How much CPU cost is there for one 0-byte logging statement?  
-How much CPU cost is there for each additional byte of log message?
-
-### Tag Costs
-
-TODO This was not studied.
-
-How much CPU cost is there for each key:value entry?  
-How much cost is there for each byte of key:value entry?
