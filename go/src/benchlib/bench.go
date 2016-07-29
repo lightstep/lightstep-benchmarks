@@ -28,6 +28,12 @@ var (
 	DefaultSleepInterval = 50 * time.Millisecond
 )
 
+type Config struct {
+	Concurrency int
+	LogNum      int64
+	LogSize     int64
+}
+
 type Control struct {
 	Concurrent int // How many routines, threads, etc.
 
@@ -69,21 +75,29 @@ type Result struct {
 	Sleeps Time
 }
 
+type DataPoint struct {
+	RequestRate float64 // Number of operations per second
+	WorkRatio   float64 // Measured work rate
+	SleepRatio  float64 // Measured sleep rate
+}
+
+type Measurement struct {
+	Untraced   DataPoint // Tracing off
+	Traced     DataPoint // Tracing on
+	Completion float64   // Tracing on completion rate
+}
+
 // Finished results format.
 type Output struct {
 	// Settings
-	Title      string  // Test title
-	Name       string  // Test config name
-	Client     string  // Test client name
-	Load       float64 // CPU utilization
-	Concurrent int     // Number of concurrent threads
-	Rate       float64 // Number of spans / second
-	LogBytes   int64   // Number of bytes of log per span
+	Title      string // Test title
+	Client     string // Test client name
+	Name       string // Test config name
+	Concurrent int    // Number of concurrent threads
+	LogBytes   int64  // Number of bytes of log per span
 
-	// Computed
-	Baseline        float64 // Baseline impairment (w/o tracing)
-	GrossImpairment float64 // Gross impairment (w/ tracing, includes baseline impairment)
-	Completion      float64 // Fraction of spans received (w/ tracing)
+	// Experiment data
+	Results []Measurement
 }
 
 type Time float64
@@ -267,4 +281,8 @@ func (t Time) String() string {
 
 func (ts Regression) String() string {
 	return fmt.Sprintf("[slope: %v @ %v]", ts.Slope, ts.Intercept)
+}
+
+func (dp DataPoint) VisibleImpairment() float64 {
+	return 1 - dp.WorkRatio - dp.SleepRatio
 }
