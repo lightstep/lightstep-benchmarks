@@ -24,7 +24,6 @@ import (
 
 	"benchlib"
 
-	"github.com/GaryBoone/GoStats/stats"
 	"github.com/golang/glog"
 	lst "github.com/lightstep/lightstep-tracer-go/lightstep_thrift"
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
@@ -40,6 +39,8 @@ const (
 	// collectorJSONPath is the path of the pure-JSON collector service
 	collectorJSONPath = "/api/v0/reports"
 
+	nanosPerSecond = 1e9
+
 	// testIteration is used for initial estimates and calibration.
 	testIteration = 1000
 
@@ -49,22 +50,27 @@ const (
 	// testTolerance is used for a sanity checks.
 	testTolerance = 0.02
 
-	// For clients that require timing correction (i.e., NodeJS)
-	timingTolerance = 0.005 // ~= .3 second per minute
-
-	nanosPerSecond = 1e9
-
 	minimumCalibrations = 3
-
-	experimentRounds = 3
+	calibrateRounds     = 20
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
 	testTimeSlice = time.Second / 2
 
-	completeThreshold = 0.99
+	// If the test runs more than 1% faster than theoretically
+	// possible, recalibrate.
+	negativeRecalibrationThreshold = -0.01
 
-	testRounds = 20
+	experimentDuration = 100
+	experimentRounds   = 5
+
+	minimumRate    = 100
+	maximumRate    = 500
+	rateIncrements = 4
+
+	minimumLoad    = 0.5
+	maximumLoad    = 1.0
+	loadIncrements = 10
 )
 
 var (
@@ -100,23 +106,16 @@ var (
 	testInstance      = getEnv("BENCHMARK_INSTANCE", "")
 )
 
-type conf struct {
-	Seconds     float64
-	Concurrency int
-	Load        float64
-	Rates       []float64
-	LogNum      int64
-	LogSize     int64
-}
-
-type saturationTest struct {
-	trace       bool
+type impairmentTest struct {
+	// Configuration
 	concurrency int
-	seconds     float64
-	qps         float64
-	load        float64
 	lognum      int64
 	logsize     int64
+
+	// Experiment variables
+	trace bool
+	rate  float64
+	load  float64
 }
 
 type sreq struct {
@@ -160,7 +159,7 @@ type benchStats struct {
 	// The cost of a single unit of work.
 	workCost benchlib.Timing
 
-	// Cost of tracing a span that does no work
+	// Cost of tracing a span that does no work.
 	spanCost benchlib.Timing
 
 	spansReceived int64
@@ -272,7 +271,7 @@ func (s *benchService) estimateWorkCost() {
 			continue
 		}
 		var st benchlib.TimingStats
-		for j := 0; j < testRounds; j++ {
+		for j := 0; j < calibrateRounds; j++ {
 			glog.V(2).Info("Measuring work for rounds=", multiplier)
 			tm := s.run(&benchlib.Control{
 				Concurrent:    1,
@@ -294,7 +293,7 @@ func (s *benchService) estimateWorkCost() {
 
 func (s *benchService) sanityCheckWork() bool {
 	var st benchlib.TimingStats
-	for i := 0; i < testRounds; i++ {
+	for i := 0; i < calibrateRounds; i++ {
 		work := int64(testTimeSlice.Seconds() / s.current.workCost.Wall.Seconds())
 		tm := s.run(&benchlib.Control{
 			Concurrent:    1,
@@ -335,7 +334,7 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 			continue
 		}
 		var ss benchlib.TimingStats
-		for j := 0; j < testRounds; j++ {
+		for j := 0; j < calibrateRounds; j++ {
 			tm := s.run(&benchlib.Control{
 				Concurrent:    1,
 				Work:          0,
@@ -356,69 +355,55 @@ func (s *benchService) measureTestLoop(trace bool) benchlib.Timing {
 	}
 }
 
-// Returns the CPU impairment as a ratio (e.g., 0.01 for 1% impairment).
-func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, completion float64) {
-	qpsPerCpu := opts.qps / float64(opts.concurrency)
+func (s *benchService) measureSpanImpairment(opts impairmentTest) (benchlib.DataPoint, float64) {
+	qpsPerCpu := opts.rate / float64(opts.concurrency)
 
 	workTime := benchlib.Time(opts.load / qpsPerCpu)
 	sleepTime := benchlib.Time((1 - opts.load) / qpsPerCpu)
-	sleepTime0 := sleepTime
-	totalSpans := opts.qps * opts.seconds
-	totalPerCpu := opts.seconds * qpsPerCpu
+	totalSpans := opts.rate * experimentDuration
+	totalPerCpu := experimentDuration * qpsPerCpu
 
 	tr := "untraced"
 	if opts.trace {
 		tr = "traced"
 	}
-	runOnce := func() (*benchlib.TimingStats, *stats.Stats, *stats.Stats, *stats.Stats, *stats.Stats) {
-		var ss benchlib.TimingStats
-		var spans stats.Stats
-		var dropped stats.Stats
-		var bytes stats.Stats
-		var sleeps stats.Stats
-		for ss.Count() != experimentRounds {
-			sbefore := s.current.spansReceived
-			bbefore := s.current.bytesReceived
-			dbefore := s.current.spansDropped
-			tm := s.run(&benchlib.Control{
-				Concurrent:  opts.concurrency,
-				Work:        int64(workTime / s.current.workCost.Wall),
-				Sleep:       time.Duration(sleepTime * nanosPerSecond),
-				Repeat:      int64(totalPerCpu),
-				Trace:       opts.trace,
-				NumLogs:     opts.lognum,
-				BytesPerLog: opts.logsize,
-			})
-			stotal := s.current.spansReceived - sbefore
-			btotal := s.current.bytesReceived - bbefore
-			dtotal := s.current.spansDropped - dbefore
+	runOnce := func() (runtime *benchlib.Timing, spans, dropped, bytes int64, rate, work, sleep float64) {
+		sbefore := s.current.spansReceived
+		bbefore := s.current.bytesReceived
+		dbefore := s.current.spansDropped
+		tm := s.run(&benchlib.Control{
+			Concurrent:  opts.concurrency,
+			Work:        int64(workTime / s.current.workCost.Wall),
+			Sleep:       time.Duration(sleepTime * nanosPerSecond),
+			Repeat:      int64(totalPerCpu),
+			Trace:       opts.trace,
+			NumLogs:     opts.lognum,
+			BytesPerLog: opts.logsize,
+		})
+		stotal := s.current.spansReceived - sbefore
+		btotal := s.current.bytesReceived - bbefore
+		dtotal := s.current.spansDropped - dbefore
 
-			adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, totalPerCpu)
-			traceCost := (adjusted.Wall.Seconds() - (totalPerCpu * workTime.Seconds()) - (tm.Sleeps.Seconds() / float64(opts.concurrency)))
-			impairment := traceCost / adjusted.Wall.Seconds()
-			supposedWork := (totalPerCpu * workTime.Seconds())
-			effectiveLoad := supposedWork / adjusted.Wall.Seconds()
+		adjusted := tm.Measured.Sub(s.current.zeroCost[opts.concurrency]).SubFactor(s.current.roundCost, totalPerCpu)
+		sleepPerCpu := tm.Sleeps.Seconds() / float64(opts.concurrency)
+		workPerCpu := totalPerCpu * workTime.Seconds()
+		actualRate := totalSpans / adjusted.Wall.Seconds()
+		traceCost := adjusted.Wall.Seconds() - workPerCpu - sleepPerCpu
+		impairment := traceCost / adjusted.Wall.Seconds()
+		workLoad := workPerCpu / adjusted.Wall.Seconds()
+		sleepLoad := sleepPerCpu / adjusted.Wall.Seconds()
+		visibleLoad := (adjusted.Wall.Seconds() - sleepPerCpu) / adjusted.Wall.Seconds()
 
-			glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) actual load %.2f%% impairment %.2f%% (sleep time %s, sleep total %.2f, adjusted %.2f)",
-				opts.qps, 100*opts.load, tm.Measured.Wall, opts.lognum, opts.logsize, tr,
-				100*effectiveLoad, 100*impairment, sleepTime, tm.Sleeps, adjusted)
+		glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) work load %.2f%% visible load %.2f%% visible impairment %.2f%%, actual rate %.1f",
+			opts.rate, 100*opts.load, adjusted.Wall, opts.lognum, opts.logsize, tr,
+			100*workLoad, 100*visibleLoad, 100*impairment, actualRate)
 
-			// If more than 10% under, recalibrate
-			if impairment < -0.1 {
-				return nil, nil, nil, nil, nil
-			}
-
-			sleepPerCpu := tm.Sleeps / benchlib.Time(opts.concurrency)
-			glog.V(2).Info("Sleep total ", benchlib.Time(sleepPerCpu),
-				" i.e. ", sleepPerCpu.Seconds()/opts.seconds*100.0, "%")
-
-			ss.Update(adjusted)
-			sleeps.Update(sleepPerCpu.Seconds())
-			spans.Update(float64(stotal))
-			dropped.Update(float64(dtotal))
-			bytes.Update(float64(btotal))
+		// If too far under, recalibrate
+		if impairment < negativeRecalibrationThreshold {
+			return nil, 0, 0, 0, 0, 0, 0
 		}
-		return &ss, &spans, &dropped, &bytes, &sleeps
+
+		return &adjusted, stotal, dtotal, btotal, actualRate, workLoad, sleepLoad
 	}
 	for {
 		if s.current.calibrations < minimumCalibrations {
@@ -427,68 +412,36 @@ func (s *benchService) measureSpanSaturation(opts saturationTest) (imp float64, 
 			s.recalibrate()
 		}
 
-		ss, spans, drops, bytes, sleeps := runOnce()
+		ss, spans, _, _, actualRate, workLoad, sleepLoad := runOnce()
 
 		if ss == nil {
 			s.recalibrate()
 			continue
 		}
 
-		// TODO The logic here is using averages, which allows
-		// several wildly-out-of-range runs to counter each
-		// other.  Perform this fitness test on individual run
-		// times.
-		offBy := ss.Wall.Mean() - opts.seconds
-		ratio := offBy / opts.seconds
-		if math.Abs(ratio) > timingTolerance {
-			adjust := -benchlib.Time(offBy / float64(totalPerCpu))
-			if adjust < 0 {
-				if sleepTime == 0 {
-					// The load factor precludes this test from succeeding.
-					glog.Info("Load factor is too high to continue")
-					return 1, 0
-				}
-				if sleepTime+adjust <= 0 {
-					glog.V(1).Info("Adjust timing to zero (", sleepTime, " adjust ", adjust, ") off by ", offBy)
-					sleepTime = 0
-					continue
-				}
-			}
-
-			glog.V(1).Info("Adjust timing by ", adjust, " (", sleepTime, " to ",
-				sleepTime+adjust, ") off by ", offBy)
-			sleepTime += adjust
-
-			if sleepTime > sleepTime0 {
-				sleepTime = sleepTime0
-				s.recalibrate()
-			}
-			continue
-		}
-
-		completeRatio := spans.Mean() / totalSpans
-		dropRatio := drops.Mean() / totalSpans
-
-		if opts.trace && completeRatio < completeThreshold {
-			glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) INSUFFICIENT completion %.2f%% dropped %.2f%%",
-				opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr, 100*completeRatio, 100*dropRatio)
-			return 1, 0
-		}
-
-		impairment := (ss.Wall.Mean() - (totalPerCpu * workTime.Seconds()) - (sleeps.Mean())) / ss.Wall.Mean()
-		glog.Infof("Load %v@%3f%% %v (log%d*%d,%s) impaired %.2f%% completed %.2f%% @ %.2fB/span",
-			opts.qps, 100*opts.load, ss, opts.lognum, opts.logsize, tr,
-			100*impairment,
-			100*completeRatio,
-			bytes.Mean()/spans.Mean())
-		return impairment, completeRatio
+		completeRatio := float64(spans) / totalSpans
+		return benchlib.DataPoint{actualRate, workLoad, sleepLoad}, completeRatio
 	}
 }
 
-func (s *benchService) measureImpairment(c conf) {
-	for _, qps := range c.Rates {
-		s.saveResult(s.measureImpairmentAtLoad(c, qps))
+func (s *benchService) measureImpairment(c benchlib.Config) {
+	output := benchlib.Output{}
+	output.Title = testTitle
+	output.Client = testClient
+	output.Name = testConfigName
+	output.Concurrent = c.Concurrency
+	output.LogBytes = c.LogNum * c.LogSize
+
+	rateInterval := float64(maximumRate-minimumRate) / rateIncrements
+
+	for rate := float64(minimumRate); rate <= maximumRate; rate += rateInterval {
+		loadInterval := float64(maximumLoad-minimumLoad) / loadIncrements
+		for load := minimumLoad; load <= maximumLoad; load += loadInterval {
+			m := s.measureImpairmentAtRateAndLoad(c, rate, load)
+			output.Results = append(output.Results, m...)
+		}
 	}
+	s.saveResult(output)
 }
 
 func (s *benchService) saveResult(result benchlib.Output) {
@@ -498,7 +451,7 @@ func (s *benchService) saveResult(result benchlib.Output) {
 	}
 	withNewline := append(encoded, '\n')
 	fmt.Print(string(withNewline))
-	s.writeTo(path.Join(result.Title, result.Client, result.Name, fmt.Sprint("qps=", result.Rate)), withNewline)
+	s.writeTo(path.Join(result.Title, result.Name, result.Client), withNewline)
 }
 
 func (s *benchService) writeTo(name string, data []byte) {
@@ -514,46 +467,30 @@ func (s *benchService) writeTo(name string, data []byte) {
 	}
 }
 
-func (s *benchService) measureImpairmentAtLoad(c conf, qps float64) benchlib.Output {
-	var output benchlib.Output
-
-	output.Title = testTitle
-	output.Name = testConfigName
-	output.Client = testClient
-	output.Load = c.Load
-	output.Concurrent = c.Concurrency
-	output.Rate = qps
-	output.LogBytes = c.LogNum * c.LogSize
-
-	glog.Infof("Starting %v@%3f%%", qps, 100*c.Load)
-
-	output.Baseline, _ = s.measureSpanSaturation(saturationTest{
-		trace:       false,
-		concurrency: c.Concurrency,
-		seconds:     c.Seconds,
-		qps:         qps,
-		load:        c.Load,
-		lognum:      c.LogNum,
-		logsize:     c.LogSize,
-	})
-	if output.Baseline != 1 {
-		output.GrossImpairment, output.Completion = s.measureSpanSaturation(saturationTest{
-			trace:       true,
+func (s *benchService) measureImpairmentAtRateAndLoad(c benchlib.Config, rate, load float64) []benchlib.Measurement {
+	glog.V(2).Infof("Starting rate=%.2f/sec load=%.2f%% test", rate, load*100)
+	ms := []benchlib.Measurement{}
+	for i := 0; i < experimentRounds; i++ {
+		m := benchlib.Measurement{}
+		m.Untraced, _ = s.measureSpanImpairment(impairmentTest{
+			trace:       false,
 			concurrency: c.Concurrency,
-			seconds:     c.Seconds,
-			qps:         qps,
-			load:        c.Load,
+			rate:        rate,
+			load:        load,
 			lognum:      c.LogNum,
 			logsize:     c.LogSize,
 		})
+		m.Traced, m.Completion = s.measureSpanImpairment(impairmentTest{
+			trace:       true,
+			concurrency: c.Concurrency,
+			rate:        rate,
+			load:        load,
+			lognum:      c.LogNum,
+			logsize:     c.LogSize,
+		})
+		ms = append(ms, m)
 	}
-	if output.Baseline != 1 && output.GrossImpairment != 1 {
-		glog.Infof("Load %v@%3f%%: Tracing adds %.02f%% CPU impairment",
-			qps, 100*c.Load, 100*(output.GrossImpairment-output.Baseline))
-	} else {
-		glog.Infof("Load %v@%3f%%: Testing incomplete", qps, 100*c.Load)
-	}
-	return output
+	return ms
 }
 
 func (s *benchService) warmup() {
@@ -587,7 +524,7 @@ func (s *benchService) run(c *benchlib.Control) *benchlib.Result {
 	return r
 }
 
-func (s *benchService) runTests(b benchClient, c conf) {
+func (s *benchService) runTests(b benchClient, c benchlib.Config) {
 	s.runTest(b, c)
 	s.tearDown()
 }
@@ -610,7 +547,7 @@ func (s *benchService) recalibrate() {
 	}
 }
 
-func (s *benchService) runTest(bc benchClient, c conf) {
+func (s *benchService) runTest(bc benchClient, c benchlib.Config) {
 	s.current = newBenchStats(bc)
 
 	glog.Info("Testing ", testClient)
@@ -773,7 +710,7 @@ func main() {
 		Handler:      http.HandlerFunc(serializeHTTP),
 	}
 
-	var c conf
+	var c benchlib.Config
 
 	bc, ok := allClients[testClient]
 	if !ok {
