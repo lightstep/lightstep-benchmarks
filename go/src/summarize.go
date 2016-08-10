@@ -133,7 +133,7 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 	sort.Sort(umeasure)
 	sort.Sort(tmeasure)
 
-	dir := fmt.Sprintf("./%s-%s-%s", output.Title, output.Name, output.Client)
+	dir := fmt.Sprintf("./%s-%s-%s", output.Title, output.Client, output.Name)
 	if err := os.Mkdir(dir, 0755); err != nil {
 		glog.Fatal("Could not mkdir: ", dir)
 	}

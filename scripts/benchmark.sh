@@ -6,6 +6,8 @@
 # e.g.:
 #   benchmark.sh jvm_9_0_8 java 4 four-cpus-1kb-logs
 
+# TODO Add safety here to avoid losing long experiments!
+
 set -e
 
 # arguments

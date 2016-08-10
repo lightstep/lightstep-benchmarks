@@ -82,6 +82,8 @@ type DataPoint struct {
 }
 
 type Measurement struct {
+	TargetRate float64
+	TargetLoad float64
 	Untraced   DataPoint // Tracing off
 	Traced     DataPoint // Tracing on
 	Completion float64   // Tracing on completion rate

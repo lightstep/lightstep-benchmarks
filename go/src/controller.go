@@ -33,6 +33,11 @@ import (
 // (should use a <=, see goclient, jsclient, pyclient. Remove the
 // hacky Sleep = 1; SleepInterval = BIG; hack in this file.
 
+// TODO parameterize the test constants below so it's possible to
+// run short and long tests easily.
+// type TestQuality struct {
+// }
+
 const (
 	// collectorBinaryPath is the path of the Thrift collector service
 	collectorBinaryPath = "/_rpc/v1/reports/binary"
@@ -42,16 +47,16 @@ const (
 	nanosPerSecond = 1e9
 
 	// testIteration is used for initial estimates and calibration.
-	testIteration = 1000
+	testIteration = 10000
 
 	// maxConcurrency is the limit of concurrency testing
 	maxConcurrency = 16
 
 	// testTolerance is used for a sanity checks.
-	testTolerance = 0.02
+	testTolerance = 0.01
 
 	minimumCalibrations = 3
-	calibrateRounds     = 20
+	calibrateRounds     = 502
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
@@ -61,12 +66,12 @@ const (
 	// possible, recalibrate.
 	negativeRecalibrationThreshold = -0.01
 
-	experimentDuration = 100
-	experimentRounds   = 5
+	experimentDuration = 120
+	experimentRounds   = 40
 
 	minimumRate    = 100
-	maximumRate    = 500
-	rateIncrements = 4
+	maximumRate    = 1000
+	rateIncrements = 9
 
 	minimumLoad    = 0.5
 	maximumLoad    = 1.0
@@ -210,7 +215,11 @@ func (s *benchService) countDroppedSpans(request *lst.ReportRequest) {
 	}
 	for _, c := range request.InternalMetrics.Counts {
 		if c.Name == "spans.dropped" {
-			s.current.spansDropped += *c.Int64Value
+			if c.Int64Value != nil {
+				s.current.spansDropped += *c.Int64Value
+			} else if c.DoubleValue != nil {
+				s.current.spansDropped += int64(*c.DoubleValue)
+			}
 		}
 	}
 }
@@ -472,6 +481,8 @@ func (s *benchService) measureImpairmentAtRateAndLoad(c benchlib.Config, rate, l
 	ms := []benchlib.Measurement{}
 	for i := 0; i < experimentRounds; i++ {
 		m := benchlib.Measurement{}
+		m.TargetRate = rate
+		m.TargetLoad = load
 		m.Untraced, _ = s.measureSpanImpairment(impairmentTest{
 			trace:       false,
 			concurrency: c.Concurrency,
@@ -705,8 +716,8 @@ func main() {
 	mux := http.NewServeMux()
 	server := &http.Server{
 		Addr:         address,
-		ReadTimeout:  86400 * time.Second,
-		WriteTimeout: 86400 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 0 * time.Second,
 		Handler:      http.HandlerFunc(serializeHTTP),
 	}
 
