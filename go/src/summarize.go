@@ -23,31 +23,41 @@ import (
 
 const (
 	testStorageBucket = "lightstep-client-benchmarks"
-
-	numTranches = 3
 )
 
 var (
 	testName = flag.String("test", "", "Name of the test")
 
-	tranchNames = []string{
-		"high load",
-		"med load",
-		"low load",
-	}
+	// tranchNames = []string{
+	// 	"high load",
+	// 	"med load",
+	// 	"low load",
+	// }
 
-	// These should be the same size as numTranches
-	tracedColors = []string{
-		"#ff0000",
-		"#ff8000",
-		"#ffff00",
-	}
-	untracedColors = []string{
-		"#888888",
-		"#777777",
-		"#666666",
-	}
+	// // These should be the same size as numTranches
+	// tracedColors = []string{
+	// 	"#ff0000",
+	// 	"#ff8000",
+	// 	"#ffff00",
+	// }
+	// untracedColors = []string{
+	// 	"#888888",
+	// 	"#777777",
+	// 	"#666666",
+	// }
 )
+
+func tranchName(l float64) string {
+	return strings.Replace(fmt.Sprintf("%.2f", l), ".", "_", -1)
+}
+
+func tracedColor(l float64) string {
+	return fmt.Sprintf("#ff%02x00", int(255*(1-l)))
+}
+
+func untracedColor(l float64) string {
+	return fmt.Sprintf("#%02xff00", int(255*(1-l)))
+}
 
 func usage() {
 	fmt.Printf("usage: %s --test=<...>\n", os.Args[0])
@@ -96,11 +106,11 @@ func main() {
 
 }
 
-type ByLoad []*benchlib.DataPoint
+// type ByLoad []*benchlib.DataPoint
 
-func (a ByLoad) Len() int           { return len(a) }
-func (a ByLoad) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByLoad) Less(i, j int) bool { return a[i].WorkRatio > a[j].WorkRatio }
+// func (a ByLoad) Len() int           { return len(a) }
+// func (a ByLoad) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+// func (a ByLoad) Less(i, j int) bool { return a[i].WorkRatio > a[j].WorkRatio }
 
 func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, name string) error {
 	oh := b.Object(name)
@@ -116,27 +126,27 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 	if err := json.Unmarshal(data, &output); err != nil {
 		return err
 	}
-	var umeasure ByLoad
-	var tmeasure ByLoad
+
+	loadMap := map[float64][]benchlib.Measurement{}
 
 	for _, p := range output.Results {
 		p := p
 		if p.Completion < 0.95 {
 			continue
 		}
-		// Note: current experiment doesn't have the input load setting
-		// so we'll use the effective load factor which underestimates
-		// the input load.
-		umeasure = append(umeasure, &p.Untraced)
-		tmeasure = append(tmeasure, &p.Traced)
+		loadMap[p.TargetLoad] = append(loadMap[p.TargetLoad], p)
 	}
-	sort.Sort(umeasure)
-	sort.Sort(tmeasure)
 
 	dir := fmt.Sprintf("./%s-%s-%s", output.Title, output.Client, output.Name)
 	if err := os.Mkdir(dir, 0755); err != nil {
 		glog.Fatal("Could not mkdir: ", dir)
 	}
+
+	loadVals := []float64{}
+	for l, _ := range loadMap {
+		loadVals = append(loadVals, l)
+	}
+	sort.Float64s(loadVals)
 
 	var script bytes.Buffer
 
@@ -152,22 +162,23 @@ set ylabel "Visible CPU Impairment"
 set style func points
 `)
 
-	perTranch := len(umeasure) / numTranches
-
 	plotCmds := []string{}
 	lineCmds := []string{}
 
-	for i := numTranches - 1; i >= 0; i -= 1 {
-		tx := make([]float64, perTranch)
-		ty := make([]float64, perTranch)
-		ux := make([]float64, perTranch)
-		uy := make([]float64, perTranch)
+	for _, l := range loadVals {
+		measurements := loadMap[l]
+		count := len(measurements)
+
+		tx := make([]float64, count)
+		ty := make([]float64, count)
+		ux := make([]float64, count)
+		uy := make([]float64, count)
 
 		var buffer bytes.Buffer
 
-		for j := 0; j < perTranch; j++ {
-			tm := tmeasure[i*perTranch+j]
-			um := umeasure[i*perTranch+j]
+		for _, m := range measurements {
+			tm := m.Traced
+			um := m.Untraced
 
 			tx = append(tx, tm.RequestRate)
 			ux = append(ux, um.RequestRate)
@@ -184,7 +195,9 @@ set style func points
 				1-tm.WorkRatio-tm.SleepRatio)))
 		}
 
-		tranchCsv := fmt.Sprintf("tranch%d.csv", i)
+		lstr := tranchName(l)
+
+		tranchCsv := fmt.Sprintf("tranch%s.csv", lstr)
 		err := ioutil.WriteFile(path.Join(dir, tranchCsv), buffer.Bytes(), 0755)
 		if err != nil {
 			glog.Fatal("Could not write file: ", err)
@@ -192,18 +205,18 @@ set style func points
 		tslope, tinter, _, _, _, _ := stats.LinearRegression(tx, ty)
 		uslope, uinter, _, _, _, _ := stats.LinearRegression(ux, uy)
 
-		script.WriteString(fmt.Sprintf("t%d(x)=%f*x+%f\n", i, tslope, tinter))
-		script.WriteString(fmt.Sprintf("u%d(x)=%f*x+%f\n", i, uslope, uinter))
+		script.WriteString(fmt.Sprintf("t%s(x)=%f*x+%f\n", lstr, tslope, tinter))
+		script.WriteString(fmt.Sprintf("u%s(x)=%f*x+%f\n", lstr, uslope, uinter))
 
 		plotCmds = append(plotCmds, fmt.Sprintf("'%s' using 1:3 title 'untraced - %s' with point lc rgb '%s'",
-			tranchCsv, tranchNames[i], untracedColors[i]))
+			tranchCsv, lstr, untracedColor(l)))
 		plotCmds = append(plotCmds, fmt.Sprintf("'%s' using 4:6 title 'traced - %s' with point lc rgb '%s'",
-			tranchCsv, tranchNames[i], tracedColors[i]))
+			tranchCsv, lstr, tracedColor(l)))
 
-		lineCmds = append(lineCmds, fmt.Sprintf("u%d(x) title 'untraced - %s' with line lc rgb '%s'",
-			i, tranchNames[i], untracedColors[i]))
-		lineCmds = append(lineCmds, fmt.Sprintf("t%d(x) title 'traced - %s' with line lc rgb '%s'",
-			i, tranchNames[i], tracedColors[i]))
+		lineCmds = append(lineCmds, fmt.Sprintf("u%s(x) title 'untraced - %s' with line lc rgb '%s'",
+			lstr, lstr, untracedColor(l)))
+		lineCmds = append(lineCmds, fmt.Sprintf("t%s(x) title 'traced - %s' with line lc rgb '%s'",
+			lstr, lstr, tracedColor(l)))
 	}
 	plotCmds = append(plotCmds, lineCmds...)
 
