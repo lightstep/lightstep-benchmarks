@@ -12,6 +12,7 @@ import (
 
 const (
 	ControllerPort        = 8000
+	GrpcPort              = 8001
 	ControllerHost        = "localhost"
 	ControllerAccessToken = "ignored"
 
