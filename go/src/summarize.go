@@ -1,13 +1,14 @@
 package main
 
 import (
-	"benchlib"
+	bench "benchlib"
 	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path"
 	"sort"
@@ -106,7 +107,20 @@ func main() {
 
 }
 
-// type ByLoad []*benchlib.DataPoint
+type outputDir struct {
+	*bench.Output
+	dir string
+}
+
+func newOutputDir(output *bench.Output) outputDir {
+	dir := fmt.Sprintf("./%s-%s-%s", output.Title, output.Client, output.Name)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		glog.Fatal("Could not mkdir: ", dir)
+	}
+	return outputDir{output, dir}
+}
+
+// type ByLoad []*bench.DataPoint
 
 // func (a ByLoad) Len() int           { return len(a) }
 // func (a ByLoad) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -122,12 +136,58 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 	if err != nil {
 		return err
 	}
-	output := benchlib.Output{}
+	output := bench.Output{}
 	if err := json.Unmarshal(data, &output); err != nil {
 		return err
 	}
 
-	loadMap := map[float64][]benchlib.Measurement{}
+	if err := s.getSleepCalibration(&output); err != nil {
+		return err
+	}
+
+	return s.getMeasurements(&output)
+}
+
+func (s *summarizer) getSleepCalibration(output *bench.Output) error {
+	factorMap := map[int][]bench.SleepCalibration{}
+
+	for _, s := range output.Sleeps {
+		s := s
+		factorMap[s.WorkFactor] = append(factorMap[s.WorkFactor], s)
+	}
+
+	var workVals []int
+	for w, _ := range factorMap {
+		workVals = append(workVals, w)
+	}
+	sort.Ints(workVals)
+
+	for _, w := range workVals {
+		sm := factorMap[w]
+
+		var ras, rns, as bench.TimingStats
+		for _, s := range sm {
+			runtimeDiff := (s.RunAndSleep - s.RunNoSleep) / float64(sm[0].Repeats)
+			diff := math.Abs(runtimeDiff-bench.DefaultSleepInterval.Seconds()) / bench.DefaultSleepInterval.Seconds()
+			if diff <= 0 || diff >= 1 {
+				glog.Info("Skipping invalid sleep time: ", s, "time", runtimeDiff, "diff", diff)
+				continue
+			}
+
+			ras.Update(bench.WallTiming(s.RunAndSleep))
+			rns.Update(bench.WallTiming(s.RunNoSleep))
+			as.Update(bench.WallTiming(s.ActualSleep))
+		}
+
+		sc := ras.Mean().Sub(rns.Mean()).Sub(as.Mean()).Div(float64(sm[0].Repeats))
+		glog.Infof("Sleep cost @ %d work factor = %v", w, sc.Wall)
+	}
+
+	return nil
+}
+
+func (s *summarizer) getMeasurements(output *bench.Output) error {
+	loadMap := map[float64][]bench.Measurement{}
 
 	for _, p := range output.Results {
 		p := p
@@ -137,10 +197,7 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 		loadMap[p.TargetLoad] = append(loadMap[p.TargetLoad], p)
 	}
 
-	dir := fmt.Sprintf("./%s-%s-%s", output.Title, output.Client, output.Name)
-	if err := os.Mkdir(dir, 0755); err != nil {
-		glog.Fatal("Could not mkdir: ", dir)
-	}
+	odir := newOutputDir(output)
 
 	loadVals := []float64{}
 	for l, _ := range loadMap {
@@ -198,7 +255,7 @@ set style func points
 		lstr := tranchName(l)
 
 		tranchCsv := fmt.Sprintf("tranch%s.csv", lstr)
-		err := ioutil.WriteFile(path.Join(dir, tranchCsv), buffer.Bytes(), 0755)
+		err := ioutil.WriteFile(path.Join(odir.dir, tranchCsv), buffer.Bytes(), 0755)
 		if err != nil {
 			glog.Fatal("Could not write file: ", err)
 		}
@@ -224,7 +281,9 @@ set style func points
 	script.WriteString(strings.Join(plotCmds, ","))
 	script.WriteString("\nquit\n")
 
-	ioutil.WriteFile(path.Join(dir, "script.gnuplot"), script.Bytes(), 0755)
+	ioutil.WriteFile(path.Join(odir.dir, "script.gnuplot"), script.Bytes(), 0755)
+
+	// TODO call gnuplot
 
 	return nil
 }
