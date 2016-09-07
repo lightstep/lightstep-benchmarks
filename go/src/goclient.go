@@ -22,6 +22,10 @@ var (
 	logPayloadStr string
 )
 
+func fatal(x ...interface{}) {
+	panic(fmt.Sprintln(x...))
+}
+
 func init() {
 	lps := make([]byte, benchlib.LogsSizeMax)
 	for i := 0; i < len(lps); i++ {
@@ -48,16 +52,16 @@ func work(n int64) int64 {
 func (t *testClient) getURL(path string) []byte {
 	resp, err := http.Get(t.baseURL + path)
 	if err != nil {
-		panic(fmt.Sprint("Bench control request failed: ", err))
+		fatal("Bench control request failed: ", err)
 	}
 	if resp.StatusCode != 200 {
-		panic(fmt.Sprint("Bench control status != 200: ", resp.Status, ": ", path))
+		fatal("Bench control status != 200: ", resp.Status, ": ", path)
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		panic(fmt.Sprint("Bench error reading body: ", err))
+		fatal("Bench error reading body: ", err)
 	}
 	return body
 }
@@ -68,7 +72,7 @@ func (t *testClient) loop() {
 
 		control := benchlib.Control{}
 		if err := json.Unmarshal(body, &control); err != nil {
-			panic(fmt.Sprint("Bench control parse error: ", err))
+			fatal("Bench control parse error: ", err)
 		}
 		if control.Exit {
 			return
