@@ -83,11 +83,11 @@ const (
 	loadIncrements = 10
 
 	// Sleep experiment parameters
-	sleepTrialCount     = 20
+	sleepTrialCount     = 500
 	sleepRepeats        = int64(20)
-	sleepMaxWorkFactor  = int64(100)
-	sleepMinWorkFactor  = int64(10)
-	sleepWorkFactorIncr = int64(30)
+	sleepMaxWorkFactor  = int64(200)
+	sleepMinWorkFactor  = int64(100)
+	sleepWorkFactorIncr = int64(100)
 )
 
 var (
@@ -578,11 +578,11 @@ func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
 			st.sleeps.Update(bench.Timing{Wall: wsleep.Sleeps})
 
 			o.Sleeps = append(o.Sleeps, bench.SleepCalibration{
-				WorkFactor:  m,
+				WorkFactor:  int(m),
 				RunAndSleep: wsleep.Measured.Wall.Seconds(),
 				RunNoSleep:  ssleep.Measured.Wall.Seconds(),
 				ActualSleep: wsleep.Sleeps.Seconds(),
-				Repeats:     sleepRepeats,
+				Repeats:     int(sleepRepeats),
 			})
 		}
 		fmt.Println("Work factor", m, "sleep cost",

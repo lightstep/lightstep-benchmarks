@@ -171,6 +171,6 @@ func main() {
 	// 	Collector: ls.Endpoint{
 	// 		Host:      benchlib.ControllerHost,
 	// 		Port:      benchlib.ControllerPort,
-	// 		Plaintext: true},
+	// 		UseGprc:   true},
 	tc.loop()
 }

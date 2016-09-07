@@ -106,11 +106,11 @@ type Output struct {
 }
 
 type SleepCalibration struct {
-	WorkFactor  int64
+	WorkFactor  int
 	RunAndSleep float64
 	RunNoSleep  float64
 	ActualSleep float64
-	Repeats     int64
+	Repeats     int
 }
 
 type Time float64
@@ -145,6 +145,10 @@ type TimingRegression struct {
 	Wall Regression
 	User Regression
 	Sys  Regression
+}
+
+func WallTiming(seconds float64) Timing {
+	return Timing{Wall: Time(seconds)}
 }
 
 func linearRegression(x, y []float64) Regression {
