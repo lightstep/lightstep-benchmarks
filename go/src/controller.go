@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,10 +22,12 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/cloud"
 	"google.golang.org/cloud/storage"
+	"google.golang.org/grpc"
 
 	"benchlib"
 
 	"github.com/golang/glog"
+	cpb "github.com/lightstep/lightstep-tracer-go/collectorpb"
 	lst "github.com/lightstep/lightstep-tracer-go/lightstep_thrift"
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
 )
@@ -219,6 +222,24 @@ func (s *benchService) countDroppedSpans(request *lst.ReportRequest) {
 				s.current.spansDropped += *c.Int64Value
 			} else if c.DoubleValue != nil {
 				s.current.spansDropped += int64(*c.DoubleValue)
+			}
+		}
+	}
+}
+
+// Note: This is a duplicate of countDroppedSpans for a protobuf
+// Report instead of a Thrift report.
+func (s *benchService) countGrpcDroppedSpans(request *cpb.ReportRequest) {
+	if request.InternalMetrics == nil {
+		return
+	}
+	for _, c := range request.InternalMetrics.Counts {
+		if c.Name == "spans.dropped" {
+			switch t := c.Value.(type) {
+			case *cpb.MetricsSample_IntValue:
+				s.current.spansDropped += t.IntValue
+			case *cpb.MetricsSample_DoubleValue:
+				s.current.spansDropped += int64(t.DoubleValue)
 			}
 		}
 	}
@@ -780,7 +801,35 @@ func main() {
 	mux.HandleFunc(benchlib.ResultPath, service.ServeResultHTTP)
 	mux.HandleFunc("/", service.ServeDefaultHTTP)
 
+	go runGrpc(service)
+
 	go service.runTests(bc, c)
 
 	glog.Fatal(server.ListenAndServe())
+}
+
+type grpcService struct {
+	service *benchService
+}
+
+func (g *grpcService) Report(ctx context.Context, req *cpb.ReportRequest) (resp *cpb.ReportResponse, err error) {
+	g.service.current.spansReceived += int64(len(req.Spans))
+	g.service.countGrpcDroppedSpans(req)
+	return
+}
+
+func (s *benchService) grpcShim() *grpcService {
+	return &grpcService{s}
+}
+
+func runGrpc(service *benchService) {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", benchlib.GrpcPort))
+	if err != nil {
+		glog.Fatalln("failed to listen:", err)
+	}
+	grpcServer := grpc.NewServer()
+
+	cpb.RegisterCollectorServiceServer(grpcServer, service.grpcShim())
+	glog.Infof("Binding GRPC collector to port HTTPS=%v", benchlib.GrpcPort)
+	glog.Fatal(grpcServer.Serve(lis))
 }
