@@ -180,7 +180,7 @@ type benchClient struct {
 }
 
 func fatal(x ...interface{}) {
-	panic(fmt.Sprint(x...))
+	panic(fmt.Sprintln(x...))
 }
 
 func print(x ...interface{}) {
