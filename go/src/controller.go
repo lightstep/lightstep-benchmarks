@@ -26,7 +26,6 @@ import (
 
 	bench "benchlib"
 
-	"github.com/golang/glog"
 	cpb "github.com/lightstep/lightstep-tracer-go/collectorpb"
 	lst "github.com/lightstep/lightstep-tracer-go/lightstep_thrift"
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
@@ -112,6 +111,7 @@ var (
 	testZone          = getEnv("BENCHMARK_ZONE", "")
 	testProject       = getEnv("BENCHMARK_PROJECT", "")
 	testInstance      = getEnv("BENCHMARK_INSTANCE", "")
+	testVerbose       = getEnv("BENCHMARK_VERBOSE", "")
 )
 
 type impairmentTest struct {
@@ -177,6 +177,16 @@ type benchStats struct {
 
 type benchClient struct {
 	Args []string
+}
+
+func fatal(x ...interface{}) {
+	panic(fmt.Sprint(x...))
+}
+
+func print(x ...interface{}) {
+	if testVerbose == "true" {
+		fmt.Sprintln(x...)
+	}
 }
 
 func getEnv(name, defval string) string {
@@ -262,7 +272,7 @@ func (s *benchService) estimateZeroCosts() {
 			st.Update(tm.Measured)
 		}
 		s.current.zeroCost[c] = st.Mean()
-		glog.V(1).Info("Cost Z_c_", c, " = ", s.current.zeroCost[c])
+		print("Cost Z_c_", c, " = ", s.current.zeroCost[c])
 	}
 }
 
@@ -271,14 +281,14 @@ func (s *benchService) estimateZeroCosts() {
 // the timing.
 func (s *benchService) measureSpanCost() {
 	s.current.spanCost = s.measureTestLoop(true)
-	glog.V(1).Infof("Cost T = %s/span", s.current.spanCost)
+	print("Cost T =", s.current.spanCost, "/span")
 }
 
 // estimateRoundCost runs a untraced loop doing no work to establish
 // the baseline cost of a repetition.
 func (s *benchService) estimateRoundCost() {
 	s.current.roundCost = s.measureTestLoop(false)
-	glog.V(1).Infof("Cost R = %s/round", s.current.roundCost)
+	print("Cost R =", s.current.roundCost, "/round")
 }
 
 // estimateWorkCosts measures the cost of the work function.
@@ -288,7 +298,7 @@ func (s *benchService) estimateWorkCost() {
 	// that results in working at least testTimeSlice.
 	multiplier := int64(1000)
 	for {
-		glog.V(2).Info("Testing work for rounds=", multiplier)
+		print("Testing work for rounds=", multiplier)
 		tm := s.run(&bench.Control{
 			Concurrent:    1,
 			Work:          multiplier,
@@ -302,7 +312,7 @@ func (s *benchService) estimateWorkCost() {
 		}
 		var st bench.TimingStats
 		for j := 0; j < calibrateRounds; j++ {
-			glog.V(2).Info("Measuring work for rounds=", multiplier)
+			print("Measuring work for rounds=", multiplier)
 			tm := s.run(&bench.Control{
 				Concurrent:    1,
 				Work:          multiplier,
@@ -312,11 +322,11 @@ func (s *benchService) estimateWorkCost() {
 			})
 			adjusted := tm.Measured.Sub(s.current.zeroCost[1]).Sub(s.current.roundCost)
 			st.Update(adjusted)
-			glog.V(2).Info("Measured work for rounds=", multiplier, " in ", adjusted,
+			print("Measured work for rounds=", multiplier, " in ", adjusted,
 				" == ", float64(adjusted.Wall)/float64(multiplier))
 		}
 		s.current.workCost = st.Mean().Div(float64(multiplier))
-		glog.V(1).Infof("Cost W = %s/unit", s.current.workCost)
+		print("Cost W =", s.current.workCost, "/unit")
 		return
 	}
 }
@@ -335,11 +345,11 @@ func (s *benchService) sanityCheckWork() bool {
 		adjusted := tm.Measured.Sub(s.current.zeroCost[1]).Sub(s.current.roundCost)
 		st.Update(adjusted)
 	}
-	glog.V(1).Infoln("Check work timing", st, "expected", testTimeSlice)
+	print("Check work timing", st, "expected", testTimeSlice)
 
 	absRatio := math.Abs((st.Wall.Mean() - testTimeSlice.Seconds()) / testTimeSlice.Seconds())
 	if absRatio > testTolerance {
-		glog.Warning("CPU work not well calibrated (or insufficient CPU): measured ",
+		fmt.Println("WARNING: CPU work not well calibrated (or insufficient CPU): measured ",
 			st.Mean(), " expected ", testTimeSlice,
 			" off by ", absRatio*100.0, "%")
 		return false
@@ -350,7 +360,7 @@ func (s *benchService) sanityCheckWork() bool {
 func (s *benchService) measureTestLoop(trace bool) bench.Timing {
 	multiplier := int64(1000)
 	for {
-		glog.V(2).Info("Measuring loop for rounds=", multiplier)
+		print("Measuring loop for rounds=", multiplier)
 		tm := s.run(&bench.Control{
 			Concurrent:    1,
 			Work:          0,
@@ -378,7 +388,7 @@ func (s *benchService) measureTestLoop(trace bool) bench.Timing {
 				adjusted = adjusted.SubFactor(s.current.roundCost, float64(multiplier))
 			}
 			ss.Update(adjusted)
-			glog.V(2).Info("Measured cost for rounds=", multiplier, " in ", adjusted,
+			print("Measured cost for rounds=", multiplier, " in ", adjusted,
 				" == ", float64(adjusted.Wall)/float64(multiplier))
 		}
 		return ss.Mean().Div(float64(multiplier))
@@ -424,9 +434,9 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		sleepLoad := sleepPerCpu / adjusted.Wall.Seconds()
 		visibleLoad := (adjusted.Wall.Seconds() - sleepPerCpu) / adjusted.Wall.Seconds()
 
-		glog.V(1).Infof("Trial %v@%3f%% %v (log%d*%d,%s) work load %.2f%% visible load %.2f%% visible impairment %.2f%%, actual rate %.1f",
+		print(fmt.Sprintf("Trial %v@%3f%% %v (log%d*%d,%s) work load %.2f%% visible load %.2f%% visible impairment %.2f%%, actual rate %.1f",
 			opts.rate, 100*opts.load, adjusted.Wall, opts.lognum, opts.logsize, tr,
-			100*workLoad, 100*visibleLoad, 100*impairment, actualRate)
+			100*workLoad, 100*visibleLoad, 100*impairment, actualRate))
 
 		// If too far under, recalibrate
 		if impairment < negativeRecalibrationThreshold {
@@ -477,7 +487,7 @@ func (s *benchService) measureImpairment(c bench.Config) {
 func (s *benchService) saveResult(result bench.Output) {
 	encoded, err := json.MarshalIndent(result, "", "")
 	if err != nil {
-		glog.Fatal("Couldn't encode JSON! " + err.Error())
+		fatal("Couldn't encode JSON!", err)
 	}
 	withNewline := append(encoded, '\n')
 	fmt.Print(string(withNewline))
@@ -489,16 +499,16 @@ func (s *benchService) writeTo(name string, data []byte) {
 	w := object.NewWriter(context.Background())
 	_, err := w.Write(data)
 	if err != nil {
-		glog.Fatal("Couldn't write storage bucket! " + err.Error())
+		fatal("Couldn't write storage bucket!", err)
 	}
 	err = w.Close()
 	if err != nil {
-		glog.Fatal("Couldn't close storage bucket! " + err.Error())
+		fatal("Couldn't close storage bucket! ", err)
 	}
 }
 
 func (s *benchService) measureImpairmentAtRateAndLoad(c bench.Config, rate, load float64) []bench.Measurement {
-	glog.V(2).Infof("Starting rate=%.2f/sec load=%.2f%% test", rate, load*100)
+	print(fmt.Sprintf("Starting rate=%.2f/sec load=%.2f%% test", rate, load*100))
 	ms := []bench.Measurement{}
 	for i := 0; i < experimentRounds; i++ {
 		m := bench.Measurement{}
@@ -548,11 +558,9 @@ func (s *benchService) run(c *bench.Control) *bench.Result {
 	if c.SleepInterval == 0 {
 		c.SleepInterval = bench.DefaultSleepInterval
 	}
-	glog.V(3).Info("Next control: ", c)
 	s.controlCh <- c
 	// TODO: Maybe timeout here and help diagnose hung process?
 	r := <-s.resultCh
-	glog.V(3).Info("Measured: ", r.Measured, " using ", s.current)
 	return r
 }
 
@@ -563,7 +571,7 @@ func (s *benchService) runTests(b benchClient, c bench.Config) {
 
 func (s *benchService) recalibrate() {
 	for {
-		glog.V(1).Info("Calibration starting")
+		print("Calibration starting")
 		cnt := s.current.calibrations
 		s.current = newBenchStats(s.current.benchClient)
 		s.current.calibrations = cnt + 1
@@ -582,7 +590,7 @@ func (s *benchService) recalibrate() {
 func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	s.current = newBenchStats(bc)
 
-	glog.Info("Testing ", testClient)
+	print("Testing ", testClient)
 	ch := make(chan bool)
 
 	defer func() {
@@ -601,18 +609,18 @@ func (s *benchService) execClient(bc benchClient, ch chan bool) {
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	if err := cmd.Start(); err != nil {
-		glog.Fatal("Could not start client: ", err)
+		fatal("Could not start client: ", err)
 	}
 	if err := cmd.Wait(); err != nil {
 		perr, ok := err.(*exec.ExitError)
 		if !ok {
-			glog.Fatal("Could not await client: ", err)
+			fatal("Could not await client: ", err)
 		}
 		if !perr.Exited() {
-			glog.Fatal("Client did not exit: ", err)
+			fatal("Client did not exit: ", err)
 		}
 		if !perr.Success() {
-			glog.Fatal("Client failed: ", string(perr.Stderr))
+			fatal("Client failed: ", string(perr.Stderr))
 		}
 	}
 	ch <- true
@@ -626,13 +634,13 @@ func (s *benchService) exitClient() {
 // ServeControlHTTP returns a JSON control request to the client.
 func (s *benchService) ServeControlHTTP(res http.ResponseWriter, req *http.Request) {
 	if s.controlling {
-		glog.Fatal("Out-of-phase control request", req.URL)
+		fatal("Out-of-phase control request", req.URL)
 	}
 	s.before = bench.GetChildUsage()
 	s.controlling = true
 	body, err := json.Marshal(<-s.controlCh)
 	if err != nil {
-		glog.Fatal("Marshal error: ", err)
+		fatal("Marshal error: ", err)
 	}
 	res.Write(body)
 }
@@ -640,7 +648,7 @@ func (s *benchService) ServeControlHTTP(res http.ResponseWriter, req *http.Reque
 // ServeResultHTTP records the client's result via a URL Query parameter "timing".
 func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Request) {
 	if !s.controlling {
-		glog.Fatal("Out-of-phase client result", req.URL)
+		fatal("Out-of-phase client result", req.URL)
 	}
 	usage := bench.GetChildUsage().Sub(s.before)
 	// Note: it would be nice if there were a decoder to unmarshal
@@ -649,7 +657,7 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 	params, err := url.ParseQuery(req.URL.RawQuery)
 
 	if err != nil {
-		glog.Fatal("Error parsing URL params: ", req.URL.RawQuery)
+		fatal("Error parsing URL params: ", req.URL.RawQuery)
 	}
 	s.controlling = false
 	s.resultCh <- &bench.Result{
@@ -677,7 +685,7 @@ func (s *benchService) ServeJSONHTTP(res http.ResponseWriter, req *http.Request)
 		var err error
 		bodyReader, err = gzip.NewReader(req.Body)
 		if err != nil {
-			http.Error(res, fmt.Sprintf("Could not decode gzipped content"),
+			http.Error(res, "Could not decode gzipped content",
 				http.StatusBadRequest)
 			return
 		}
@@ -710,7 +718,7 @@ func (s *benchService) ServeJSONHTTP(res http.ResponseWriter, req *http.Request)
 }
 
 func (s *benchService) ServeDefaultHTTP(res http.ResponseWriter, req *http.Request) {
-	glog.Fatal("Unexpected HTTP request", req.URL)
+	fatal("Unexpected HTTP request", req.URL)
 }
 
 func (s *benchService) tearDown() {
@@ -718,15 +726,15 @@ func (s *benchService) tearDown() {
 		// Delete this VM
 		url := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s",
 			testProject, testZone, testInstance)
-		glog.Info("Asking to delete this VM... ", url)
+		print("Asking to delete this VM... ", url)
 		req, err := http.NewRequest("DELETE", url, bytes.NewReader(nil))
 		if err != nil {
-			glog.Fatal("Invalid request ", err)
+			fatal("Invalid request ", err)
 		}
 		if _, err := s.gcpClient.Do(req); err != nil {
-			glog.Fatal("Error deleting this VM ", err)
+			fatal("Error deleting this VM ", err)
 		}
-		glog.Info("Done! This VM may...")
+		print("Done! This VM may...")
 	}
 	os.Exit(0)
 }
@@ -746,25 +754,25 @@ func main() {
 
 	bc, ok := allClients[testClient]
 	if !ok {
-		glog.Fatal("Please set the BENCHMARK_CLIENT client name")
+		fatal("Please set the BENCHMARK_CLIENT client name")
 	}
 	if testConfigFile == "" {
-		glog.Fatal("Please set the BENCHMARK_CONFIG_FILE filename")
+		fatal("Please set the BENCHMARK_CONFIG_FILE filename")
 	}
 	cdata, err := ioutil.ReadFile(testConfigFile)
 	if err != nil {
-		glog.Fatal("Error reading ", testConfigFile, ": ", err.Error())
+		fatal("Error reading ", testConfigFile, ": ", err.Error())
 	}
 	err = json.Unmarshal(cdata, &c)
 	if err != nil {
-		glog.Fatal("Error JSON-parsing ", testConfigFile, ": ", err.Error())
+		fatal("Error JSON-parsing ", testConfigFile, ": ", err.Error())
 	}
 	fmt.Println("Config:", string(cdata))
 
 	ctx := context.Background()
 	gcpClient, err := google.DefaultClient(ctx, storage.ScopeFullControl)
 	if err != nil {
-		glog.Fatal("GCP Default client: ", err)
+		fatal("GCP Default client: ", err)
 	}
 	storageClient, err := storage.NewClient(ctx, cloud.WithBaseHTTP(gcpClient))
 	if err != nil {
@@ -805,7 +813,7 @@ func main() {
 
 	go service.runTests(bc, c)
 
-	glog.Fatal(server.ListenAndServe())
+	fatal(server.ListenAndServe())
 }
 
 type grpcService struct {
@@ -825,11 +833,10 @@ func (s *benchService) grpcShim() *grpcService {
 func runGrpc(service *benchService) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", bench.GrpcPort))
 	if err != nil {
-		glog.Fatalln("failed to listen:", err)
+		fatal("failed to listen:", err)
 	}
 	grpcServer := grpc.NewServer()
 
 	cpb.RegisterCollectorServiceServer(grpcServer, service.grpcShim())
-	glog.Infof("Binding GRPC collector to port HTTPS=%v", bench.GrpcPort)
-	glog.Fatal(grpcServer.Serve(lis))
+	fatal(grpcServer.Serve(lis))
 }
