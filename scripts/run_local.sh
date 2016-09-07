@@ -49,8 +49,8 @@ if [ -z "${LANGUAGES}" ]; then
 fi
 
 # Languages that do not support concurrent testing
-# TODO cpp
-NON_CONCURRENT="nodejs ruby cpp"
+# TODO cpp python are disabled
+NON_CONCURRENT="nodejs ruby cpp python"
 
 # List of configurations
 if [ -z "${CONFIGS}" ]; then
@@ -70,7 +70,7 @@ function runtest()
     local config=${2}
     local conc=$(json ${SCRIPTS}/config/${config}.json '["Concurrency"]')
 
-    if [ ${conc} != "1" ]; then
+    if [ "${conc}" != "1" ]; then
 	if echo ${NON_CONCURRENT} | grep ${language} > /dev/null; then
 	    echo "Skip concurrent ${language}/${config}"
 	    return

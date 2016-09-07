@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
 	ls "github.com/lightstep/lightstep-tracer-go"
 	"github.com/opentracing/basictracer-go"
 	ot "github.com/opentracing/opentracing-go"
@@ -24,6 +23,10 @@ const (
 var (
 	logPayloadStr string
 )
+
+func fatal(x ...interface{}) {
+	panic(fmt.Sprintln(x...))
+}
 
 func init() {
 	lps := make([]byte, benchlib.LogsSizeMax)
@@ -51,16 +54,16 @@ func work(n int64) int64 {
 func (t *testClient) getURL(path string) []byte {
 	resp, err := http.Get(t.baseURL + path)
 	if err != nil {
-		glog.Fatal("Bench control request failed: ", err)
+		fatal("Bench control request failed: ", err)
 	}
 	if resp.StatusCode != 200 {
-		glog.Fatal("Bench control status != 200: ", resp.Status, ": ", path)
+		fatal("Bench control status != 200: ", resp.Status, ": ", path)
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		glog.Fatal("Bench error reading body: ", err)
+		fatal("Bench error reading body: ", err)
 	}
 	return body
 }
@@ -71,7 +74,7 @@ func (t *testClient) loop() {
 
 		control := benchlib.Control{}
 		if err := json.Unmarshal(body, &control); err != nil {
-			glog.Fatal("Bench control parse error: ", err)
+			fatal("Bench control parse error: ", err)
 		}
 		if control.Exit {
 			return
