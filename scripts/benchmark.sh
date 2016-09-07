@@ -144,7 +144,10 @@ EOF
 	       -e BENCHMARK_CLIENT=${CLIENT} \
 	       --name ${VM} \
 	       ${IMG_BASE}:latest \
-	       ./controller --logtostderr -v=1
+	       ./controller
+
+    # TODO?
+    #--logtostderr -v=1
 
     # Note: the controller deletes its own VM
 }

@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	ls "github.com/lightstep/lightstep-tracer-go"
-	"github.com/opentracing/basictracer-go"
 	ot "github.com/opentracing/opentracing-go"
 )
 
@@ -116,14 +114,15 @@ func testBody(control *benchlib.Control) (time.Duration, int64) {
 }
 
 func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duration, time.Duration, int64) {
-	if control.Trace {
-		ot.InitGlobalTracer(t.tracer)
-	} else {
-		ot.InitGlobalTracer(ot.NoopTracer{})
-	}
+	// if control.Trace {
+	// 	ot.InitGlobalTracer(t.tracer)
+	// } else {
+	// 	ot.InitGlobalTracer(ot.NoopTracer{})
+	// }
 	conc := control.Concurrent
 	runtime.GOMAXPROCS(conc)
 	runtime.GC()
+	runtime.Gosched()
 
 	var sleeps time.Duration
 	var answer int64
@@ -153,8 +152,8 @@ func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duratio
 	endTime := time.Now()
 	flushDur := time.Duration(0)
 	if control.Trace {
-		recorder := t.tracer.(basictracer.Tracer).Options().Recorder.(*ls.Recorder)
-		recorder.Flush()
+		// recorder := t.tracer.(basictracer.Tracer).Options().Recorder.(*ls.Recorder)
+		// recorder.Flush()
 		flushDur = time.Now().Sub(endTime)
 	}
 	return endTime.Sub(beginTest), flushDur, sleeps, answer
@@ -166,12 +165,12 @@ func main() {
 		baseURL: fmt.Sprint("http://",
 			benchlib.ControllerHost, ":",
 			benchlib.ControllerPort),
-		tracer: ls.NewTracer(ls.Options{
-			AccessToken: benchlib.ControllerAccessToken,
-			Collector: ls.Endpoint{
-				Host:      benchlib.ControllerHost,
-				Port:      benchlib.ControllerPort,
-				Plaintext: true},
-		})}
+	}
+	// tracer: ls.NewTracer(ls.Options{
+	// 	AccessToken: benchlib.ControllerAccessToken,
+	// 	Collector: ls.Endpoint{
+	// 		Host:      benchlib.ControllerHost,
+	// 		Port:      benchlib.ControllerPort,
+	// 		Plaintext: true},
 	tc.loop()
 }

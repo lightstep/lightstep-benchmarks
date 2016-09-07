@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math"
 	"net"
 	"net/http"
@@ -49,25 +48,29 @@ const (
 	nanosPerSecond = 1e9
 
 	// testIteration is used for initial estimates and calibration.
-	testIteration = 10000
+	testIteration = 1000
 
 	// maxConcurrency is the limit of concurrency testing
-	maxConcurrency = 16
+	maxConcurrency = 1
 
 	// testTolerance is used for a sanity checks.
 	testTolerance = 0.01
 
-	minimumCalibrations = 3
-	calibrateRounds     = 502
+	// minimumCalibrations = 1
+	// calibrateRounds     = 2000
+
+	minimumCalibrations = 1
+	calibrateRounds     = 200
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
-	testTimeSlice = time.Second / 2
+	testTimeSlice = 50 * time.Millisecond
 
 	// If the test runs more than 1% faster than theoretically
 	// possible, recalibrate.
 	negativeRecalibrationThreshold = -0.01
 
+	// Parameters for measuring impairment
 	experimentDuration = 120
 	experimentRounds   = 40
 
@@ -78,6 +81,13 @@ const (
 	minimumLoad    = 0.5
 	maximumLoad    = 1.0
 	loadIncrements = 10
+
+	// Sleep experiment parameters
+	sleepTrialCount     = 20
+	sleepRepeats        = int64(20)
+	sleepMaxWorkFactor  = int64(100)
+	sleepMinWorkFactor  = int64(10)
+	sleepWorkFactorIncr = int64(30)
 )
 
 var (
@@ -481,7 +491,6 @@ func (s *benchService) measureImpairment(c bench.Config) {
 			output.Results = append(output.Results, m...)
 		}
 	}
-	s.saveResult(output)
 }
 
 func (s *benchService) saveResult(result bench.Output) {
@@ -533,6 +542,57 @@ func (s *benchService) measureImpairmentAtRateAndLoad(c bench.Config, rate, load
 		ms = append(ms, m)
 	}
 	return ms
+}
+
+func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
+	print("Estimating sleep cost")
+
+	equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.current.workCost.Wall.Seconds())
+
+	type sleepTrial struct {
+		with    bench.TimingStats
+		without bench.TimingStats
+		sleeps  bench.TimingStats
+	}
+
+	var sleepTrials []sleepTrial
+
+	for m := sleepMinWorkFactor; m <= sleepMaxWorkFactor; m += sleepWorkFactorIncr {
+		var st sleepTrial
+		for i := 0; i < sleepTrialCount; i++ { // TODO should be ... until 95% confidence or at least N
+			wsleep := s.run(&bench.Control{
+				Concurrent: 1, // TODO for now..., need to test >1
+				Work:       equalWork * m,
+				Sleep:      bench.DefaultSleepInterval,
+				Repeat:     sleepRepeats,
+			})
+			ssleep := s.run(&bench.Control{
+				Concurrent: 1,
+				Work:       equalWork * m,
+				Sleep:      0,
+				Repeat:     sleepRepeats,
+			})
+
+			st.with.Update(wsleep.Measured)
+			st.without.Update(ssleep.Measured)
+			st.sleeps.Update(bench.Timing{Wall: wsleep.Sleeps})
+
+			o.Sleeps = append(o.Sleeps, bench.SleepCalibration{
+				WorkFactor:  m,
+				RunAndSleep: wsleep.Measured.Wall.Seconds(),
+				RunNoSleep:  ssleep.Measured.Wall.Seconds(),
+				ActualSleep: wsleep.Sleeps.Seconds(),
+				Repeats:     sleepRepeats,
+			})
+		}
+		fmt.Println("Work factor", m, "sleep cost",
+			st.with.Mean().
+				Sub(st.without.Mean()).
+				Sub(st.sleeps.Mean()).
+				Div(float64(sleepRepeats)))
+
+		sleepTrials = append(sleepTrials, st)
+	}
 }
 
 func (s *benchService) warmup() {
@@ -601,7 +661,18 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	go s.execClient(bc, ch)
 
 	s.recalibrate()
-	s.measureImpairment(c)
+
+	output := bench.Output{}
+	output.Title = testTitle
+	output.Client = testClient
+	output.Name = testConfigName
+	output.Concurrent = c.Concurrency
+	output.LogBytes = c.LogNum * c.LogSize
+
+	s.estimateSleepCosts(c, &output)
+	//s.measureImpairment(c, &output)
+
+	s.saveResult(output)
 }
 
 func (s *benchService) execClient(bc benchClient, ch chan bool) {
@@ -685,7 +756,7 @@ func (s *benchService) ServeJSONHTTP(res http.ResponseWriter, req *http.Request)
 		var err error
 		bodyReader, err = gzip.NewReader(req.Body)
 		if err != nil {
-			http.Error(res, "Could not decode gzipped content",
+			http.Error(res, fmt.Sprintf("Could not decode gzipped content"),
 				http.StatusBadRequest)
 			return
 		}
@@ -776,7 +847,7 @@ func main() {
 	}
 	storageClient, err := storage.NewClient(ctx, cloud.WithBaseHTTP(gcpClient))
 	if err != nil {
-		log.Fatal("GCP Storage client", err)
+		fatal("GCP Storage client", err)
 	}
 	defer storageClient.Close()
 

@@ -101,6 +101,16 @@ type Output struct {
 
 	// Experiment data
 	Results []Measurement
+
+	Sleeps []SleepCalibration
+}
+
+type SleepCalibration struct {
+	WorkFactor  int64
+	RunAndSleep float64
+	RunNoSleep  float64
+	ActualSleep float64
+	Repeats     int64
 }
 
 type Time float64
@@ -266,8 +276,8 @@ func (ts Timing) String() string {
 }
 
 func (ts TimingStats) String() string {
-	// return fmt.Sprintf("%v {%v[%v]}", ts.Mean(), ts.StandardDeviation(), ts.Count())
-	return fmt.Sprintf("%v", ts.Mean())
+	return fmt.Sprintf("%v {%v[%v]}", ts.Mean(), ts.StandardDeviation(), ts.Count())
+	//return fmt.Sprintf("%v", ts.Mean())
 }
 
 func (ts TimingRegression) String() string {
