@@ -8,14 +8,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math"
 	"os"
 	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/GaryBoone/GoStats/stats"
 	"github.com/golang/glog"
+	hstats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/cloud"
@@ -149,6 +150,7 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 }
 
 func (s *summarizer) getSleepCalibration(output *bench.Output) error {
+	fmt.Println("Sleep calibration for", output.Title, output.Client, output.Name)
 	factorMap := map[int][]bench.SleepCalibration{}
 
 	for _, s := range output.Sleeps {
@@ -165,22 +167,33 @@ func (s *summarizer) getSleepCalibration(output *bench.Output) error {
 	for _, w := range workVals {
 		sm := factorMap[w]
 
-		var ras, rns, as bench.TimingStats
+		var ras, rns, as []int64
 		for _, s := range sm {
-			runtimeDiff := (s.RunAndSleep - s.RunNoSleep) / float64(sm[0].Repeats)
-			diff := math.Abs(runtimeDiff-bench.DefaultSleepInterval.Seconds()) / bench.DefaultSleepInterval.Seconds()
-			if diff <= 0 || diff >= 1 {
-				glog.Info("Skipping invalid sleep time: ", s, "time", runtimeDiff, "diff", diff)
-				continue
-			}
+			ras = append(ras, int64(s.RunAndSleep*1e9))
+			rns = append(ras, int64(s.RunNoSleep*1e9))
+			as = append(as, int64(s.ActualSleep*1e9))
 
-			ras.Update(bench.WallTiming(s.RunAndSleep))
-			rns.Update(bench.WallTiming(s.RunNoSleep))
-			as.Update(bench.WallTiming(s.ActualSleep))
+			// runtimeDiff := (s.RunAndSleep - s.RunNoSleep) / float64(sm[0].Repeats)
+			// diff := math.Abs(runtimeDiff-bench.DefaultSleepInterval.Seconds()) / bench.DefaultSleepInterval.Seconds()
+			// if diff <= 0 || diff >= 1 {
+			// 	glog.Info("Skipping invalid sleep time: ", s, "time", runtimeDiff, "diff", diff)
+			// 	continue
+			// }
+		}
+		glog.Infof("Sleep cost @ %d work factor = ...", w)
+
+		dur := func(ns float64) time.Duration {
+			return time.Duration(int64(ns))
 		}
 
-		sc := ras.Mean().Sub(rns.Mean()).Sub(as.Mean()).Div(float64(sm[0].Repeats))
-		glog.Infof("Sleep cost @ %d work factor = %v", w, sc.Wall)
+		rasLow, rasHigh := hstats.NormalConfidenceInterval(ras)
+		glog.Infof("RAS %v %v %v %v)", dur(hstats.Mean(ras)), dur(hstats.StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
+
+		rnsLow, rnsHigh := hstats.NormalConfidenceInterval(rns)
+		glog.Infof("RNS %v %v %v %v", dur(hstats.Mean(rns)), dur(hstats.StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
+
+		asLow, asHigh := hstats.NormalConfidenceInterval(as)
+		glog.Infof("AS %v %v %v %v", dur(hstats.Mean(as)), dur(hstats.StandardDeviation(as)), dur(asLow), dur(asHigh))
 	}
 
 	return nil

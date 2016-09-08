@@ -56,11 +56,9 @@ const (
 	// testTolerance is used for a sanity checks.
 	testTolerance = 0.01
 
-	// minimumCalibrations = 1
-	// calibrateRounds     = 2000
-
+	// TODO This is hacky, since sleep calibration doesn't use this go fast.
 	minimumCalibrations = 1
-	calibrateRounds     = 200
+	calibrateRounds     = 20
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
@@ -83,15 +81,14 @@ const (
 	loadIncrements = 10
 
 	// Sleep experiment parameters
-	sleepTrialCount     = 500
-	sleepRepeats        = int64(20)
-	sleepMaxWorkFactor  = int64(200)
-	sleepMinWorkFactor  = int64(100)
-	sleepWorkFactorIncr = int64(100)
+	sleepTrialCount     = 1000
+	sleepRepeats        = int64(10)
+	sleepMinWorkFactor  = int64(10)
+	sleepMaxWorkFactor  = int64(100)
+	sleepWorkFactorIncr = int64(90)
 )
 
 var (
-	// client is a list of client programs for the benchmark
 	allClients = map[string]benchClient{
 		"cpp":    {[]string{"./cppclient"}},
 		"ruby":   {[]string{"ruby", "./rbclient.rb"}},
