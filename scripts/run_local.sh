@@ -77,6 +77,9 @@ function runtest()
 	fi
     fi
 
+    # This is a hack. Give it one extra CPU!!!
+    conc = $[${conc}+1]
+
     echo ======================================================================
     echo ${CMD} ${TITLE} ${language} ${conc} ${config}
     ${CMD} ${TITLE} ${language} ${conc} ${config}
