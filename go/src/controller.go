@@ -25,6 +25,7 @@ import (
 
 	bench "benchlib"
 
+	proto_timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	cpb "github.com/lightstep/lightstep-tracer-go/collectorpb"
 	lst "github.com/lightstep/lightstep-tracer-go/lightstep_thrift"
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
@@ -891,7 +892,12 @@ type grpcService struct {
 func (g *grpcService) Report(ctx context.Context, req *cpb.ReportRequest) (resp *cpb.ReportResponse, err error) {
 	g.service.current.spansReceived += int64(len(req.Spans))
 	g.service.countGrpcDroppedSpans(req)
-	return
+	now := time.Now()
+	ts := &proto_timestamp.Timestamp{
+		Seconds: now.Unix(),
+		Nanos:   int32(now.Nanosecond()),
+	}
+	return &cpb.ReportResponse{ReceiveTimestamp: ts, TransmitTimestamp: ts}, nil
 }
 
 func (s *benchService) grpcShim() *grpcService {
