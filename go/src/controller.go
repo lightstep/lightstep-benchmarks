@@ -472,14 +472,7 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 	}
 }
 
-func (s *benchService) measureImpairment(c bench.Config) {
-	output := bench.Output{}
-	output.Title = testTitle
-	output.Client = testClient
-	output.Name = testConfigName
-	output.Concurrent = c.Concurrency
-	output.LogBytes = c.LogNum * c.LogSize
-
+func (s *benchService) measureImpairment(c bench.Config, output *bench.Output) {
 	rateInterval := float64(maximumRate-minimumRate) / rateIncrements
 
 	for rate := float64(minimumRate); rate <= maximumRate; rate += rateInterval {
@@ -668,7 +661,7 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	output.LogBytes = c.LogNum * c.LogSize
 
 	s.estimateSleepCosts(c, &output)
-	//s.measureImpairment(c, &output)
+	s.measureImpairment(c, &output)
 
 	s.saveResult(output)
 }
@@ -838,28 +831,28 @@ func main() {
 	}
 	fmt.Println("Config:", string(cdata))
 
-	ctx := context.Background()
-	gcpClient, err := google.DefaultClient(ctx, storage.ScopeFullControl)
-	if err != nil {
-		fatal("GCP Default client: ", err)
-	}
-	storageClient, err := storage.NewClient(ctx, cloud.WithBaseHTTP(gcpClient))
-	if err != nil {
-		fatal("GCP Storage client", err)
-	}
-	defer storageClient.Close()
-
 	service := &benchService{}
 	service.processor = lst.NewReportingServiceProcessor(service)
 	service.resultCh = make(chan *bench.Result)
 	service.controlCh = make(chan *bench.Control)
-	service.storage = storageClient
-	service.gcpClient = gcpClient
-	service.bucket = storageClient.Bucket(testStorageBucket)
 
-	// Test the storage service, auth, etc.
-	service.writeTo("test-empty", []byte{})
+	ctx := context.Background()
+	service.gcpClient, err = google.DefaultClient(ctx, storage.ScopeFullControl)
+	if err != nil {
+		print("GCP Default client: ", err)
+		print("Will not write results to GCP")
+	} else {
+		service.storage, err = storage.NewClient(ctx, cloud.WithBaseHTTP(service.gcpClient))
+		if err != nil {
+			print("GCP Storage client", err)
+		} else {
+			defer service.storage.Close()
+			service.bucket = service.storage.Bucket(testStorageBucket)
 
+			// Test the storage service, auth, etc.
+			service.writeTo("test-empty", []byte{})
+		}
+	}
 	go func() {
 		for req := range requestCh {
 			mux.ServeHTTP(req.w, req.r)
