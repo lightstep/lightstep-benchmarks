@@ -95,7 +95,7 @@ function build()
     echo Built!
 }
 
-function dockerize()
+function launch_on_gcp()
 {
     if ${SSH_TO} true 2> /dev/null; then
 	:
@@ -152,6 +152,22 @@ EOF
     # Note: the controller deletes its own VM
 }
 
+function run_local()
+{
+    ${LDOCKER} rm ${VM} || /bin/true
+    ${LDOCKER} run \
+	       -v ${SCRIPTS}/config:/tmp/config \
+	       -e BENCHMARK_CONFIG_NAME=${TEST_CONFIG_NAME} \
+	       -e BENCHMARK_CONFIG_FILE=/tmp/config/${TEST_CONFIG_NAME}.json \
+	       -e BENCHMARK_TITLE=${TITLE} \
+	       -e BENCHMARK_BUCKET=${BUCKET} \
+	       -e BENCHMARK_CLIENT=${CLIENT} \
+	       --name ${VM} \
+	       ${IMG_BASE}:latest \
+	       ./controller
+    
+}
+
 if [ "${CLIENT}" = "" ]; then
     usage
     exit 1
@@ -175,4 +191,13 @@ trap on_exit EXIT
 
 set_config
 build
-dockerize
+
+case ${CPUS} in
+    local|LOCAL)
+	run_local
+	;;
+    *)
+	launch_on_gcp
+	;;
+esac
+
