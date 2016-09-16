@@ -2,12 +2,11 @@ package benchlib
 
 import (
 	"fmt"
+	"os"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/GaryBoone/GoStats/stats"
-	"github.com/golang/glog"
 )
 
 const (
@@ -27,6 +26,8 @@ const (
 var (
 	// Tests amortize sleep calls so they're approximately this long.
 	DefaultSleepInterval = 50 * time.Millisecond
+
+	testVerbose = GetEnv("BENCHMARK_VERBOSE", "")
 )
 
 type Config struct {
@@ -115,10 +116,6 @@ type SleepCalibration struct {
 
 type Time float64
 
-// TODO: User and Sys times are not presently being set, always zero
-// and therefore do not print. These APIs still carry them around, for
-// the future.
-
 type Timing struct {
 	Wall, User, Sys Time
 }
@@ -147,6 +144,23 @@ type TimingRegression struct {
 	Sys  Regression
 }
 
+func GetEnv(name, defval string) string {
+	if r := os.Getenv(name); r != "" {
+		return r
+	}
+	return defval
+}
+
+func Fatal(x ...interface{}) {
+	panic(fmt.Sprintln(x...))
+}
+
+func Print(x ...interface{}) {
+	if testVerbose == "true" {
+		fmt.Println(x...)
+	}
+}
+
 func WallTiming(seconds float64) Timing {
 	return Timing{Wall: Time(seconds)}
 }
@@ -165,7 +179,7 @@ func linearRegression(x, y []float64) Regression {
 func ParseTime(s string) Time {
 	timing, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		glog.Fatal("Could not parse timing: ", s, ": ", err)
+		Fatal("Could not parse timing: ", s, ": ", err)
 	}
 	return Time(timing)
 }
@@ -261,22 +275,19 @@ func (d *TimingRegression) Intercept() Timing {
 	}
 }
 
-func GetChildUsage() Timing {
-	ru := &syscall.Rusage{}
-	if err := syscall.Getrusage(syscall.RUSAGE_CHILDREN, ru); err != nil {
-		panic("Getrusage error: " + err.Error())
-	}
-	t := Timing{
+func GetChildUsage(pid int) (Timing, CPUStat) {
+	pstat := ProcessCPUStat(pid)
+	// TODO hacky the 100.0 below is CLK_TCK (probably)
+	return Timing{
 		Wall: 0,
-		User: Time(time.Duration(ru.Utime.Nano())),
-		Sys:  Time(time.Duration(ru.Stime.Nano())),
-	}
-	return t
+		User: Time(float64(pstat.User) / 100),
+		Sys:  Time(float64(pstat.System) / 100),
+	}, MachineCPUStat()
 }
 
 func (ts Timing) String() string {
-	// return fmt.Sprintf("W: %v U: %v S: %v", ts.Wall, ts.User, ts.Sys)
-	return ts.Wall.String()
+	return fmt.Sprintf("W: %v U: %v S: %v", ts.Wall, ts.User, ts.Sys)
+	// return ts.Wall.String()
 }
 
 func (ts TimingStats) String() string {

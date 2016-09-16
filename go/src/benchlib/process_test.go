@@ -1,4 +1,4 @@
-package base
+package benchlib
 
 import (
 	"bytes"
