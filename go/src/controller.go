@@ -272,7 +272,6 @@ func (s *benchService) estimateWorkCost() {
 		}
 		var st bench.TimingStats
 		for j := 0; j < calibrateRounds; j++ {
-			bench.Print("Measuring work for rounds=", multiplier)
 			tm := s.run(&bench.Control{
 				Concurrent: 1,
 				Work:       multiplier,
@@ -611,10 +610,24 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 	// https://godoc.org/github.com/google/go-querystring/query
 	params, err := url.ParseQuery(req.URL.RawQuery)
 
-	// TODO Make this into a ratio-based test.
+	// Look for CPU contention on the machine. (TODO 100 == Hz)
+	osUser := bench.Time(float64(usageStat.User-s.beforeStat.User) / 100)
+	osSys := bench.Time(float64(usageStat.System-s.beforeStat.System) / 100)
+
 	stolenTicks := usageStat.Steal - s.beforeStat.Steal
 	if stolenTicks != 0 {
-		bench.Fatal("Stolen ticks! It's unfair! ", stolenTicks)
+		// TODO Make this into a ratio-based test.
+		bench.Fatal("Stolen ticks! It's unfair!", stolenTicks)
+	}
+
+	du := osUser - usage.User
+	ds := osSys - usage.Sys
+
+	if du/osUser > 0.01 {
+		bench.Fatal(">1% interference: user time: ", du/osUser)
+	}
+	if ds/osSys > 0.01 {
+		bench.Fatal(">1% interference: system time: ", ds/osSys)
 	}
 
 	if err != nil {
