@@ -77,8 +77,8 @@ function runtest()
 	fi
     fi
 
-    # This is a hack. Give it one extra CPU!!!
-    conc = $[${conc}+1]
+    # Give one extra CPU.  TODO this is good for cpu=1 only since conc has to be a power of two.
+    conc=$[$conc+1]
 
     echo ======================================================================
     echo ${CMD} ${TITLE} ${language} ${conc} ${config}

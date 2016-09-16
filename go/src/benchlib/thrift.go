@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/golang/glog"
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
 )
 
@@ -36,7 +35,7 @@ func (t *ThriftFactories) ServeThriftHTTP(res http.ResponseWriter, req *http.Req
 	rdbuffer := bytes.NewBuffer(nil)
 	rdbytes, err := rdbuffer.ReadFrom(req.Body)
 	if err != nil {
-		glog.Warning("Could not read body: ", err)
+		Print("Could not read body: ", err)
 	}
 
 	client := &ThriftHTTPTransport{ioutil.NopCloser(rdbuffer), wrbuffer}
@@ -49,14 +48,14 @@ func (t *ThriftFactories) ServeThriftHTTP(res http.ResponseWriter, req *http.Req
 	ok, err := tprocessor.Process(tprotocol, tprotocol)
 
 	if err != nil {
-		glog.Warningf("RPC Error: %v", err)
+		Print("RPC Error: ", err)
 	} else if !ok {
-		glog.Warning("RPC request failed")
+		Print("RPC request failed")
 	}
 
 	res.Header().Set("Content-Type", "application/octet-stream")
 
 	if _, err := io.Copy(res, wrbuffer); err != nil {
-		glog.Warningf("ResponseWriter.Write", err)
+		Print("ResponseWriter.Write", err)
 	}
 }
