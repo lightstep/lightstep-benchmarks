@@ -59,7 +59,7 @@ const (
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
-	testTimeSlice = 50 * time.Millisecond
+	testTimeSlice = time.Second
 
 	// If the test runs more than 1% faster than theoretically
 	// possible, recalibrate.
@@ -163,9 +163,6 @@ type benchStats struct {
 	// Number of times calibration has been performed.
 	calibrations int
 
-	// The cost of a round w/ no working, no sleeping, no tracing.
-	roundCost bench.Timing
-
 	// The cost of a single unit of work.
 	workCost bench.Timing
 
@@ -256,13 +253,6 @@ func (s *benchService) measureSpanCost() {
 	bench.Print("Cost T =", s.current.spanCost, "/span")
 }
 
-// estimateRoundCost runs a untraced loop doing no work to establish
-// the baseline cost of a repetition.
-func (s *benchService) estimateRoundCost() {
-	s.current.roundCost = s.measureTestLoop(false)
-	bench.Print("Cost R =", s.current.roundCost, "/round")
-}
-
 // estimateWorkCosts measures the cost of the work function.
 // TODO this body is now nearly identical to measureTestLoop; Fix.
 func (s *benchService) estimateWorkCost() {
@@ -288,7 +278,7 @@ func (s *benchService) estimateWorkCost() {
 				Work:       multiplier,
 				Repeat:     1,
 			})
-			adjusted := tm.Measured.Sub(s.current.roundCost)
+			adjusted := tm.Measured
 			st.Update(adjusted)
 			bench.Print("Measured work for rounds=", multiplier, " in ", adjusted,
 				" == ", float64(adjusted.Wall)/float64(multiplier))
@@ -308,7 +298,7 @@ func (s *benchService) sanityCheckWork() bool {
 			Work:       work,
 			Repeat:     1,
 		})
-		adjusted := tm.Measured.Sub(s.current.roundCost)
+		adjusted := tm.Measured
 		st.Update(adjusted)
 	}
 	bench.Print("Check work timing", st, "expected", testTimeSlice)
@@ -346,9 +336,6 @@ func (s *benchService) measureTestLoop(trace bool) bench.Timing {
 				Trace:      trace,
 			})
 			adjusted := tm.Measured
-			if trace {
-				adjusted = adjusted.SubFactor(s.current.roundCost, float64(multiplier))
-			}
 			ss.Update(adjusted)
 			bench.Print("Measured cost for rounds=", multiplier, " in ", adjusted,
 				" == ", float64(adjusted.Wall)/float64(multiplier))
@@ -386,7 +373,7 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		btotal := s.current.bytesReceived - bbefore
 		dtotal := s.current.spansDropped - dbefore
 
-		adjusted := tm.Measured.SubFactor(s.current.roundCost, totalPerCpu)
+		adjusted := tm.Measured
 		sleepPerCpu := tm.Sleeps.Seconds() / float64(opts.concurrency)
 		workPerCpu := totalPerCpu * workTime.Seconds()
 		actualRate := totalSpans / adjusted.Wall.Seconds()
@@ -489,57 +476,6 @@ func (s *benchService) measureImpairmentAtRateAndLoad(c bench.Config, rate, load
 	return ms
 }
 
-func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
-	bench.Print("Estimating sleep cost")
-
-	equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.current.workCost.Wall.Seconds())
-
-	type sleepTrial struct {
-		with    bench.TimingStats
-		without bench.TimingStats
-		sleeps  bench.TimingStats
-	}
-
-	var sleepTrials []sleepTrial
-
-	for m := sleepMinWorkFactor; m <= sleepMaxWorkFactor; m += sleepWorkFactorIncr {
-		var st sleepTrial
-		for i := 0; i < sleepTrialCount; i++ { // TODO should be ... until 95% confidence or at least N
-			wsleep := s.run(&bench.Control{
-				Concurrent: 1, // TODO for now..., need to test >1
-				Work:       equalWork * m,
-				Sleep:      bench.DefaultSleepInterval,
-				Repeat:     sleepRepeats,
-			})
-			ssleep := s.run(&bench.Control{
-				Concurrent: 1,
-				Work:       equalWork * m,
-				Sleep:      0,
-				Repeat:     sleepRepeats,
-			})
-
-			st.with.Update(wsleep.Measured)
-			st.without.Update(ssleep.Measured)
-			st.sleeps.Update(bench.Timing{Wall: wsleep.Sleeps})
-
-			o.Sleeps = append(o.Sleeps, bench.SleepCalibration{
-				WorkFactor:  int(m),
-				RunAndSleep: wsleep.Measured.Wall.Seconds(),
-				RunNoSleep:  ssleep.Measured.Wall.Seconds(),
-				ActualSleep: wsleep.Sleeps.Seconds(),
-				Repeats:     int(sleepRepeats),
-			})
-		}
-		bench.Print("Work factor", m, "sleep cost",
-			st.with.Mean().
-				Sub(st.without.Mean()).
-				Sub(st.sleeps.Mean()).
-				Div(float64(sleepRepeats)))
-
-		sleepTrials = append(sleepTrials, st)
-	}
-}
-
 func (s *benchService) warmup() {
 	s.run(&bench.Control{
 		Concurrent:    1,
@@ -584,7 +520,6 @@ func (s *benchService) recalibrate() {
 		s.current.calibrations = cnt + 1
 		s.current.pid = pid
 		s.warmup()
-		s.estimateRoundCost()
 		s.estimateWorkCost()
 		if !s.sanityCheckWork() {
 			continue
@@ -616,7 +551,6 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	output.Concurrent = c.Concurrency
 	output.LogBytes = c.LogNum * c.LogSize
 
-	s.estimateSleepCosts(c, &output)
 	s.measureImpairment(c, &output)
 
 	s.saveResult(output)
