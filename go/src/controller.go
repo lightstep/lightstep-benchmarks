@@ -55,7 +55,7 @@ const (
 
 	// TODO This is hacky, since sleep calibration doesn't use this go fast.
 	minimumCalibrations = 1
-	calibrateRounds     = 20
+	calibrateRounds     = 25
 
 	// testTimeSlice is a small duration used to set a minimum
 	// reasonable execution time during calibration.
@@ -66,26 +66,16 @@ const (
 	negativeRecalibrationThreshold = -0.01
 
 	// Parameters for measuring impairment
-	experimentDuration = 120
-	experimentRounds   = 40
+	experimentDuration = 10
+	experimentRounds   = 3
 
-	minimumRate    = 100
-	maximumRate    = 1000
-	rateIncrements = 9
+	minimumRate    = 500
+	maximumRate    = 1500
+	rateIncrements = 4
 
 	minimumLoad    = 0.5
 	maximumLoad    = 1.0
-	loadIncrements = 10
-
-	// Sleep experiment parameters
-	sleepTrialCount     = 1000
-	sleepRepeats        = int64(10)
-	sleepMinWorkFactor  = int64(10)
-	sleepMaxWorkFactor  = int64(100)
-	sleepWorkFactorIncr = int64(90)
-
-	// /proc paths of note
-	procCpuStatPath = "/proc/stat"
+	loadIncrements = 5
 )
 
 var (
@@ -258,7 +248,7 @@ func (s *benchService) measureSpanCost() {
 func (s *benchService) estimateWorkCost() {
 	// The work function is assumed to be fast. Find a multiplier
 	// that results in working at least testTimeSlice.
-	multiplier := int64(1000)
+	multiplier := int64(1000000)
 	for {
 		bench.Print("Testing work for rounds=", multiplier)
 		tm := s.run(&bench.Control{
@@ -313,7 +303,7 @@ func (s *benchService) sanityCheckWork() bool {
 }
 
 func (s *benchService) measureTestLoop(trace bool) bench.Timing {
-	multiplier := int64(1000)
+	multiplier := int64(1000000)
 	for {
 		bench.Print("Measuring loop for rounds=", multiplier)
 		tm := s.run(&bench.Control{
@@ -498,11 +488,15 @@ func (s *benchService) run(c *bench.Control) *bench.Result {
 	if c.SleepInterval == 0 {
 		c.SleepInterval = bench.DefaultSleepInterval
 	}
-	s.controlCh <- c
-	// TODO: Maybe timeout here and help diagnose hung process?
-	r := <-s.resultCh
+	for {
+		s.controlCh <- c
 
-	return r
+		// TODO: Maybe timeout here and help diagnose hung process?
+		if r := <-s.resultCh; r != nil {
+			return r
+		}
+		// Repeat the test (there was interference).
+	}
 }
 
 func (s *benchService) runTests(b benchClient, c bench.Config) {
@@ -599,6 +593,17 @@ func (s *benchService) ServeControlHTTP(res http.ResponseWriter, req *http.Reque
 
 // ServeResultHTTP records the client's result via a URL Query parameter "timing".
 func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Request) {
+	bres := s.serveResult(req)
+
+	s.controlling = false
+	s.resultCh <- bres
+
+	// The response body is not used, but some HTTP clients are
+	// troubled by 0-byte responses.
+	res.Write([]byte("OK"))
+}
+
+func (s *benchService) serveResult(req *http.Request) *bench.Result {
 	if !s.controlling {
 		bench.Fatal("Out-of-phase client result", req.URL)
 	}
@@ -609,32 +614,37 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 	// from URL query param into bench.Result, e.g., opposite of
 	// https://godoc.org/github.com/google/go-querystring/query
 	params, err := url.ParseQuery(req.URL.RawQuery)
-
-	// Look for CPU contention on the machine. (TODO 100 == Hz)
-	osUser := bench.Time(float64(usageStat.User-s.beforeStat.User) / 100)
-	osSys := bench.Time(float64(usageStat.System-s.beforeStat.System) / 100)
-
-	stolenTicks := usageStat.Steal - s.beforeStat.Steal
-	if stolenTicks != 0 {
-		// TODO Make this into a ratio-based test.
-		bench.Fatal("Stolen ticks! It's unfair!", stolenTicks)
-	}
-
-	du := osUser - usage.User
-	ds := osSys - usage.Sys
-
-	if du/osUser > 0.01 {
-		bench.Fatal(">1% interference: user time: ", du/osUser)
-	}
-	if ds/osSys > 0.01 {
-		bench.Fatal(">1% interference: system time: ", ds/osSys)
-	}
-
 	if err != nil {
 		bench.Fatal("Error parsing URL params: ", req.URL.RawQuery)
 	}
-	s.controlling = false
-	s.resultCh <- &bench.Result{
+
+	// Look for CPU contention on the machine, if there enough
+	// ticks. (TODO 100 == Hz)
+	if usage.User.Seconds() > 0.1 {
+		osUser := bench.Time(float64(usageStat.User-s.beforeStat.User) / 100)
+		osSys := bench.Time(float64(usageStat.System-s.beforeStat.System) / 100)
+
+		// TODO make these repeat the test instead of crashing
+		stolenTicks := usageStat.Steal - s.beforeStat.Steal
+		if stolenTicks != 0 {
+			bench.Print("Stolen ticks! It's unfair!", stolenTicks)
+			return nil
+		}
+
+		du := osUser - usage.User
+		if du/osUser > 0.01 {
+			bench.Print(">1% interference: user time: ", float64(du/osUser))
+			return nil
+		}
+		ds := osSys - usage.Sys
+		// Compare other system activity against the process's user time
+		if ds/usage.User > 0.01 {
+			bench.Print(">1% interference: system time: ", float64(ds/usage.User))
+			return nil
+		}
+	}
+
+	return &bench.Result{
 		Measured: bench.Timing{
 			Wall: bench.ParseTime(params.Get("timing")),
 			User: usage.User,
@@ -645,9 +655,6 @@ func (s *benchService) ServeResultHTTP(res http.ResponseWriter, req *http.Reques
 		},
 		Sleeps: bench.ParseTime(params.Get("s")),
 	}
-	// The response body is not used, but some HTTP clients are
-	// troubled by 0-byte responses.
-	res.Write([]byte("OK"))
 }
 
 // ServeJSONHTTP is more-or-less copied from crouton/cmd/collector/main.go
@@ -712,17 +719,6 @@ func (s *benchService) tearDown() {
 	}
 	os.Exit(0)
 }
-
-// func (cm *cpuMonitor) cpuStats() {
-// 	for {
-// 		data, err := ioutil.ReadFile(procCpuStatPath)
-// 		if err != nil {
-// 			bench.Fatal("Can't read CPU stats, run this on Linux please: ", err)
-// 		}
-// 		bench.Print("CPU stats: ", string(data))
-// 		time.Sleep(time.Second)
-// 	}
-// }
 
 func main() {
 	flag.Parse()
