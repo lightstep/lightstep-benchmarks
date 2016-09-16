@@ -51,6 +51,13 @@ GDOCKER="${SSH_TO} sudo docker"  # docker on the VM
 GCLOUD_CONFIG="devel"
 STANDING_GCLOUD_CONFIG=`${GCLOUD} config configurations list | grep True | awk '{print $1}'`
 
+LOCAL=no
+case ${CPUS} in
+    local|LOCAL)
+	LOCAL=yes
+	;;
+esac
+
 function usage()
 {
     echo "usage: $0 title client cpus config"
@@ -88,10 +95,12 @@ function build()
 
     ${LDOCKER} build -t ${IMG_BASE}:${TAG} ${DBUILD}
     ${LDOCKER} tag ${IMG_BASE}:${TAG} ${IMG_BASE}:latest
-    echo Push ${IMG_BASE}:${TAG}
-    ${GCLOUD} docker push ${IMG_BASE}:${TAG}
-    echo Push ${IMG_BASE}:latest
-    ${GCLOUD} docker push ${IMG_BASE}:latest
+    if [ "${LOCAL}" = "no" ]; then
+	echo Push ${IMG_BASE}:${TAG}
+	${GCLOUD} docker push ${IMG_BASE}:${TAG}
+	echo Push ${IMG_BASE}:latest
+	${GCLOUD} docker push ${IMG_BASE}:latest
+    fi
     echo Built!
 }
 
@@ -142,6 +151,7 @@ EOF
 	       -e BENCHMARK_PROJECT=${PROJECT_ID} \
 	       -e BENCHMARK_INSTANCE=${VM} \
 	       -e BENCHMARK_CLIENT=${CLIENT} \
+	       -e BENCHMARK_VERBOSE=${BENCHMARK_VERBOSE} \
 	       --name ${VM} \
 	       ${IMG_BASE}:latest \
 	       ./controller
@@ -162,6 +172,7 @@ function run_local()
 	       -e BENCHMARK_TITLE=${TITLE} \
 	       -e BENCHMARK_BUCKET=${BUCKET} \
 	       -e BENCHMARK_CLIENT=${CLIENT} \
+	       -e BENCHMARK_VERBOSE=${BENCHMARK_VERBOSE} \
 	       --name ${VM} \
 	       ${IMG_BASE}:latest \
 	       ./controller
@@ -192,12 +203,9 @@ trap on_exit EXIT
 set_config
 build
 
-case ${CPUS} in
-    local|LOCAL)
-	run_local
-	;;
-    *)
-	launch_on_gcp
-	;;
-esac
+if [ "${LOCAL}" = "yes" ]; then
+    run_local
+else
+    launch_on_gcp
+fi
 
