@@ -173,8 +173,8 @@ DirectMap1G:    12582912 kB
 
 func TestScanProcKeyValues(t *testing.T) {
 	var mi MachineInfo
-	scanProcKeyValues(bytes.NewBuffer([]byte(sampleProcCpuInfo)), &mi, cpuFuncs)
-	scanProcKeyValues(bytes.NewBuffer([]byte(sampleProcMemInfo)), &mi, memFuncs)
+	scanProcKeyValues(bytes.NewBuffer([]byte(sampleProcCpuInfo)), &mi, ":", cpuFuncs)
+	scanProcKeyValues(bytes.NewBuffer([]byte(sampleProcMemInfo)), &mi, ":", memFuncs)
 	parseProcFileUint64([]byte("512\n"), &mi.TCP_MaxSynBacklog)
 
 	if mi.CPU_Cores != 4 {
