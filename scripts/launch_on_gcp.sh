@@ -24,6 +24,9 @@ TITLE=${2}
 # Source location
 SCRIPTS=${GOPATH}/../scripts
 
+export BENCHMARK_VERBOSE
+export BENCHMARK_PARAMS
+
 case ${MODE} in
     test)
 	CMD="./benchmark.sh"

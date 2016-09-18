@@ -43,7 +43,7 @@ const (
 type Duration time.Duration
 
 func (d *Duration) MarshalJSON() ([]byte, error) {
-	return []byte(time.Duration(*d).String()), nil
+	return json.Marshal(time.Duration(*d).String())
 }
 
 func (d *Duration) UnmarshalJSON(data []byte) error {
@@ -59,8 +59,12 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	}
 }
 
-func (d *Duration) Seconds() float64 {
-	return time.Duration(*d).Seconds()
+func (d Duration) Seconds() float64 {
+	return time.Duration(d).Seconds()
+}
+
+func (d Duration) String() string {
+	return time.Duration(d).String()
 }
 
 type Params struct {
@@ -373,8 +377,8 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 			opts.rate, 100*opts.load, adjusted, opts.lognum, opts.logsize, tr,
 			100*workLoad, 100*visibleLoad, 100*impairment, actualRate))
 
-		// If too far under, recalibrate
-		if impairment < s.NegativeRecalibrationThreshold {
+		// If too far under and not tracing, recalibrate
+		if !opts.trace && impairment < s.NegativeRecalibrationThreshold {
 			return nil, 0, 0, 0, 0, 0, 0
 		}
 
@@ -390,6 +394,7 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		ss, spans, _, _, actualRate, workLoad, sleepLoad := runOnce()
 
 		if ss == nil {
+			s.TestTimeSlice *= 2
 			s.recalibrate()
 			continue
 		}
@@ -503,7 +508,7 @@ func (s *benchService) runTests(b benchClient, c bench.Config) {
 
 func (s *benchService) recalibrate() {
 	for {
-		bench.Print("Calibration starting")
+		bench.Print("Calibration starting, time slice", s.TestTimeSlice)
 		cnt := s.current.calibrations
 		pid := s.current.pid
 		s.current = newBenchStats(s.current.benchClient)

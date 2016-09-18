@@ -12,11 +12,9 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/GaryBoone/GoStats/stats"
 	"github.com/golang/glog"
-	hstats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/cloud"
@@ -29,24 +27,6 @@ const (
 
 var (
 	testName = flag.String("test", "", "Name of the test")
-
-	// tranchNames = []string{
-	// 	"high load",
-	// 	"med load",
-	// 	"low load",
-	// }
-
-	// // These should be the same size as numTranches
-	// tracedColors = []string{
-	// 	"#ff0000",
-	// 	"#ff8000",
-	// 	"#ffff00",
-	// }
-	// untracedColors = []string{
-	// 	"#888888",
-	// 	"#777777",
-	// 	"#666666",
-	// }
 )
 
 func tranchName(l float64) string {
@@ -101,6 +81,7 @@ func main() {
 		if !strings.HasPrefix(obj.Name, prefix) {
 			continue
 		}
+		fmt.Println("Found test", obj.Name)
 		if err := s.getResults(ctx, bucket, obj.Name); err != nil {
 			log.Fatal("Couldn't read results: ", obj.Name)
 		}
@@ -121,12 +102,6 @@ func newOutputDir(output *bench.Output) outputDir {
 	return outputDir{output, dir}
 }
 
-// type ByLoad []*bench.DataPoint
-
-// func (a ByLoad) Len() int           { return len(a) }
-// func (a ByLoad) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-// func (a ByLoad) Less(i, j int) bool { return a[i].WorkRatio > a[j].WorkRatio }
-
 func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, name string) error {
 	oh := b.Object(name)
 	reader, err := oh.NewReader(ctx)
@@ -142,61 +117,7 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 		return err
 	}
 
-	if err := s.getSleepCalibration(&output); err != nil {
-		return err
-	}
-
 	return s.getMeasurements(&output)
-}
-
-func (s *summarizer) getSleepCalibration(output *bench.Output) error {
-	fmt.Println("Sleep calibration for", output.Title, output.Client, output.Name)
-	factorMap := map[int][]bench.SleepCalibration{}
-
-	for _, s := range output.Sleeps {
-		s := s
-		factorMap[s.WorkFactor] = append(factorMap[s.WorkFactor], s)
-	}
-
-	var workVals []int
-	for w, _ := range factorMap {
-		workVals = append(workVals, w)
-	}
-	sort.Ints(workVals)
-
-	for _, w := range workVals {
-		sm := factorMap[w]
-
-		var ras, rns, as []int64
-		for _, s := range sm {
-			ras = append(ras, int64(s.RunAndSleep*1e9))
-			rns = append(ras, int64(s.RunNoSleep*1e9))
-			as = append(as, int64(s.ActualSleep*1e9))
-
-			// runtimeDiff := (s.RunAndSleep - s.RunNoSleep) / float64(sm[0].Repeats)
-			// diff := math.Abs(runtimeDiff-bench.DefaultSleepInterval.Seconds()) / bench.DefaultSleepInterval.Seconds()
-			// if diff <= 0 || diff >= 1 {
-			// 	glog.Info("Skipping invalid sleep time: ", s, "time", runtimeDiff, "diff", diff)
-			// 	continue
-			// }
-		}
-		glog.Infof("Sleep cost @ %d work factor = ...", w)
-
-		dur := func(ns float64) time.Duration {
-			return time.Duration(int64(ns))
-		}
-
-		rasLow, rasHigh := hstats.NormalConfidenceInterval(ras)
-		glog.Infof("RAS %v %v %v %v)", dur(hstats.Mean(ras)), dur(hstats.StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
-
-		rnsLow, rnsHigh := hstats.NormalConfidenceInterval(rns)
-		glog.Infof("RNS %v %v %v %v", dur(hstats.Mean(rns)), dur(hstats.StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
-
-		asLow, asHigh := hstats.NormalConfidenceInterval(as)
-		glog.Infof("AS %v %v %v %v", dur(hstats.Mean(as)), dur(hstats.StandardDeviation(as)), dur(asLow), dur(asHigh))
-	}
-
-	return nil
 }
 
 func (s *summarizer) getMeasurements(output *bench.Output) error {
