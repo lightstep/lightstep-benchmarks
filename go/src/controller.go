@@ -31,11 +31,6 @@ import (
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
 )
 
-// TODO parameterize the test constants below so it's possible to
-// run short and long tests easily.
-// type TestQuality struct {
-// }
-
 const (
 	// collectorBinaryPath is the path of the Thrift collector service
 	collectorBinaryPath = "/_rpc/v1/reports/binary"
@@ -43,40 +38,46 @@ const (
 	collectorJSONPath = "/api/v0/reports"
 
 	nanosPerSecond = 1e9
-
-	// testIteration is used for initial estimates and calibration.
-	testIteration = 1000
-
-	// maxConcurrency is the limit of concurrency testing
-	maxConcurrency = 1
-
-	// testTolerance is used for a sanity checks.
-	testTolerance = 0.01
-
-	// TODO This is hacky, since sleep calibration doesn't use this go fast.
-	minimumCalibrations = 1
-	calibrateRounds     = 25
-
-	// testTimeSlice is a small duration used to set a minimum
-	// reasonable execution time during calibration.
-	testTimeSlice = time.Second
-
-	// If the test runs more than 1% faster than theoretically
-	// possible, recalibrate.
-	negativeRecalibrationThreshold = -0.01
-
-	// Parameters for measuring impairment
-	experimentDuration = 10
-	experimentRounds   = 3
-
-	minimumRate    = 500
-	maximumRate    = 1500
-	rateIncrements = 4
-
-	minimumLoad    = 0.5
-	maximumLoad    = 1.0
-	loadIncrements = 5
 )
+
+type Duration time.Duration
+
+func (d *Duration) MarshalJSON() ([]byte, error) {
+	return []byte(time.Duration(*d).String()), nil
+}
+
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	s := ""
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	if pd, err := time.ParseDuration(s); err != nil {
+		return err
+	} else {
+		*d = Duration(pd)
+		return nil
+	}
+}
+
+func (d *Duration) Seconds() float64 {
+	return time.Duration(*d).Seconds()
+}
+
+type Params struct {
+	CalibrateRounds                int
+	ExperimentDuration             Duration
+	ExperimentRounds               int
+	LoadIncrements                 int
+	MaximumLoad                    float64
+	MaximumRate                    int
+	MinimumCalibrations            int
+	MinimumLoad                    float64
+	MinimumRate                    int
+	NegativeRecalibrationThreshold float64
+	RateIncrements                 int
+	TestTimeSlice                  Duration
+	TestTolerance                  float64
+}
 
 var (
 	allClients = map[string]benchClient{
@@ -99,15 +100,6 @@ var (
 
 	// requestCh is used to serialize HTTP requests
 	requestCh = make(chan sreq)
-
-	testStorageBucket = bench.GetEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
-	testTitle         = bench.GetEnv("BENCHMARK_TITLE", "untitled")
-	testConfigName    = bench.GetEnv("BENCHMARK_CONFIG_NAME", "unnamed")
-	testConfigFile    = bench.GetEnv("BENCHMARK_CONFIG_FILE", "config.json")
-	testClient        = bench.GetEnv("BENCHMARK_CLIENT", "unknown")
-	testZone          = bench.GetEnv("BENCHMARK_ZONE", "")
-	testProject       = bench.GetEnv("BENCHMARK_PROJECT", "")
-	testInstance      = bench.GetEnv("BENCHMARK_INSTANCE", "")
 )
 
 type impairmentTest struct {
@@ -145,6 +137,8 @@ type benchService struct {
 
 	// current collects results for the current test
 	current *benchStats
+
+	Params
 }
 
 type benchStats struct {
@@ -247,7 +241,7 @@ func (s *benchService) measureSpanCost() {
 // TODO this body is now nearly identical to measureTestLoop; Fix.
 func (s *benchService) estimateWorkCost() {
 	// The work function is assumed to be fast. Find a multiplier
-	// that results in working at least testTimeSlice.
+	// that results in working at least bench.TestTimeSlice.
 	multiplier := int64(1000000)
 	for {
 		bench.Print("Testing work for rounds=", multiplier)
@@ -256,12 +250,12 @@ func (s *benchService) estimateWorkCost() {
 			Work:       multiplier,
 			Repeat:     1,
 		})
-		if tm.Measured.Wall.Seconds() < testTimeSlice.Seconds() {
+		if tm.Measured.User.Seconds() < s.TestTimeSlice.Seconds() {
 			multiplier *= 10
 			continue
 		}
 		var st bench.TimingStats
-		for j := 0; j < calibrateRounds; j++ {
+		for j := 0; j < s.CalibrateRounds; j++ {
 			tm := s.run(&bench.Control{
 				Concurrent: 1,
 				Work:       multiplier,
@@ -270,7 +264,7 @@ func (s *benchService) estimateWorkCost() {
 			adjusted := tm.Measured
 			st.Update(adjusted)
 			bench.Print("Measured work for rounds=", multiplier, " in ", adjusted,
-				" == ", float64(adjusted.Wall)/float64(multiplier))
+				" == ", float64(adjusted.User)/float64(multiplier))
 		}
 		s.current.workCost = st.Mean().Div(float64(multiplier))
 		bench.Print("Cost W =", s.current.workCost, "/unit")
@@ -280,8 +274,8 @@ func (s *benchService) estimateWorkCost() {
 
 func (s *benchService) sanityCheckWork() bool {
 	var st bench.TimingStats
-	for i := 0; i < calibrateRounds; i++ {
-		work := int64(testTimeSlice.Seconds() / s.current.workCost.Wall.Seconds())
+	for i := 0; i < s.CalibrateRounds; i++ {
+		work := int64(s.TestTimeSlice.Seconds() / s.current.workCost.User.Seconds())
 		tm := s.run(&bench.Control{
 			Concurrent: 1,
 			Work:       work,
@@ -290,12 +284,12 @@ func (s *benchService) sanityCheckWork() bool {
 		adjusted := tm.Measured
 		st.Update(adjusted)
 	}
-	bench.Print("Check work timing", st, "expected", testTimeSlice)
+	bench.Print("Check work timing", st, "expected", s.TestTimeSlice)
 
-	absRatio := math.Abs((st.Wall.Mean() - testTimeSlice.Seconds()) / testTimeSlice.Seconds())
-	if absRatio > testTolerance {
+	absRatio := math.Abs((st.User.Mean() - s.TestTimeSlice.Seconds()) / s.TestTimeSlice.Seconds())
+	if absRatio > s.TestTolerance {
 		fmt.Println("WARNING: CPU work not well calibrated (or insufficient CPU): measured ",
-			st.Mean(), " expected ", testTimeSlice,
+			st.Mean(), " expected ", s.TestTimeSlice,
 			" off by ", absRatio*100.0, "%")
 		return false
 	}
@@ -312,12 +306,12 @@ func (s *benchService) measureTestLoop(trace bool) bench.Timing {
 			Repeat:     multiplier,
 			Trace:      trace,
 		})
-		if tm.Measured.Wall.Seconds() < testTimeSlice.Seconds() {
+		if tm.Measured.User.Seconds() < s.TestTimeSlice.Seconds() {
 			multiplier *= 10
 			continue
 		}
 		var ss bench.TimingStats
-		for j := 0; j < calibrateRounds; j++ {
+		for j := 0; j < s.CalibrateRounds; j++ {
 			tm := s.run(&bench.Control{
 				Concurrent: 1,
 				Work:       0,
@@ -327,7 +321,7 @@ func (s *benchService) measureTestLoop(trace bool) bench.Timing {
 			adjusted := tm.Measured
 			ss.Update(adjusted)
 			bench.Print("Measured cost for rounds=", multiplier, " in ", adjusted,
-				" == ", float64(adjusted.Wall)/float64(multiplier))
+				" == ", float64(adjusted.User)/float64(multiplier))
 		}
 		return ss.Mean().Div(float64(multiplier))
 	}
@@ -338,8 +332,8 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 
 	workTime := bench.Time(opts.load / qpsPerCpu)
 	sleepTime := bench.Time((1 - opts.load) / qpsPerCpu)
-	totalSpans := opts.rate * experimentDuration
-	totalPerCpu := experimentDuration * qpsPerCpu
+	totalSpans := opts.rate * s.ExperimentDuration.Seconds()
+	totalPerCpu := s.ExperimentDuration.Seconds() * qpsPerCpu
 
 	tr := "untraced"
 	if opts.trace {
@@ -351,7 +345,7 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		dbefore := s.current.spansDropped
 		tm := s.run(&bench.Control{
 			Concurrent:  opts.concurrency,
-			Work:        int64(workTime / s.current.workCost.Wall),
+			Work:        int64(workTime / s.current.workCost.User),
 			Sleep:       time.Duration(sleepTime * nanosPerSecond),
 			Repeat:      int64(totalPerCpu),
 			Trace:       opts.trace,
@@ -362,29 +356,32 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		btotal := s.current.bytesReceived - bbefore
 		dtotal := s.current.spansDropped - dbefore
 
-		adjusted := tm.Measured
 		sleepPerCpu := tm.Sleeps.Seconds() / float64(opts.concurrency)
+		adjusted := tm.Measured.User.Seconds() + tm.Measured.Sys.Seconds() + sleepPerCpu
 		workPerCpu := totalPerCpu * workTime.Seconds()
-		actualRate := totalSpans / adjusted.Wall.Seconds()
-		traceCost := adjusted.Wall.Seconds() - workPerCpu - sleepPerCpu
-		impairment := traceCost / adjusted.Wall.Seconds()
-		workLoad := workPerCpu / adjusted.Wall.Seconds()
-		sleepLoad := sleepPerCpu / adjusted.Wall.Seconds()
-		visibleLoad := (adjusted.Wall.Seconds() - sleepPerCpu) / adjusted.Wall.Seconds()
+		actualRate := totalSpans / adjusted
+
+		// BELOW:TODO
+		//
+		traceCost := adjusted - workPerCpu - sleepPerCpu
+		impairment := traceCost / adjusted
+		workLoad := workPerCpu / adjusted
+		sleepLoad := sleepPerCpu / adjusted
+		visibleLoad := (adjusted - sleepPerCpu) / adjusted
 
 		bench.Print(fmt.Sprintf("Trial %v@%3f%% %v (log%d*%d,%s) work load %.2f%% visible load %.2f%% visible impairment %.2f%%, actual rate %.1f",
-			opts.rate, 100*opts.load, adjusted.Wall, opts.lognum, opts.logsize, tr,
+			opts.rate, 100*opts.load, adjusted, opts.lognum, opts.logsize, tr,
 			100*workLoad, 100*visibleLoad, 100*impairment, actualRate))
 
 		// If too far under, recalibrate
-		if impairment < negativeRecalibrationThreshold {
+		if impairment < s.NegativeRecalibrationThreshold {
 			return nil, 0, 0, 0, 0, 0, 0
 		}
 
-		return &adjusted, stotal, dtotal, btotal, actualRate, workLoad, sleepLoad
+		return &tm.Measured, stotal, dtotal, btotal, actualRate, workLoad, sleepLoad
 	}
 	for {
-		if s.current.calibrations < minimumCalibrations {
+		if s.current.calibrations < s.MinimumCalibrations {
 			// Adjust for on-the-fly compilation,
 			// initialization costs, etc.
 			s.recalibrate()
@@ -403,11 +400,11 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 }
 
 func (s *benchService) measureImpairment(c bench.Config, output *bench.Output) {
-	rateInterval := float64(maximumRate-minimumRate) / rateIncrements
+	rateInterval := float64(s.MaximumRate-s.MinimumRate) / float64(s.RateIncrements)
 
-	for rate := float64(minimumRate); rate <= maximumRate; rate += rateInterval {
-		loadInterval := float64(maximumLoad-minimumLoad) / loadIncrements
-		for load := minimumLoad; load <= maximumLoad; load += loadInterval {
+	for rate := float64(s.MinimumRate); rate <= float64(s.MaximumRate); rate += rateInterval {
+		loadInterval := float64(s.MaximumLoad-s.MinimumLoad) / float64(s.LoadIncrements)
+		for load := s.MinimumLoad; load <= float64(s.MaximumLoad); load += loadInterval {
 			m := s.measureImpairmentAtRateAndLoad(c, rate, load)
 			output.Results = append(output.Results, m...)
 		}
@@ -440,7 +437,7 @@ func (s *benchService) writeTo(name string, data []byte) {
 func (s *benchService) measureImpairmentAtRateAndLoad(c bench.Config, rate, load float64) []bench.Measurement {
 	bench.Print(fmt.Sprintf("Starting rate=%.2f/sec load=%.2f%% test", rate, load*100))
 	ms := []bench.Measurement{}
-	for i := 0; i < experimentRounds; i++ {
+	for i := 0; i < s.ExperimentRounds; i++ {
 		m := bench.Measurement{}
 		m.TargetRate = rate
 		m.TargetLoad = load
@@ -525,7 +522,7 @@ func (s *benchService) recalibrate() {
 func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	s.current = newBenchStats(bc)
 
-	bench.Print("Testing ", testClient)
+	bench.Print("Testing ", bench.TestClient)
 	ch := make(chan bool)
 
 	defer func() {
@@ -538,9 +535,9 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	s.recalibrate()
 
 	output := bench.Output{}
-	output.Title = testTitle
-	output.Client = testClient
-	output.Name = testConfigName
+	output.Title = bench.TestTitle
+	output.Client = bench.TestClient
+	output.Name = bench.TestConfigName
 	output.Concurrent = c.Concurrency
 	output.LogBytes = c.LogNum * c.LogSize
 
@@ -703,10 +700,10 @@ func (s *benchService) ServeDefaultHTTP(res http.ResponseWriter, req *http.Reque
 }
 
 func (s *benchService) tearDown() {
-	if testZone != "" && testProject != "" && testInstance != "" {
+	if bench.TestZone != "" && bench.TestProject != "" && bench.TestInstance != "" {
 		// Delete this VM
 		url := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s",
-			testProject, testZone, testInstance)
+			bench.TestProject, bench.TestZone, bench.TestInstance)
 		bench.Print("Asking to delete this VM... ", url)
 		req, err := http.NewRequest("DELETE", url, bytes.NewReader(nil))
 		if err != nil {
@@ -718,6 +715,21 @@ func (s *benchService) tearDown() {
 		bench.Print("Done! This VM may...")
 	}
 	os.Exit(0)
+}
+
+func readObject(file, name string, out interface{}) {
+	if file == "" {
+		bench.Fatal("Please set the", name, "filename")
+	}
+	cdata, err := ioutil.ReadFile(file)
+	if err != nil {
+		bench.Fatal("Error reading ", file, ": ", err.Error())
+	}
+	err = json.Unmarshal(cdata, out)
+	if err != nil {
+		bench.Fatal("Error JSON-parsing ", file, ": ", err.Error())
+	}
+	bench.Print("Config:", string(cdata))
 }
 
 func main() {
@@ -733,28 +745,20 @@ func main() {
 
 	var c bench.Config
 
-	bc, ok := allClients[testClient]
+	bc, ok := allClients[bench.TestClient]
 	if !ok {
 		bench.Fatal("Please set the BENCHMARK_CLIENT client name")
 	}
-	if testConfigFile == "" {
-		bench.Fatal("Please set the BENCHMARK_CONFIG_FILE filename")
-	}
-	cdata, err := ioutil.ReadFile(testConfigFile)
-	if err != nil {
-		bench.Fatal("Error reading ", testConfigFile, ": ", err.Error())
-	}
-	err = json.Unmarshal(cdata, &c)
-	if err != nil {
-		bench.Fatal("Error JSON-parsing ", testConfigFile, ": ", err.Error())
-	}
-	bench.Print("Config:", string(cdata))
 
 	service := &benchService{}
 	service.processor = lst.NewReportingServiceProcessor(service)
 	service.resultCh = make(chan *bench.Result)
 	service.controlCh = make(chan *bench.Control)
 
+	readObject(bench.TestConfigFile, "BENCHMARK_CONFIG_FILE", &c)
+	readObject(bench.TestParamsFile, "BENCHMARK_PARAMS_FILE", &service.Params)
+
+	var err error
 	ctx := context.Background()
 	service.gcpClient, err = google.DefaultClient(ctx, storage.ScopeFullControl)
 	if err != nil {
@@ -766,7 +770,7 @@ func main() {
 			bench.Print("GCP Storage client", err)
 		} else {
 			defer service.storage.Close()
-			service.bucket = service.storage.Bucket(testStorageBucket)
+			service.bucket = service.storage.Bucket(bench.TestStorageBucket)
 
 			// Test the storage service, auth, etc.
 			service.writeTo("test-empty", []byte{})
