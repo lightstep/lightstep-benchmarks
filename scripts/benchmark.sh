@@ -171,7 +171,7 @@ EOF
 
 function run_local()
 {
-    ${LDOCKER} rm ${VM} || /bin/true
+    ${LDOCKER} rm ${VM} || true
     ${LDOCKER} run \
 	       -v ${SCRIPTS}:/tmp/scripts \
 	       -e BENCHMARK_CONFIG_NAME=${TEST_CONFIG_NAME} \

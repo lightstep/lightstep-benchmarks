@@ -17,6 +17,7 @@ import (
 	"path"
 	"time"
 
+	stats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/cloud"
@@ -139,17 +140,11 @@ type benchService struct {
 	before      bench.Timing
 	beforeStat  bench.CPUStat
 
-	// current collects results for the current test
-	current *benchStats
-
+	// test parameters
 	Params
-}
 
-type benchStats struct {
+	// Current test results
 	benchClient
-
-	// Number of times calibration has been performed.
-	calibrations int
 
 	// The cost of a single unit of work.
 	workCost bench.Timing
@@ -160,6 +155,8 @@ type benchStats struct {
 	spansReceived int64
 	spansDropped  int64
 	bytesReceived int64
+	interferences int
+	calibrations  int
 
 	// Process identifier
 	pid int
@@ -167,12 +164,6 @@ type benchStats struct {
 
 type benchClient struct {
 	Args []string
-}
-
-func newBenchStats(bc benchClient) *benchStats {
-	return &benchStats{
-		benchClient: bc,
-	}
 }
 
 func serializeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +180,7 @@ func fakeReportResponse() *lst.ReportResponse {
 // Report is a Thrift Collector method.
 func (s *benchService) Report(auth *lst.Auth, request *lst.ReportRequest) (
 	r *lst.ReportResponse, err error) {
-	s.current.spansReceived += int64(len(request.SpanRecords))
+	s.spansReceived += int64(len(request.SpanRecords))
 	s.countDroppedSpans(request)
 	return fakeReportResponse(), nil
 }
@@ -201,9 +192,9 @@ func (s *benchService) countDroppedSpans(request *lst.ReportRequest) {
 	for _, c := range request.InternalMetrics.Counts {
 		if c.Name == "spans.dropped" {
 			if c.Int64Value != nil {
-				s.current.spansDropped += *c.Int64Value
+				s.spansDropped += *c.Int64Value
 			} else if c.DoubleValue != nil {
-				s.current.spansDropped += int64(*c.DoubleValue)
+				s.spansDropped += int64(*c.DoubleValue)
 			}
 		}
 	}
@@ -219,9 +210,9 @@ func (s *benchService) countGrpcDroppedSpans(request *cpb.ReportRequest) {
 		if c.Name == "spans.dropped" {
 			switch t := c.Value.(type) {
 			case *cpb.MetricsSample_IntValue:
-				s.current.spansDropped += t.IntValue
+				s.spansDropped += t.IntValue
 			case *cpb.MetricsSample_DoubleValue:
-				s.current.spansDropped += int64(t.DoubleValue)
+				s.spansDropped += int64(t.DoubleValue)
 			}
 		}
 	}
@@ -230,15 +221,15 @@ func (s *benchService) countGrpcDroppedSpans(request *cpb.ReportRequest) {
 // BytesReceived is called from the HTTP layer before Thrift
 // processing, recording inbound byte count.
 func (s *benchService) BytesReceived(num int64) {
-	s.current.bytesReceived += num
+	s.bytesReceived += num
 }
 
 // measureSpanCost runs a closed loop creating a certain
 // number of spans as quickly as possible and reporting
 // the timing.
 func (s *benchService) measureSpanCost() {
-	s.current.spanCost = s.measureTestLoop(true)
-	bench.Print("Cost T =", s.current.spanCost, "/span")
+	s.spanCost = s.measureTestLoop(true)
+	bench.Print("Cost T =", s.spanCost, "/span")
 }
 
 // estimateWorkCosts measures the cost of the work function.
@@ -270,8 +261,8 @@ func (s *benchService) estimateWorkCost() {
 			bench.Print("Measured work for rounds=", multiplier, " in ", adjusted,
 				" == ", float64(adjusted.User)/float64(multiplier))
 		}
-		s.current.workCost = st.Mean().Div(float64(multiplier))
-		bench.Print("Cost W =", s.current.workCost, "/unit")
+		s.workCost = st.Mean().Div(float64(multiplier))
+		bench.Print("Cost W =", s.workCost, "/unit")
 		return
 	}
 }
@@ -279,7 +270,7 @@ func (s *benchService) estimateWorkCost() {
 func (s *benchService) sanityCheckWork() bool {
 	var st bench.TimingStats
 	for i := 0; i < s.CalibrateRounds; i++ {
-		work := int64(s.TestTimeSlice.Seconds() / s.current.workCost.User.Seconds())
+		work := int64(s.TestTimeSlice.Seconds() / s.workCost.User.Seconds())
 		tm := s.run(&bench.Control{
 			Concurrent: 1,
 			Work:       work,
@@ -344,29 +335,27 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		tr = "traced"
 	}
 	runOnce := func() (runtime *bench.Timing, spans, dropped, bytes int64, rate, work, sleep float64) {
-		sbefore := s.current.spansReceived
-		bbefore := s.current.bytesReceived
-		dbefore := s.current.spansDropped
+		sbefore := s.spansReceived
+		bbefore := s.bytesReceived
+		dbefore := s.spansDropped
 		tm := s.run(&bench.Control{
 			Concurrent:  opts.concurrency,
-			Work:        int64(workTime / s.current.workCost.User),
+			Work:        int64(workTime / s.workCost.User),
 			Sleep:       time.Duration(sleepTime * nanosPerSecond),
 			Repeat:      int64(totalPerCpu),
 			Trace:       opts.trace,
 			NumLogs:     opts.lognum,
 			BytesPerLog: opts.logsize,
 		})
-		stotal := s.current.spansReceived - sbefore
-		btotal := s.current.bytesReceived - bbefore
-		dtotal := s.current.spansDropped - dbefore
+		stotal := s.spansReceived - sbefore
+		btotal := s.bytesReceived - bbefore
+		dtotal := s.spansDropped - dbefore
 
 		sleepPerCpu := tm.Sleeps.Seconds() / float64(opts.concurrency)
 		adjusted := tm.Measured.User.Seconds() + tm.Measured.Sys.Seconds() + sleepPerCpu
 		workPerCpu := totalPerCpu * workTime.Seconds()
 		actualRate := totalSpans / adjusted
 
-		// BELOW:TODO
-		//
 		traceCost := adjusted - workPerCpu - sleepPerCpu
 		impairment := traceCost / adjusted
 		workLoad := workPerCpu / adjusted
@@ -385,7 +374,7 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		return &tm.Measured, stotal, dtotal, btotal, actualRate, workLoad, sleepLoad
 	}
 	for {
-		if s.current.calibrations < s.MinimumCalibrations {
+		if s.calibrations < s.MinimumCalibrations {
 			// Adjust for on-the-fly compilation,
 			// initialization costs, etc.
 			s.recalibrate()
@@ -464,7 +453,24 @@ func (s *benchService) measureImpairmentAtRateAndLoad(c bench.Config, rate, load
 		})
 		ms = append(ms, m)
 	}
+	fmt.Println(fmt.Sprintf("%v: rate=%.2f/sec load=%.2f%% %v", time.Now(), rate, load*100, quickSummary(ms)))
 	return ms
+}
+
+func quickSummary(ms []bench.Measurement) string {
+	var tvr []int64
+	var uvr []int64
+	var cr []int64
+	for _, m := range ms {
+		tvr = append(tvr, int64((m.Traced.WorkRatio+m.Traced.SleepRatio)*1e9))
+		uvr = append(uvr, int64((m.Untraced.WorkRatio+m.Untraced.SleepRatio)*1e9))
+		cr = append(cr, int64(m.Completion*1e9))
+	}
+	tvl, tvh := stats.NormalConfidenceInterval(tvr)
+	uvl, uvh := stats.NormalConfidenceInterval(uvr)
+	cm := stats.Mean(cr)
+	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (tvh-uvl)/1e7)
+
 }
 
 func (s *benchService) warmup() {
@@ -490,6 +496,7 @@ func (s *benchService) run(c *bench.Control) *bench.Result {
 	if c.SleepInterval == 0 {
 		c.SleepInterval = bench.DefaultSleepInterval
 	}
+
 	for {
 		s.controlCh <- c
 
@@ -497,7 +504,8 @@ func (s *benchService) run(c *bench.Control) *bench.Result {
 		if r := <-s.resultCh; r != nil {
 			return r
 		}
-		// Repeat the test (there was interference).
+
+		s.interferences++
 	}
 }
 
@@ -509,11 +517,10 @@ func (s *benchService) runTests(b benchClient, c bench.Config) {
 func (s *benchService) recalibrate() {
 	for {
 		bench.Print("Calibration starting, time slice", s.TestTimeSlice)
-		cnt := s.current.calibrations
-		pid := s.current.pid
-		s.current = newBenchStats(s.current.benchClient)
-		s.current.calibrations = cnt + 1
-		s.current.pid = pid
+		s.calibrations++
+		s.spansReceived = 0
+		s.spansDropped = 0
+		s.bytesReceived = 0
 		s.warmup()
 		s.estimateWorkCost()
 		if !s.sanityCheckWork() {
@@ -525,7 +532,7 @@ func (s *benchService) recalibrate() {
 }
 
 func (s *benchService) runTest(bc benchClient, c bench.Config) {
-	s.current = newBenchStats(bc)
+	s.benchClient = bc
 
 	bench.Print("Testing ", bench.TestClient)
 	ch := make(chan bool)
@@ -558,7 +565,7 @@ func (s *benchService) execClient(bc benchClient, ch chan bool) {
 	if err := cmd.Start(); err != nil {
 		bench.Fatal("Could not start client: ", err)
 	}
-	s.current.pid = cmd.Process.Pid
+	s.pid = cmd.Process.Pid
 	if err := cmd.Wait(); err != nil {
 		perr, ok := err.(*exec.ExitError)
 		if !ok {
@@ -584,7 +591,7 @@ func (s *benchService) ServeControlHTTP(res http.ResponseWriter, req *http.Reque
 	if s.controlling {
 		bench.Fatal("Out-of-phase control request", req.URL)
 	}
-	s.before, s.beforeStat = bench.GetChildUsage(s.current.pid)
+	s.before, s.beforeStat = bench.GetChildUsage(s.pid)
 	s.controlling = true
 	body, err := json.Marshal(<-s.controlCh)
 	if err != nil {
@@ -609,7 +616,7 @@ func (s *benchService) serveResult(req *http.Request) *bench.Result {
 	if !s.controlling {
 		bench.Fatal("Out-of-phase client result", req.URL)
 	}
-	usage, usageStat := bench.GetChildUsage(s.current.pid)
+	usage, usageStat := bench.GetChildUsage(s.pid)
 	usage = usage.Sub(s.before)
 
 	// Note: it would be nice if there were a decoder to unmarshal
@@ -634,8 +641,8 @@ func (s *benchService) serveResult(req *http.Request) *bench.Result {
 		}
 
 		du := osUser - usage.User
-		if du/osUser > 0.01 {
-			bench.Print(">1% interference: user time: ", float64(du/osUser))
+		if du/osUser > 0.02 {
+			bench.Print(">2% interference: user time: ", float64(du/osUser))
 			return nil
 		}
 		ds := osSys - usage.Sys
@@ -689,8 +696,8 @@ func (s *benchService) ServeJSONHTTP(res http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	s.current.spansReceived += int64(len(reportRequest.SpanRecords))
-	s.current.bytesReceived += int64(len(body))
+	s.spansReceived += int64(len(reportRequest.SpanRecords))
+	s.bytesReceived += int64(len(body))
 
 	s.countDroppedSpans(reportRequest)
 
@@ -722,7 +729,7 @@ func (s *benchService) tearDown() {
 	os.Exit(0)
 }
 
-func readObject(file, name string, out interface{}) {
+func readObject(kind, file, name string, out interface{}) {
 	if file == "" {
 		bench.Fatal("Please set the", name, "filename")
 	}
@@ -734,7 +741,7 @@ func readObject(file, name string, out interface{}) {
 	if err != nil {
 		bench.Fatal("Error JSON-parsing ", file, ": ", err.Error())
 	}
-	bench.Print("Config:", string(cdata))
+	fmt.Println(kind, string(cdata))
 }
 
 func main() {
@@ -756,12 +763,20 @@ func main() {
 	}
 
 	service := &benchService{}
+
+	go func() {
+		for {
+			time.Sleep(10 * time.Minute)
+			fmt.Println(time.Now(), ": ", service.interferences, "interferences", service.calibrations, "calibrations")
+		}
+	}()
+
 	service.processor = lst.NewReportingServiceProcessor(service)
 	service.resultCh = make(chan *bench.Result)
 	service.controlCh = make(chan *bench.Control)
 
-	readObject(bench.TestConfigFile, "BENCHMARK_CONFIG_FILE", &c)
-	readObject(bench.TestParamsFile, "BENCHMARK_PARAMS_FILE", &service.Params)
+	readObject("Config", bench.TestConfigFile, "BENCHMARK_CONFIG_FILE", &c)
+	readObject("Params", bench.TestParamsFile, "BENCHMARK_PARAMS_FILE", &service.Params)
 
 	var err error
 	ctx := context.Background()
@@ -811,7 +826,7 @@ type grpcService struct {
 }
 
 func (g *grpcService) Report(ctx context.Context, req *cpb.ReportRequest) (resp *cpb.ReportResponse, err error) {
-	g.service.current.spansReceived += int64(len(req.Spans))
+	g.service.spansReceived += int64(len(req.Spans))
 	g.service.countGrpcDroppedSpans(req)
 	now := time.Now()
 	ts := &proto_timestamp.Timestamp{
