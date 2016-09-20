@@ -24,6 +24,11 @@ TITLE=${2}
 # Source location
 SCRIPTS=${GOPATH}/../scripts
 
+export BENCHMARK_VERBOSE
+export BENCHMARK_PARAMS
+BENCHMARK_VERBOSE=${BENCHMARK_VERBOSE}
+BENCHMARK_PARAMS=${BENCHMARK_PARAMS}
+
 case ${MODE} in
     test)
 	CMD="./benchmark.sh"
@@ -78,7 +83,7 @@ function runtest()
     fi
 
     # Give one extra CPU.  TODO this is good for cpu=1 only since conc has to be a power of two.
-    conc=$[$conc+1]
+    # conc=$[$conc+1]
 
     echo ======================================================================
     echo ${CMD} ${TITLE} ${language} ${conc} ${config}

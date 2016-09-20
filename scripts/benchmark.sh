@@ -3,6 +3,8 @@
 # usage:
 #   benchmark.sh <title> <client-lang> <num-cpus> <config-name>
 #
+# pass <num-cpus>="local" to run locally
+#
 # e.g.:
 #   benchmark.sh jvm_9_0_8 java 4 four-cpus-1kb-logs
 
@@ -28,11 +30,16 @@ PROJECT_ID="lightstep-dev"
 CLOUD_MACH_BASE="n1-standard-"
 IMG_BASE="gcr.io/${PROJECT_ID}/bench-${CLIENT}"
 VM="bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_NAME}"
+TEST_PARAMS_NAME="${BENCHMARK_PARAMS}"
+if [ -z "${TEST_PARAMS_NAME}" ]; then
+    TEST_PARAMS_NAME=fast
+fi
 
 # file system paths
 DBUILD="${GOPATH}/build.$$"
 SCRIPTS="${GOPATH}/../scripts"
 TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_NAME}.json"
+TEST_PARAMS="${SCRIPTS}/params/${TEST_PARAMS_NAME}.json"
 
 # gcp constants
 SCOPED="https://www.googleapis.com/auth"
@@ -51,6 +58,7 @@ GDOCKER="${SSH_TO} sudo docker"  # docker on the VM
 GCLOUD_CONFIG="devel"
 STANDING_GCLOUD_CONFIG=`${GCLOUD} config configurations list | grep True | awk '{print $1}'`
 
+# local debugging option, set CPUs="local"
 LOCAL=no
 case ${CPUS} in
     local|LOCAL)
@@ -139,12 +147,14 @@ EOF
 
     # Place the configuration
     ${GCLOUD} compute copy-files ${TEST_CONFIG} ${VM}:/tmp/config/config.json
+    ${GCLOUD} compute copy-files ${TEST_PARAMS} ${VM}:/tmp/config/params.json
 
     # Daemonize
     ${GDOCKER} run -d \
 	       -v /tmp/config:/tmp/config \
 	       -e BENCHMARK_CONFIG_NAME=${TEST_CONFIG_NAME} \
 	       -e BENCHMARK_CONFIG_FILE=/tmp/config/config.json \
+	       -e BENCHMARK_PARAMS_FILE=/tmp/config/params.json \
 	       -e BENCHMARK_TITLE=${TITLE} \
 	       -e BENCHMARK_BUCKET=${BUCKET} \
 	       -e BENCHMARK_ZONE=${CLOUD_ZONE} \
@@ -156,19 +166,17 @@ EOF
 	       ${IMG_BASE}:latest \
 	       ./controller
 
-    # TODO?
-    #--logtostderr -v=1
-
     # Note: the controller deletes its own VM
 }
 
 function run_local()
 {
-    ${LDOCKER} rm ${VM} || /bin/true
+    ${LDOCKER} rm ${VM} || true
     ${LDOCKER} run \
-	       -v ${SCRIPTS}/config:/tmp/config \
+	       -v ${SCRIPTS}:/tmp/scripts \
 	       -e BENCHMARK_CONFIG_NAME=${TEST_CONFIG_NAME} \
-	       -e BENCHMARK_CONFIG_FILE=/tmp/config/${TEST_CONFIG_NAME}.json \
+	       -e BENCHMARK_CONFIG_FILE=/tmp/scripts/config/${TEST_CONFIG_NAME}.json \
+	       -e BENCHMARK_PARAMS_FILE=/tmp/scripts/params/${TEST_PARAMS_NAME}.json \
 	       -e BENCHMARK_TITLE=${TITLE} \
 	       -e BENCHMARK_BUCKET=${BUCKET} \
 	       -e BENCHMARK_CLIENT=${CLIENT} \

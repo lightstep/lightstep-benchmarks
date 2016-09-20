@@ -9,14 +9,14 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/GaryBoone/GoStats/stats"
 	"github.com/golang/glog"
-	hstats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/cloud"
@@ -29,24 +29,6 @@ const (
 
 var (
 	testName = flag.String("test", "", "Name of the test")
-
-	// tranchNames = []string{
-	// 	"high load",
-	// 	"med load",
-	// 	"low load",
-	// }
-
-	// // These should be the same size as numTranches
-	// tracedColors = []string{
-	// 	"#ff0000",
-	// 	"#ff8000",
-	// 	"#ffff00",
-	// }
-	// untracedColors = []string{
-	// 	"#888888",
-	// 	"#777777",
-	// 	"#666666",
-	// }
 )
 
 func tranchName(l float64) string {
@@ -101,6 +83,7 @@ func main() {
 		if !strings.HasPrefix(obj.Name, prefix) {
 			continue
 		}
+		fmt.Println("Found test", obj.Name)
 		if err := s.getResults(ctx, bucket, obj.Name); err != nil {
 			log.Fatal("Couldn't read results: ", obj.Name)
 		}
@@ -121,11 +104,10 @@ func newOutputDir(output *bench.Output) outputDir {
 	return outputDir{output, dir}
 }
 
-// type ByLoad []*bench.DataPoint
-
-// func (a ByLoad) Len() int           { return len(a) }
-// func (a ByLoad) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-// func (a ByLoad) Less(i, j int) bool { return a[i].WorkRatio > a[j].WorkRatio }
+func (od *outputDir) pathFor(name string) string {
+	p, _ := filepath.Abs(path.Join(od.dir, name))
+	return p
+}
 
 func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, name string) error {
 	oh := b.Object(name)
@@ -142,61 +124,72 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 		return err
 	}
 
-	if err := s.getSleepCalibration(&output); err != nil {
-		return err
-	}
-
 	return s.getMeasurements(&output)
 }
 
-func (s *summarizer) getSleepCalibration(output *bench.Output) error {
-	fmt.Println("Sleep calibration for", output.Title, output.Client, output.Name)
-	factorMap := map[int][]bench.SleepCalibration{}
+type plotScript struct {
+	Name string
+	outputDir
+	cmds []string
+	bytes.Buffer
+}
 
-	for _, s := range output.Sleeps {
-		s := s
-		factorMap[s.WorkFactor] = append(factorMap[s.WorkFactor], s)
+type multiScript struct {
+	plots []*plotScript
+}
+
+func multiScripter(plots ...*plotScript) multiScript {
+	return multiScript{plots: plots}
+}
+
+func newPlotScript(name string, odir outputDir) *plotScript {
+	p := &plotScript{Name: name, outputDir: odir}
+	p.writeHeader()
+	return p
+}
+
+func (p *plotScript) writeHeader() {
+	p.WriteString(`
+set terminal png size 1000,1000
+set output "`)
+	p.WriteString(p.Name + ".png")
+	p.WriteString(`"
+set datafile separator ","
+set xrange [0:*]
+set yrange [0:*]
+
+set title "Tracing Cost"
+set xlabel "Request Rate"
+set ylabel "Visible CPU Impairment"
+set style func points
+`)
+}
+
+func (s *plotScript) writeBody() {
+	s.WriteString("plot ")
+	s.WriteString(strings.Join(s.cmds, ","))
+	s.WriteString("\n")
+	s.WriteString("quit\n")
+
+	ioutil.WriteFile(s.pathFor(s.Name+".gnuplot"), s.Bytes(), 0755)
+
+}
+
+func (s *plotScript) add(cmd string) {
+	s.cmds = append(s.cmds, cmd)
+}
+
+func (m multiScript) add(cmd string) {
+	for _, p := range m.plots {
+		p.add(cmd)
 	}
+}
 
-	var workVals []int
-	for w, _ := range factorMap {
-		workVals = append(workVals, w)
+func (m multiScript) WriteString(s string) (int, error) {
+	for _, p := range m.plots {
+		p.WriteString(s)
 	}
-	sort.Ints(workVals)
-
-	for _, w := range workVals {
-		sm := factorMap[w]
-
-		var ras, rns, as []int64
-		for _, s := range sm {
-			ras = append(ras, int64(s.RunAndSleep*1e9))
-			rns = append(ras, int64(s.RunNoSleep*1e9))
-			as = append(as, int64(s.ActualSleep*1e9))
-
-			// runtimeDiff := (s.RunAndSleep - s.RunNoSleep) / float64(sm[0].Repeats)
-			// diff := math.Abs(runtimeDiff-bench.DefaultSleepInterval.Seconds()) / bench.DefaultSleepInterval.Seconds()
-			// if diff <= 0 || diff >= 1 {
-			// 	glog.Info("Skipping invalid sleep time: ", s, "time", runtimeDiff, "diff", diff)
-			// 	continue
-			// }
-		}
-		glog.Infof("Sleep cost @ %d work factor = ...", w)
-
-		dur := func(ns float64) time.Duration {
-			return time.Duration(int64(ns))
-		}
-
-		rasLow, rasHigh := hstats.NormalConfidenceInterval(ras)
-		glog.Infof("RAS %v %v %v %v)", dur(hstats.Mean(ras)), dur(hstats.StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
-
-		rnsLow, rnsHigh := hstats.NormalConfidenceInterval(rns)
-		glog.Infof("RNS %v %v %v %v", dur(hstats.Mean(rns)), dur(hstats.StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
-
-		asLow, asHigh := hstats.NormalConfidenceInterval(as)
-		glog.Infof("AS %v %v %v %v", dur(hstats.Mean(as)), dur(hstats.StandardDeviation(as)), dur(asLow), dur(asHigh))
-	}
-
-	return nil
+	return len(s), nil
 }
 
 func (s *summarizer) getMeasurements(output *bench.Output) error {
@@ -204,6 +197,7 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 
 	for _, p := range output.Results {
 		p := p
+		// TODO note this is still here.
 		if p.Completion < 0.95 {
 			continue
 		}
@@ -218,22 +212,8 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 	}
 	sort.Float64s(loadVals)
 
-	var script bytes.Buffer
-
-	script.WriteString(`
-set terminal png size 1000,1000
-set output "scatter.png"
-set datafile separator ","
-set origin 0,0
-
-set title "Tracing Cost"
-set xlabel "Request Rate"
-set ylabel "Visible CPU Impairment"
-set style func points
-`)
-
-	plotCmds := []string{}
-	lineCmds := []string{}
+	comboScript := newPlotScript("all", odir)
+	allScripts := []*plotScript{comboScript}
 
 	for _, l := range loadVals {
 		measurements := loadMap[l]
@@ -256,7 +236,7 @@ set style func points
 			ty = append(ty, tm.VisibleImpairment())
 			uy = append(uy, um.VisibleImpairment())
 
-			buffer.Write([]byte(fmt.Sprintf("%.2f,%.5f,%.5f,%.2f,%.5f,%.5f\n",
+			buffer.Write([]byte(fmt.Sprintf("%.3f,%.6f,%.6f,%.3f,%.6f,%.6f\n",
 				um.RequestRate,
 				um.WorkRatio,
 				1-um.WorkRatio-um.SleepRatio,
@@ -267,7 +247,8 @@ set style func points
 
 		lstr := tranchName(l)
 
-		tranchCsv := fmt.Sprintf("tranch%s.csv", lstr)
+		tname := "tranch" + lstr
+		tranchCsv := tname + ".csv"
 		err := ioutil.WriteFile(path.Join(odir.dir, tranchCsv), buffer.Bytes(), 0755)
 		if err != nil {
 			glog.Fatal("Could not write file: ", err)
@@ -275,28 +256,35 @@ set style func points
 		tslope, tinter, _, _, _, _ := stats.LinearRegression(tx, ty)
 		uslope, uinter, _, _, _, _ := stats.LinearRegression(ux, uy)
 
-		script.WriteString(fmt.Sprintf("t%s(x)=%f*x+%f\n", lstr, tslope, tinter))
-		script.WriteString(fmt.Sprintf("u%s(x)=%f*x+%f\n", lstr, uslope, uinter))
+		oneScript := newPlotScript(tname, odir)
+		allScripts = append(allScripts, oneScript)
+		mScript := multiScripter(oneScript, comboScript)
 
-		plotCmds = append(plotCmds, fmt.Sprintf("'%s' using 1:3 title 'untraced - %s' with point lc rgb '%s'",
+		mScript.WriteString(fmt.Sprintf("t%s(x)=%f*x+%f\n", lstr, tslope, tinter))
+		mScript.WriteString(fmt.Sprintf("u%s(x)=%f*x+%f\n", lstr, uslope, uinter))
+
+		mScript.add(fmt.Sprintf("'%s' using 1:3 title 'untraced - %s' with point lc rgb '%s'",
 			tranchCsv, lstr, untracedColor(l)))
-		plotCmds = append(plotCmds, fmt.Sprintf("'%s' using 4:6 title 'traced - %s' with point lc rgb '%s'",
+		mScript.add(fmt.Sprintf("'%s' using 4:6 title 'traced - %s' with point lc rgb '%s'",
 			tranchCsv, lstr, tracedColor(l)))
 
-		lineCmds = append(lineCmds, fmt.Sprintf("u%s(x) title 'untraced - %s' with line lc rgb '%s'",
+		mScript.add(fmt.Sprintf("u%s(x) title 'untraced - %s' with line lc rgb '%s'",
 			lstr, lstr, untracedColor(l)))
-		lineCmds = append(lineCmds, fmt.Sprintf("t%s(x) title 'traced - %s' with line lc rgb '%s'",
+		mScript.add(fmt.Sprintf("t%s(x) title 'traced - %s' with line lc rgb '%s'",
 			lstr, lstr, tracedColor(l)))
+
+		oneScript.writeBody()
 	}
-	plotCmds = append(plotCmds, lineCmds...)
+	comboScript.writeBody()
 
-	script.WriteString("plot ")
-	script.WriteString(strings.Join(plotCmds, ","))
-	script.WriteString("\nquit\n")
-
-	ioutil.WriteFile(path.Join(odir.dir, "script.gnuplot"), script.Bytes(), 0755)
-
-	// TODO call gnuplot
+	for _, s := range allScripts {
+		path := s.pathFor(s.Name + ".gnuplot")
+		gp := exec.Command("gnuplot", path)
+		gp.Dir = odir.dir
+		if err := gp.Run(); err != nil {
+			bench.Fatal("gnuplot", path, err)
+		}
+	}
 
 	return nil
 }

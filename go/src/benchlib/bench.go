@@ -27,7 +27,16 @@ var (
 	// Tests amortize sleep calls so they're approximately this long.
 	DefaultSleepInterval = 50 * time.Millisecond
 
-	testVerbose = GetEnv("BENCHMARK_VERBOSE", "")
+	TestStorageBucket = GetEnv("BENCHMARK_BUCKET", "lightstep-client-benchmarks")
+	TestTitle         = GetEnv("BENCHMARK_TITLE", "untitled")
+	TestConfigName    = GetEnv("BENCHMARK_CONFIG_NAME", "unnamed")
+	TestConfigFile    = GetEnv("BENCHMARK_CONFIG_FILE", "config.json")
+	TestClient        = GetEnv("BENCHMARK_CLIENT", "unknown")
+	TestZone          = GetEnv("BENCHMARK_ZONE", "")
+	TestProject       = GetEnv("BENCHMARK_PROJECT", "")
+	TestInstance      = GetEnv("BENCHMARK_INSTANCE", "")
+	TestVerbose       = GetEnv("BENCHMARK_VERBOSE", "")
+	TestParamsFile    = GetEnv("BENCHMARK_PARAMS_FILE", "")
 )
 
 type Config struct {
@@ -146,7 +155,7 @@ func Fatal(x ...interface{}) {
 }
 
 func Print(x ...interface{}) {
-	if testVerbose == "true" {
+	if TestVerbose == "true" {
 		fmt.Println(x...)
 	}
 }

@@ -1,5 +1,5 @@
 {
     "Concurrency": 1,
-    "LogNum":      5,
-    "LogSize":     1000
+    "LogNum":      0,
+    "LogSize":     0
 }
