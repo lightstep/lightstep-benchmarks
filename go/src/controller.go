@@ -17,7 +17,6 @@ import (
 	"path"
 	"time"
 
-	stats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/cloud"
@@ -466,9 +465,9 @@ func quickSummary(ms []bench.Measurement) string {
 		uvr = append(uvr, int64((m.Untraced.WorkRatio+m.Untraced.SleepRatio)*1e9))
 		cr = append(cr, int64(m.Completion*1e9))
 	}
-	tvl, tvh := stats.NormalConfidenceInterval(tvr)
-	uvl, uvh := stats.NormalConfidenceInterval(uvr)
-	cm := stats.Mean(cr)
+	tvl, tvh := bench.NormalConfidenceInterval(tvr)
+	uvl, uvh := bench.NormalConfidenceInterval(uvr)
+	cm := bench.Mean(cr)
 	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (tvh-uvl)/1e7)
 
 }
@@ -767,7 +766,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(10 * time.Minute)
-			fmt.Println(time.Now(), ": ", service.interferences, "interferences", service.calibrations, "calibrations")
+			fmt.Println(time.Now(), ":", service.interferences, "interferences", service.calibrations, "calibrations")
 		}
 	}()
 
