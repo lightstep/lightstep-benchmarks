@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/GaryBoone/GoStats/stats"
@@ -274,24 +275,35 @@ func (d *TimingRegression) Intercept() Timing {
 	}
 }
 
-func GetChildUsage(pid int) (Timing, CPUStat) {
+func Timeval(t syscall.Timeval) Time {
+	return Time(float64(t.Sec) + float64(t.Usec)*1e-6)
+}
+
+func GetChildUsage(pid int) (Timing, Timing, CPUStat) {
+	var self syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &self); err != nil {
+		Fatal("Can't getrusage(self)", err)
+	}
+
 	pstat := ProcessCPUStat(pid)
-	// TODO hacky the 100.0 below is CLK_TCK (probably)
 	return Timing{
-		Wall: 0,
-		User: Time(float64(pstat.User) / 100),
-		Sys:  Time(float64(pstat.System) / 100),
-	}, MachineCPUStat()
+			// TODO hacky the 100s below are CLK_TCK (sysconf(_SC_CLK_TCK) probably)
+			Wall: 0,
+			User: Time(float64(pstat.User) / 100),
+			Sys:  Time(float64(pstat.System) / 100),
+		}, Timing{
+			Wall: 0,
+			User: Timeval(self.Utime),
+			Sys:  Timeval(self.Stime)},
+		MachineCPUStat()
 }
 
 func (ts Timing) String() string {
 	return fmt.Sprintf("W: %v U: %v S: %v", ts.Wall, ts.User, ts.Sys)
-	// return ts.Wall.String()
 }
 
 func (ts TimingStats) String() string {
 	return fmt.Sprintf("%v {%v[%v]}", ts.Mean(), ts.StandardDeviation(), ts.Count())
-	//return fmt.Sprintf("%v", ts.Mean())
 }
 
 func (ts TimingRegression) String() string {

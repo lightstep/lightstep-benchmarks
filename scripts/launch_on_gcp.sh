@@ -29,6 +29,10 @@ export BENCHMARK_PARAMS
 BENCHMARK_VERBOSE=${BENCHMARK_VERBOSE}
 BENCHMARK_PARAMS=${BENCHMARK_PARAMS}
 
+if [ -z "${BENCHMARK_PARAMS}" ]; then
+    BENCHMARK_PARAMS=good
+fi
+
 case ${MODE} in
     test)
 	CMD="./benchmark.sh"
@@ -82,8 +86,11 @@ function runtest()
 	fi
     fi
 
-    # Give one extra CPU.  TODO this is good for cpu=1 only since conc has to be a power of two.
+    # Give one extra CPU.  TODO this is good for cpu=1 and is HACKY
     # conc=$[$conc+1]
+    if [ "$conc" = "1" ]; then
+	conc=2
+    fi
 
     echo ======================================================================
     echo ${CMD} ${TITLE} ${language} ${conc} ${config}

@@ -137,6 +137,7 @@ type benchService struct {
 	// outstanding request state
 	controlling bool
 	before      bench.Timing
+	beforeSelf  bench.Timing
 	beforeStat  bench.CPUStat
 
 	// test parameters
@@ -351,19 +352,30 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		dtotal := s.spansDropped - dbefore
 
 		sleepPerCpu := tm.Sleeps.Seconds() / float64(opts.concurrency)
-		adjusted := tm.Measured.User.Seconds() + tm.Measured.Sys.Seconds() + sleepPerCpu
 		workPerCpu := totalPerCpu * workTime.Seconds()
-		actualRate := totalSpans / adjusted
 
-		traceCost := adjusted - workPerCpu - sleepPerCpu
-		impairment := traceCost / adjusted
-		workLoad := workPerCpu / adjusted
-		sleepLoad := sleepPerCpu / adjusted
-		visibleLoad := (adjusted - sleepPerCpu) / adjusted
+		totalTime := tm.Measured.User.Seconds() + tm.Measured.Sys.Seconds() + tm.Sleeps.Seconds()
+		totalTimePerCpu := totalTime / float64(opts.concurrency)
+		actualRate := totalSpans / totalTimePerCpu
 
-		bench.Print(fmt.Sprintf("Trial %v@%3f%% %v (log%d*%d,%s) work load %.2f%% visible load %.2f%% visible impairment %.2f%%, actual rate %.1f",
-			opts.rate, 100*opts.load, adjusted, opts.lognum, opts.logsize, tr,
-			100*workLoad, 100*visibleLoad, 100*impairment, actualRate))
+		traceCostPerCpu := totalTimePerCpu - workPerCpu - sleepPerCpu
+
+		impairment := traceCostPerCpu / totalTimePerCpu
+		workLoad := workPerCpu / totalTimePerCpu
+		sleepLoad := sleepPerCpu / totalTimePerCpu
+		visibleLoad := (totalTimePerCpu - sleepPerCpu) / totalTimePerCpu
+
+		// bench.Print("tPc", totalTimePerCpu, "wPc", workPerCpu, "sPc", sleepPerCpu,
+		//             "user", tm.Measured.User.Seconds(), "sys", tm.Measured.Sys.Seconds(),
+		//             "slept", tm.Sleeps.Seconds())
+
+		completeFrac := 0.0
+		if opts.trace && stotal+dtotal != 0 {
+			completeFrac = 100 * float64(stotal) / float64(stotal+dtotal)
+		}
+		bench.Print(fmt.Sprintf("Trial %v@%3f%% %v (log%d*%d,%s) work %.2f%% load %.2f%% impairment %.2f%%, rate %.1f [%0.1f%%]",
+			opts.rate, 100*opts.load, totalTimePerCpu, opts.lognum, opts.logsize, tr,
+			100*workLoad, 100*visibleLoad, 100*impairment, actualRate, completeFrac))
 
 		// If too far under and not tracing, recalibrate
 		if !opts.trace && impairment < s.NegativeRecalibrationThreshold {
@@ -379,12 +391,15 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 			s.recalibrate()
 		}
 
-		ss, spans, _, _, actualRate, workLoad, sleepLoad := runOnce()
+		ss, spans, dropped, _, actualRate, workLoad, sleepLoad := runOnce()
 
 		if ss == nil {
 			s.TestTimeSlice *= 2
 			s.recalibrate()
 			continue
+		}
+		if opts.trace && spans+dropped != int64(totalSpans) {
+			bench.Print("Dropped/received spans mismatch", spans, "+", dropped, "!=", totalSpans)
 		}
 
 		completeRatio := float64(spans) / totalSpans
@@ -415,6 +430,9 @@ func (s *benchService) saveResult(result bench.Output) {
 }
 
 func (s *benchService) writeTo(name string, data []byte) {
+	if s.bucket == nil {
+		return
+	}
 	object := s.bucket.Object(name)
 	w := object.NewWriter(context.Background())
 	_, err := w.Write(data)
@@ -468,8 +486,7 @@ func quickSummary(ms []bench.Measurement) string {
 	tvl, tvh := bench.NormalConfidenceInterval(tvr)
 	uvl, uvh := bench.NormalConfidenceInterval(uvr)
 	cm := bench.Mean(cr)
-	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (tvh-uvl)/1e7)
-
+	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f%%", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (uvl-tvh)/1e7)
 }
 
 func (s *benchService) warmup() {
@@ -590,7 +607,7 @@ func (s *benchService) ServeControlHTTP(res http.ResponseWriter, req *http.Reque
 	if s.controlling {
 		bench.Fatal("Out-of-phase control request", req.URL)
 	}
-	s.before, s.beforeStat = bench.GetChildUsage(s.pid)
+	s.before, s.beforeSelf, s.beforeStat = bench.GetChildUsage(s.pid)
 	s.controlling = true
 	body, err := json.Marshal(<-s.controlCh)
 	if err != nil {
@@ -615,8 +632,9 @@ func (s *benchService) serveResult(req *http.Request) *bench.Result {
 	if !s.controlling {
 		bench.Fatal("Out-of-phase client result", req.URL)
 	}
-	usage, usageStat := bench.GetChildUsage(s.pid)
+	usage, usageSelf, usageStat := bench.GetChildUsage(s.pid)
 	usage = usage.Sub(s.before)
+	usageSelf = usageSelf.Sub(s.beforeSelf)
 
 	// Note: it would be nice if there were a decoder to unmarshal
 	// from URL query param into bench.Result, e.g., opposite of
@@ -626,25 +644,23 @@ func (s *benchService) serveResult(req *http.Request) *bench.Result {
 		bench.Fatal("Error parsing URL params: ", req.URL.RawQuery)
 	}
 
-	// Look for CPU contention on the machine, if there enough
-	// ticks. (TODO 100 == Hz)
+	// Look for CPU contention on the machine. (TODO 100 == Hz)
 	if usage.User.Seconds() > 0.1 {
 		osUser := bench.Time(float64(usageStat.User-s.beforeStat.User) / 100)
 		osSys := bench.Time(float64(usageStat.System-s.beforeStat.System) / 100)
 
-		// TODO make these repeat the test instead of crashing
 		stolenTicks := usageStat.Steal - s.beforeStat.Steal
 		if stolenTicks != 0 {
 			bench.Print("Stolen ticks! It's unfair!", stolenTicks)
 			return nil
 		}
 
-		du := osUser - usage.User
+		du := osUser - usage.User - usageSelf.User
 		if du/osUser > 0.02 {
 			bench.Print(">2% interference: user time: ", float64(du/osUser))
 			return nil
 		}
-		ds := osSys - usage.Sys
+		ds := osSys - usage.Sys - usageSelf.Sys
 		// Compare other system activity against the process's user time
 		if ds/usage.User > 0.01 {
 			bench.Print(">1% interference: system time: ", float64(ds/usage.User))
