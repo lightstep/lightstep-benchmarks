@@ -194,7 +194,7 @@ func (m multiScript) WriteString(s string) (int, error) {
 
 func (s *summarizer) getMeasurements(output *bench.Output) error {
 	loadMap := map[float64][]bench.Measurement{}
-
+	count := 0
 	for _, p := range output.Results {
 		p := p
 		// TODO note this is still here.
@@ -202,6 +202,11 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 			continue
 		}
 		loadMap[p.TargetLoad] = append(loadMap[p.TargetLoad], p)
+		count++
+	}
+	if count == 0 {
+		glog.Info("Insufficient completion")
+		return nil
 	}
 
 	odir := newOutputDir(output)
