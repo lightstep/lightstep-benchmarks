@@ -81,6 +81,12 @@ type Params struct {
 	RateIncrements                 int
 	TestTimeSlice                  Duration
 	TestTolerance                  float64
+
+	SleepTrialCount     int
+	SleepRepeats        int64
+	SleepMinWorkFactor  int64
+	SleepMaxWorkFactor  int64
+	SleepWorkFactorIncr int64
 }
 
 var (
@@ -489,6 +495,54 @@ func quickSummary(ms []bench.Measurement) string {
 	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f%%", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (uvl-tvh)/1e7)
 }
 
+func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
+	bench.Print("Estimating sleep cost")
+
+	equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.workCost.Wall.Seconds())
+
+	type sleepTrial struct {
+		with    bench.TimingStats
+		without bench.TimingStats
+		diffs   bench.TimingStats
+	}
+
+	var sleepTrials []sleepTrial
+
+	for m := s.SleepMinWorkFactor; m <= s.SleepMaxWorkFactor; m += s.SleepWorkFactorIncr {
+		var st sleepTrial
+		for i := 0; i < s.SleepTrialCount; i++ { // TODO should be ... until 95% confidence or at least N
+			wsleep := s.run(&bench.Control{
+				Concurrent: 1, // TODO for now..., need to test >1
+				Work:       equalWork * m,
+				Sleep:      bench.DefaultSleepInterval,
+				Repeat:     s.SleepRepeats,
+			})
+			ssleep := s.run(&bench.Control{
+				Concurrent: 1,
+				Work:       equalWork * m,
+				Sleep:      0,
+				Repeat:     s.SleepRepeats,
+			})
+
+			st.with.Update(wsleep.Measured)
+			st.without.Update(ssleep.Measured)
+			st.diffs.Update(wsleep.Measured.Sub(ssleep.Measured))
+
+			o.Sleeps = append(o.Sleeps, bench.SleepCalibration{
+				WorkFactor:  int(m),
+				RunAndSleep: wsleep.Measured,
+				RunNoSleep:  ssleep.Measured,
+				Repeats:     int(s.SleepRepeats),
+			})
+		}
+		bench.Print("Work factor", m, "sleep cost",
+			st.diffs.Mean().Div(float64(s.SleepRepeats)))
+
+		sleepTrials = append(sleepTrials, st)
+	}
+	// TODO _ = sleepTrials
+}
+
 func (s *benchService) warmup() {
 	s.run(&bench.Control{
 		Concurrent:    1,
@@ -569,6 +623,7 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	output.Concurrent = c.Concurrency
 	output.LogBytes = c.LogNum * c.LogSize
 
+	s.estimateSleepCosts(c, &output)
 	s.measureImpairment(c, &output)
 
 	s.saveResult(output)

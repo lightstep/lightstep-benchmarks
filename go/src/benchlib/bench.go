@@ -112,6 +112,15 @@ type Output struct {
 
 	// Experiment data
 	Results []Measurement
+
+	Sleeps []SleepCalibration
+}
+
+type SleepCalibration struct {
+	WorkFactor  int
+	Repeats     int
+	RunAndSleep Timing
+	RunNoSleep  Timing
 }
 
 type Time float64
