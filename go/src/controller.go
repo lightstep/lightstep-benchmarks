@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -489,16 +490,14 @@ func quickSummary(ms []bench.Measurement) string {
 		uvr = append(uvr, int64((m.Untraced.WorkRatio+m.Untraced.SleepRatio)*1e9))
 		cr = append(cr, int64(m.Completion*1e9))
 	}
-	tvl, tvh := bench.NormalConfidenceInterval(tvr)
-	uvl, uvh := bench.NormalConfidenceInterval(uvr)
-	cm := bench.Mean(cr)
+	tvl, tvh := bench.Int64NormalConfidenceInterval(tvr)
+	uvl, uvh := bench.Int64NormalConfidenceInterval(uvr)
+	cm := bench.Int64Mean(cr)
 	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f%%", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (uvl-tvh)/1e7)
 }
 
 func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
 	bench.Print("Estimating sleep cost")
-
-	equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.workCost.Wall.Seconds())
 
 	type sleepTrial struct {
 		with    bench.TimingStats
@@ -506,39 +505,75 @@ func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
 		diffs   bench.TimingStats
 	}
 
-	var sleepTrials []sleepTrial
-
+	repeats := s.SleepRepeats
+	// var sleepTrials []sleepTrial
+outer:
 	for m := s.SleepMinWorkFactor; m <= s.SleepMaxWorkFactor; m += s.SleepWorkFactorIncr {
+		equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.workCost.Wall.Seconds())
+
 		var st sleepTrial
-		for i := 0; i < s.SleepTrialCount; i++ { // TODO should be ... until 95% confidence or at least N
-			wsleep := s.run(&bench.Control{
+		const warmupRatio = 0.1
+		tci := int(float64(s.SleepTrialCount) * warmupRatio)
+		tc := s.SleepTrialCount + tci
+		for i := 0; i < tc; i++ { // TODO should be ... until 95% confidence or at least N
+			var ysleep, nsleep *bench.Result
+			var s1, s2 time.Duration
+			if rand.Float64() < 0.5 {
+				s1 = bench.DefaultSleepInterval
+			} else {
+				s2 = bench.DefaultSleepInterval
+			}
+			r1 := s.run(&bench.Control{
 				Concurrent: 1, // TODO for now..., need to test >1
 				Work:       equalWork * m,
-				Sleep:      bench.DefaultSleepInterval,
-				Repeat:     s.SleepRepeats,
+				Sleep:      s1,
+				Repeat:     repeats,
 			})
-			ssleep := s.run(&bench.Control{
+			r2 := s.run(&bench.Control{
 				Concurrent: 1,
 				Work:       equalWork * m,
-				Sleep:      0,
-				Repeat:     s.SleepRepeats,
+				Sleep:      s2,
+				Repeat:     repeats,
 			})
 
-			st.with.Update(wsleep.Measured)
-			st.without.Update(ssleep.Measured)
-			st.diffs.Update(wsleep.Measured.Sub(ssleep.Measured))
+			if i < tci {
+				continue
+			}
+			if s2 == 0 {
+				ysleep, nsleep = r1, r2
+			} else {
+				ysleep, nsleep = r2, r1
+			}
+
+			d := ysleep.Measured.Sub(nsleep.Measured)
+			st.with.Update(ysleep.Measured)
+			st.without.Update(nsleep.Measured)
+			st.diffs.Update(d)
 
 			o.Sleeps = append(o.Sleeps, bench.SleepCalibration{
 				WorkFactor:  int(m),
-				RunAndSleep: wsleep.Measured,
-				RunNoSleep:  ssleep.Measured,
-				Repeats:     int(s.SleepRepeats),
+				RunAndSleep: ysleep.Measured,
+				RunNoSleep:  nsleep.Measured,
+				Repeats:     int(repeats),
 			})
 		}
-		bench.Print("Work factor", m, "sleep cost",
-			st.diffs.Mean().Div(float64(s.SleepRepeats)))
+		fmt.Println("Sleeping:", st.with)
+		fmt.Println("No sleep:", st.without)
+		meanCost := st.with.Sub(st.without)
+		fmt.Println("Work factor", m, "sleep", st.with, "nosleep", st.without, "mean diff",
+			meanCost.Div(float64(repeats)))
 
-		sleepTrials = append(sleepTrials, st)
+		if meanCost.User.Mean() < 0 {
+			s.recalibrate()
+			goto outer
+		}
+
+		if meanCost.Sys.Mean() < 0 && repeats < 1000 {
+			repeats *= 2
+			fmt.Println("Negative system time: double repeats to", repeats)
+			goto outer
+		}
+		// sleepTrials = append(sleepTrials, st)
 	}
 	// TODO _ = sleepTrials
 }
