@@ -1,20 +1,30 @@
-FROM ubuntu:16.04
+from ubuntu:16.04
 
 WORKDIR /data
 
-RUN apt-get update
+RUN apt-get -y update
 RUN apt-get install -y \
 	autoconf \
 	cmake \
 	automake \
 	git-core \
-	libssl-dev \
 	libtool \
 	pkg-config \
+	clang-3.8 \
+	lldb-3.8 \
+        libprotobuf-dev \
+        libgrpc-dev \
 	wget
 
-RUN wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
-RUN apt-get install -y clang-3.8 lldb-3.8
+# RUN wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+# RUN apt-get install -y clang-3.8 lldb-3.8
 
 ENV CC=clang-3.8
 ENV CXX=clang++-3.8
+
+# gRPC team recommends $(curl -L http://grpc.io/release) for v1.0.0 below.
+#RUN git clone -b v1.0.0 https://github.com/grpc/grpc && \
+#    cd grpc && \
+#    git submodule update --init && \
+#    make && \
+#    make install

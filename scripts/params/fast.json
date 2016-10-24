@@ -14,5 +14,11 @@
 
     "LoadIncrements": 5,
     "MinimumLoad":  0.5,
-    "MaximumLoad":  1.0
+    "MaximumLoad":  1.0,
+
+    "SleepTrialCount": 200,
+    "SleepRepeats":  1,
+    "SleepMinWorkFactor":  1,
+    "SleepMaxWorkFactor":   1,
+    "SleepWorkFactorIncr":  1
 }

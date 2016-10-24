@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-
-	"github.com/GaryBoone/GoStats/stats"
 )
 
 const (
@@ -112,6 +110,15 @@ type Output struct {
 
 	// Experiment data
 	Results []Measurement
+
+	Sleeps []SleepCalibration
+}
+
+type SleepCalibration struct {
+	WorkFactor  int
+	Repeats     int
+	RunAndSleep Timing
+	RunNoSleep  Timing
 }
 
 type Time float64
@@ -121,7 +128,11 @@ type Timing struct {
 }
 
 type TimingStats struct {
-	Wall, User, Sys stats.Stats
+	Wall, User, Sys Stats
+}
+
+type DerivedTimingStats struct {
+	Wall, User, Sys DerivedStats
 }
 
 type Timings struct {
@@ -165,16 +176,16 @@ func WallTiming(seconds float64) Timing {
 	return Timing{Wall: Time(seconds)}
 }
 
-func linearRegression(x, y []float64) Regression {
-	s, i, q, c, se, ie := stats.LinearRegression(x, y)
-	return Regression{
-		Count:           c,
-		Slope:           Time(s),
-		Intercept:       Time(i),
-		Rsquared:        Time(q),
-		SlopeStdDev:     Time(se),
-		InterceptStdDev: Time(ie)}
-}
+// func linearRegression(x, y []float64) Regression {
+// 	s, i, q, c, se, ie := stats.LinearRegression(x, y)
+// 	return Regression{
+// 		Count:           c,
+// 		Slope:           Time(s),
+// 		Intercept:       Time(i),
+// 		Rsquared:        Time(q),
+// 		SlopeStdDev:     Time(se),
+// 		InterceptStdDev: Time(ie)}
+// }
 
 func ParseTime(s string) Time {
 	timing, err := strconv.ParseFloat(s, 64)
@@ -198,12 +209,11 @@ func (ts *TimingStats) Mean() Timing {
 	}
 }
 
-func (ts *TimingStats) StandardDeviation() Timing {
-	return Timing{
-		Time(ts.Wall.PopulationStandardDeviation()),
-		Time(ts.User.PopulationStandardDeviation()),
-		Time(ts.Sys.PopulationStandardDeviation()),
-	}
+func (ts *TimingStats) NormalConfidenceInterval() (low, high Timing) {
+	wl, wh := ts.Wall.NormalConfidenceInterval()
+	ul, uh := ts.User.NormalConfidenceInterval()
+	sl, sh := ts.Sys.NormalConfidenceInterval()
+	return Timing{Time(wl), Time(ul), Time(sl)}, Timing{Time(wh), Time(uh), Time(sh)}
 }
 
 func (ts *TimingStats) Count() int {
@@ -212,6 +222,10 @@ func (ts *TimingStats) Count() int {
 
 func (t Time) Seconds() float64 {
 	return float64(t)
+}
+
+func (t Time) Nanoseconds() int64 {
+	return int64(float64(t) * 1e9)
 }
 
 func (t Time) Duration() time.Duration {
@@ -241,23 +255,21 @@ func (d *Timings) Update(x float64, y Timing) {
 	d.Y = append(d.Y, y)
 }
 
-func (d *Timings) LinearRegression() TimingRegression {
-	x := d.X
-	wally := make([]float64, len(x))
-	usery := make([]float64, len(x))
-	sysy := make([]float64, len(x))
-
-	for i, y := range d.Y {
-		wally[i] = y.Wall.Seconds()
-		usery[i] = y.User.Seconds()
-		sysy[i] = y.Sys.Seconds()
-	}
-	return TimingRegression{
-		Wall: linearRegression(x, wally),
-		User: linearRegression(x, usery),
-		Sys:  linearRegression(x, sysy)}
-
-}
+// func (d *Timings) LinearRegression() TimingRegression {
+// 	x := d.X
+// 	wally := make([]float64, len(x))
+// 	usery := make([]float64, len(x))
+// 	sysy := make([]float64, len(x))
+// 	for i, y := range d.Y {
+// 		wally[i] = y.Wall.Seconds()
+// 		usery[i] = y.User.Seconds()
+// 		sysy[i] = y.Sys.Seconds()
+// 	}
+// 	return TimingRegression{
+// 		Wall: linearRegression(x, wally),
+// 		User: linearRegression(x, usery),
+// 		Sys:  linearRegression(x, sysy)}
+// }
 
 func (d *TimingRegression) Slope() Timing {
 	return Timing{
@@ -303,7 +315,23 @@ func (ts Timing) String() string {
 }
 
 func (ts TimingStats) String() string {
-	return fmt.Sprintf("%v {%v[%v]}", ts.Mean(), ts.StandardDeviation(), ts.Count())
+	l, h := ts.NormalConfidenceInterval()
+	return fmt.Sprintf("[%v - %v]", l, h)
+}
+
+func (ts TimingStats) Sub(o TimingStats) DerivedTimingStats {
+	return DerivedTimingStats{
+		Wall: ts.Wall.Sub(o.Wall),
+		User: ts.User.Sub(o.User),
+		Sys:  ts.Sys.Sub(o.Sys),
+	}
+}
+func (ts DerivedTimingStats) Div(f float64) DerivedTimingStats {
+	return DerivedTimingStats{
+		Wall: ts.Wall.Div(f),
+		User: ts.User.Div(f),
+		Sys:  ts.Sys.Div(f),
+	}
 }
 
 func (ts TimingRegression) String() string {

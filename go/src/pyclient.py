@@ -12,11 +12,11 @@ import urllib2
 import opentracing
 import lightstep.tracer
 
-test_tracer = lightstep.tracer.init_tracer(
+test_tracer = lightstep.Tracer(
     access_token='ignored',
-    secure=False,
-    service_host='localhost',
-    service_port=8000,
+    collector_host='localhost',
+    collector_port=8000,
+    collector_encryption='none',
 )
 
 noop_tracer = opentracing.tracer

@@ -4,10 +4,7 @@ WORKDIR /data
 
 RUN apt-get update && \
     apt-get install -qqy \
-	ca-certificates \
-	libboost-all-dev \
-	libcppnetlib-dev \
-	libssl-dev
+	ca-certificates
 
 ENV LD_LIBRARY_PATH=/data
 

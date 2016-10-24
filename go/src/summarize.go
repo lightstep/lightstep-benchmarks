@@ -14,9 +14,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/GaryBoone/GoStats/stats"
 	"github.com/golang/glog"
+	hstats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/cloud"
@@ -123,6 +125,9 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 	if err := json.Unmarshal(data, &output); err != nil {
 		return err
 	}
+	if err := s.getSleepCalibration(&output); err != nil {
+		return err
+	}
 
 	return s.getMeasurements(&output)
 }
@@ -192,6 +197,56 @@ func (m multiScript) WriteString(s string) (int, error) {
 	return len(s), nil
 }
 
+func (s *summarizer) getSleepCalibration(output *bench.Output) error {
+	fmt.Println("Sleep calibration for", output.Title, output.Client, output.Name)
+	factorMap := map[int][]bench.SleepCalibration{}
+
+	for _, s := range output.Sleeps {
+		s := s
+		factorMap[s.WorkFactor] = append(factorMap[s.WorkFactor], s)
+	}
+
+	var workVals []int
+	for w, _ := range factorMap {
+		workVals = append(workVals, w)
+	}
+	sort.Ints(workVals)
+
+	for _, w := range workVals {
+		sm := factorMap[w]
+
+		var ras, rns []int64
+		repeats := 0
+		for _, s := range sm {
+			ras = append(ras, s.RunAndSleep.User.Nanoseconds()+s.RunAndSleep.Sys.Nanoseconds())
+			rns = append(ras, s.RunNoSleep.User.Nanoseconds()+s.RunNoSleep.Sys.Nanoseconds())
+			repeats = s.Repeats
+
+			// runtimeDiff := (s.RunAndSleep - s.RunNoSleep) / float64(sm[0].Repeats)
+			// diff := math.Abs(runtimeDiff-bench.DefaultSleepInterval.Seconds()) / bench.DefaultSleepInterval.Seconds()
+			// if diff <= 0 || diff >= 1 {
+			// 	glog.Info("Skipping invalid sleep time: ", s, "time", runtimeDiff, "diff", diff)
+			// 	continue
+			// }
+		}
+		glog.Infof("Sleep cost @ %d work factor = ...", w)
+
+		dur := func(ns float64) time.Duration {
+			return time.Duration(int64(ns))
+		}
+
+		rasLow, rasHigh := hstats.NormalConfidenceInterval(ras)
+		glog.Infof("RAS %v %v %v %v", dur(hstats.Mean(ras)), dur(hstats.StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
+
+		rnsLow, rnsHigh := hstats.NormalConfidenceInterval(rns)
+		glog.Infof("RNS %v %v %v %v", dur(hstats.Mean(rns)), dur(hstats.StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
+
+		glog.Infof("MDIFF %v", dur((hstats.Mean(ras)-hstats.Mean(rns))/float64(repeats)))
+	}
+
+	return nil
+}
+
 func (s *summarizer) getMeasurements(output *bench.Output) error {
 	loadMap := map[float64][]bench.Measurement{}
 	count := 0
@@ -241,7 +296,7 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 			ty = append(ty, tm.VisibleImpairment())
 			uy = append(uy, um.VisibleImpairment())
 
-			buffer.Write([]byte(fmt.Sprintf("%.3f,%.6f,%.6f,%.3f,%.6f,%.6f\n",
+			buffer.Write([]byte(fmt.Sprintf("%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n",
 				um.RequestRate,
 				um.WorkRatio,
 				1-um.WorkRatio-um.SleepRatio,
