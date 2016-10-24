@@ -8,23 +8,17 @@
     "ExperimentDuration": "15s",
     "ExperimentRounds": 50,
 
-    "RateIncrements": 4,
-    "MinimumRate": 500,
+    "RateIncrements": 28,
+    "MinimumRate": 100,
     "MaximumRate":  1500,
 
     "LoadIncrements": 5,
     "MinimumLoad":  0.5,
     "MaximumLoad":  1.0,
 
-    "SleepTrialCount": 15,
-    "SleepRepeats":  30,
+    "SleepTrialCount": 500,
+    "SleepRepeats":  50,
     "SleepMinWorkFactor":  1,
-    "SleepMaxWorkFactor":   10,
-    "SleepWorkFactorIncr":  3,
-
-    "SleepTrialCount": 3,
-    "SleepRepeats":  1000,
-    "SleepMinWorkFactor":  1,
-    "SleepMaxWorkFactor":   31,
-    "SleepWorkFactorIncr":  3
+    "SleepMaxWorkFactor":   1,
+    "SleepWorkFactorIncr":  1,
 }

@@ -224,6 +224,10 @@ func (t Time) Seconds() float64 {
 	return float64(t)
 }
 
+func (t Time) Nanoseconds() int64 {
+	return int64(float64(t) * 1e9)
+}
+
 func (t Time) Duration() time.Duration {
 	return time.Duration(int64(t * nanosPerSecond))
 }
