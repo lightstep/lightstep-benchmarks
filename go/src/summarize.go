@@ -96,18 +96,27 @@ func main() {
 type outputDir struct {
 	*bench.Output
 	dir string
+	out string
 }
 
 func newOutputDir(output *bench.Output) outputDir {
-	dir := fmt.Sprintf("./%s-%s-%s", output.Title, output.Client, output.Name)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		glog.Fatal("Could not mkdir: ", dir)
+	idir := fmt.Sprintf("./%s/%s-%s", output.Title, output.Client, output.Name)
+	if err := os.MkdirAll(idir, 0755); err != nil {
+		glog.Fatal("Could not mkdir: ", idir)
 	}
-	return outputDir{output, dir}
+	odir := fmt.Sprintf("./%s/output", output.Title)
+	if err := os.MkdirAll(odir, 0755); err != nil {
+		glog.Fatal("Could not mkdir: ", odir)
+	}
+	return outputDir{output, idir, odir}
 }
 
-func (od *outputDir) pathFor(name string) string {
+func (od *outputDir) ipathFor(name string) string {
 	p, _ := filepath.Abs(path.Join(od.dir, name))
+	return p
+}
+func (od *outputDir) opathFor(name string) string {
+	p, _ := filepath.Abs(path.Join(od.out, name))
 	return p
 }
 
@@ -147,7 +156,7 @@ func multiScripter(plots ...*plotScript) multiScript {
 	return multiScript{plots: plots}
 }
 
-func newPlotScript(name string, odir outputDir) *plotScript {
+func newPlotScript(output *bench.Output, name string, odir outputDir) *plotScript {
 	p := &plotScript{Name: name, outputDir: odir}
 	p.writeHeader()
 	return p
@@ -157,7 +166,7 @@ func (p *plotScript) writeHeader() {
 	p.WriteString(`
 set terminal png size 1000,1000
 set output "`)
-	p.WriteString(p.Name + ".png")
+	p.WriteString(p.outputDir.opathFor(p.Client + "_" + p.Output.Name + "_" + p.Name + ".png"))
 	p.WriteString(`"
 set datafile separator ","
 set xrange [0:*]
@@ -176,8 +185,7 @@ func (s *plotScript) writeBody() {
 	s.WriteString("\n")
 	s.WriteString("quit\n")
 
-	ioutil.WriteFile(s.pathFor(s.Name+".gnuplot"), s.Bytes(), 0755)
-
+	ioutil.WriteFile(s.ipathFor(s.Name+".gnuplot"), s.Bytes(), 0755)
 }
 
 func (s *plotScript) add(cmd string) {
@@ -221,27 +229,20 @@ func (s *summarizer) getSleepCalibration(output *bench.Output) error {
 			ras = append(ras, s.RunAndSleep.User.Nanoseconds()+s.RunAndSleep.Sys.Nanoseconds())
 			rns = append(ras, s.RunNoSleep.User.Nanoseconds()+s.RunNoSleep.Sys.Nanoseconds())
 			repeats = s.Repeats
-
-			// runtimeDiff := (s.RunAndSleep - s.RunNoSleep) / float64(sm[0].Repeats)
-			// diff := math.Abs(runtimeDiff-bench.DefaultSleepInterval.Seconds()) / bench.DefaultSleepInterval.Seconds()
-			// if diff <= 0 || diff >= 1 {
-			// 	glog.Info("Skipping invalid sleep time: ", s, "time", runtimeDiff, "diff", diff)
-			// 	continue
-			// }
 		}
-		glog.Infof("Sleep cost @ %d work factor = ...", w)
 
 		dur := func(ns float64) time.Duration {
 			return time.Duration(int64(ns))
 		}
 
 		rasLow, rasHigh := hstats.NormalConfidenceInterval(ras)
-		glog.Infof("RAS %v %v %v %v", dur(hstats.Mean(ras)), dur(hstats.StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
+		glog.V(1).Infof("RAS %v %v %v %v", dur(hstats.Mean(ras)), dur(hstats.StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
 
 		rnsLow, rnsHigh := hstats.NormalConfidenceInterval(rns)
-		glog.Infof("RNS %v %v %v %v", dur(hstats.Mean(rns)), dur(hstats.StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
+		glog.V(1).Infof("RNS %v %v %v %v", dur(hstats.Mean(rns)), dur(hstats.StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
 
-		glog.Infof("MDIFF %v", dur((hstats.Mean(ras)-hstats.Mean(rns))/float64(repeats)))
+		glog.Infof("Sleep mean difference: %v", dur((hstats.Mean(ras)-hstats.Mean(rns))/float64(repeats)))
+		glog.Infof("Sleep error separated: %v", dur((rasLow-rnsHigh)/float64(repeats)))
 	}
 
 	return nil
@@ -272,7 +273,7 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 	}
 	sort.Float64s(loadVals)
 
-	comboScript := newPlotScript("all", odir)
+	comboScript := newPlotScript(output, "all", odir)
 	allScripts := []*plotScript{comboScript}
 
 	for _, l := range loadVals {
@@ -299,24 +300,24 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 			buffer.Write([]byte(fmt.Sprintf("%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n",
 				um.RequestRate,
 				um.WorkRatio,
-				1-um.WorkRatio-um.SleepRatio,
+				um.VisibleImpairment(),
 				tm.RequestRate,
 				tm.WorkRatio,
-				1-tm.WorkRatio-tm.SleepRatio)))
+				tm.VisibleImpairment())))
 		}
 
 		lstr := tranchName(l)
 
-		tname := "tranch" + lstr
-		tranchCsv := tname + ".csv"
-		err := ioutil.WriteFile(path.Join(odir.dir, tranchCsv), buffer.Bytes(), 0755)
+		tname := "load" + lstr
+		loadCsv := tname + ".csv"
+		err := ioutil.WriteFile(path.Join(odir.dir, loadCsv), buffer.Bytes(), 0755)
 		if err != nil {
 			glog.Fatal("Could not write file: ", err)
 		}
 		tslope, tinter, _, _, _, _ := stats.LinearRegression(tx, ty)
 		uslope, uinter, _, _, _, _ := stats.LinearRegression(ux, uy)
 
-		oneScript := newPlotScript(tname, odir)
+		oneScript := newPlotScript(output, tname, odir)
 		allScripts = append(allScripts, oneScript)
 		mScript := multiScripter(oneScript, comboScript)
 
@@ -324,9 +325,9 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 		mScript.WriteString(fmt.Sprintf("u%s(x)=%f*x+%f\n", lstr, uslope, uinter))
 
 		mScript.add(fmt.Sprintf("'%s' using 1:3 title 'untraced - %s' with point lc rgb '%s'",
-			tranchCsv, lstr, untracedColor(l)))
+			loadCsv, lstr, untracedColor(l)))
 		mScript.add(fmt.Sprintf("'%s' using 4:6 title 'traced - %s' with point lc rgb '%s'",
-			tranchCsv, lstr, tracedColor(l)))
+			loadCsv, lstr, tracedColor(l)))
 
 		mScript.add(fmt.Sprintf("u%s(x) title 'untraced - %s' with line lc rgb '%s'",
 			lstr, lstr, untracedColor(l)))
@@ -338,7 +339,7 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 	comboScript.writeBody()
 
 	for _, s := range allScripts {
-		path := s.pathFor(s.Name + ".gnuplot")
+		path := s.ipathFor(s.Name + ".gnuplot")
 		gp := exec.Command("gnuplot", path)
 		gp.Dir = odir.dir
 		if err := gp.Run(); err != nil {
