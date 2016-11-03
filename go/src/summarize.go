@@ -173,7 +173,7 @@ set yrange [0:*]
 
 set title "Tracing Cost"
 set xlabel "Request Rate"
-set ylabel "Visible CPU Impairment"
+set ylabel "Tracing CPU Impairment"
 set style func points
 `)
 }
@@ -317,15 +317,17 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 			urateLow, urateHigh := urate.NormalConfidenceInterval()
 			uimpairLow, uimpairHigh := uimpair.NormalConfidenceInterval()
 
+			baseline := uimpair.Mean()
+
 			buffer.Write([]byte(fmt.Sprintf("%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n",
 				trate.Mean(),
 				trateLow, trateHigh,
-				timpair.Mean(),
-				timpairLow, timpairHigh,
+				timpair.Mean()-baseline,
+				timpairLow-baseline, timpairHigh-baseline,
 				urate.Mean(),
 				urateLow, urateHigh,
-				uimpair.Mean(),
-				uimpairLow, uimpairHigh)))
+				uimpair.Mean()-baseline,
+				uimpairLow-baseline, uimpairHigh-baseline)))
 		}
 		lstr := tranchName(l)
 
