@@ -2,7 +2,11 @@
 
 set -e
 
-PROJECT_ID="lightstep-dev"
+if [ -z "${PROJECT_ID}" ]; then
+    echo Please set PROJECT_ID
+    exit 1
+fi
+
 CLOUD_ZONE="us-central1-a"
 MACHINE_TYPE="n1-standard-1"
 
