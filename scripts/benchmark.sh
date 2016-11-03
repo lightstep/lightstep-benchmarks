@@ -3,12 +3,15 @@
 # usage:
 #   benchmark.sh <title> <client-lang> <num-cpus> <config-name>
 #
+# e.g., test named jvm_9_0_8 of java client, 4 cpus, using
+# 'four-cpus-1kb-logs' config:
+#
+#   benchmark.sh jvm_9_0_8 java 4 four-cpus-1kb-logs
+#
 # pass <num-cpus>="local" to run locally
 #
-# e.g.:
-#   benchmark.sh jvm_9_0_8 java 4 four-cpus-1kb-logs
-
-# TODO Add safety here to avoid losing long experiments!
+# e.g. local java client using 'test' config:
+#   benchmark.sh jvm_9_0_8 java local test
 
 set -e
 
@@ -26,7 +29,6 @@ fi
 # naming constants
 BUCKET="lightstep-client-benchmarks"
 CLOUD_ZONE="us-central1-a"
-PROJECT_ID="lightstep-dev"
 CLOUD_MACH_BASE="n1-standard-"
 IMG_BASE="gcr.io/${PROJECT_ID}/bench-${CLIENT}"
 VM="bench-${TITLE}-${CLIENT}-${CPUS}-${TEST_CONFIG_NAME}"
@@ -66,6 +68,11 @@ case ${CPUS} in
 	;;
 esac
 
+if [ "${LOCAL}" = "no" -a -z "${PROJECT_ID}" ]; then
+    echo Please set PROJECT_ID
+    exit 1
+fi
+
 function usage()
 {
     echo "usage: $0 title client cpus config"
@@ -86,7 +93,7 @@ function on_exit()
 
 function build()
 {
-    HAVE_IT=`${GLDOCKER} images -- -q ${IMG_BASE}:${TAG}`
+    HAVE_IT=`${GLDOCKER} -- images -q ${IMG_BASE}:${TAG}`
     if [ ! -z "${HAVE_IT}" ]; then
 	echo "${IMG_BASE}:${TAG} was already built"
 	return
@@ -209,7 +216,10 @@ fi
 
 trap on_exit EXIT
 
-set_config
+if [ "${LOCAL}" != "yes" ]; then
+    set_config
+fi
+
 build
 
 if [ "${LOCAL}" = "yes" ]; then

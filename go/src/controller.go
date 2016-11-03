@@ -68,6 +68,8 @@ func (d Duration) String() string {
 	return time.Duration(d).String()
 }
 
+const extraVerbose = false
+
 type Params struct {
 	CalibrateRounds                int
 	ExperimentDuration             Duration
@@ -88,6 +90,9 @@ type Params struct {
 	SleepMinWorkFactor  int64
 	SleepMaxWorkFactor  int64
 	SleepWorkFactorIncr int64
+
+	SysInterferenceThreshold  float64
+	UserInterferenceThreshold float64
 }
 
 var (
@@ -265,8 +270,10 @@ func (s *benchService) estimateWorkCost() {
 			})
 			adjusted := tm.Measured
 			st.Update(adjusted)
-			bench.Print("Measured work for rounds=", multiplier, " in ", adjusted,
-				" == ", float64(adjusted.User)/float64(multiplier))
+			if extraVerbose {
+				bench.Print("Measured work for rounds", multiplier, "in", adjusted,
+					"==", time.Duration(float64(adjusted.User)/float64(multiplier)*1e9))
+			}
 		}
 		s.workCost = st.Mean().Div(float64(multiplier))
 		bench.Print("Cost W =", s.workCost, "/unit")
@@ -322,8 +329,10 @@ func (s *benchService) measureTestLoop(trace bool) bench.Timing {
 			})
 			adjusted := tm.Measured
 			ss.Update(adjusted)
-			bench.Print("Measured cost for rounds=", multiplier, " in ", adjusted,
-				" == ", float64(adjusted.User)/float64(multiplier))
+			if extraVerbose {
+				bench.Print("Measured cost for rounds", multiplier, "in", adjusted,
+					"==", time.Duration(float64(adjusted.User)/float64(multiplier)*1e9))
+			}
 		}
 		return ss.Mean().Div(float64(multiplier))
 	}
@@ -401,7 +410,6 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		ss, spans, dropped, _, actualRate, workLoad, sleepLoad := runOnce()
 
 		if ss == nil {
-			s.TestTimeSlice *= 2
 			s.recalibrate()
 			continue
 		}
@@ -502,20 +510,20 @@ func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
 	type sleepTrial struct {
 		with    bench.TimingStats
 		without bench.TimingStats
-		diffs   bench.TimingStats
 	}
 
 	repeats := s.SleepRepeats
 	// var sleepTrials []sleepTrial
 outer:
 	for m := s.SleepMinWorkFactor; m <= s.SleepMaxWorkFactor; m += s.SleepWorkFactorIncr {
-		equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.workCost.Wall.Seconds())
+		equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.workCost.User.Seconds())
+		trials := s.SleepTrialCount
 
 		var st sleepTrial
 		const warmupRatio = 0.1
-		tci := int(float64(s.SleepTrialCount) * warmupRatio)
-		tc := s.SleepTrialCount + tci
-		for i := 0; i < tc; i++ { // TODO should be ... until 95% confidence or at least N
+		tci := int(float64(trials) * warmupRatio)
+		tc := trials + tci
+		for i := 0; i < tc; i++ {
 			var ysleep, nsleep *bench.Result
 			var s1, s2 time.Duration
 			if rand.Float64() < 0.5 {
@@ -545,10 +553,8 @@ outer:
 				ysleep, nsleep = r2, r1
 			}
 
-			d := ysleep.Measured.Sub(nsleep.Measured)
 			st.with.Update(ysleep.Measured)
 			st.without.Update(nsleep.Measured)
-			st.diffs.Update(d)
 
 			o.Sleeps = append(o.Sleeps, bench.SleepCalibration{
 				WorkFactor:  int(m),
@@ -557,20 +563,25 @@ outer:
 				Repeats:     int(repeats),
 			})
 		}
-		fmt.Println("Sleeping:", st.with)
-		fmt.Println("No sleep:", st.without)
-		meanCost := st.with.Sub(st.without)
-		fmt.Println("Work factor", m, "sleep", st.with, "nosleep", st.without, "mean diff",
-			meanCost.Div(float64(repeats)))
 
-		if meanCost.User.Mean() < 0 {
+		withLow, _ := st.with.NormalConfidenceInterval()
+		_, woHigh := st.without.NormalConfidenceInterval()
+
+		meanTiming := st.with.Mean().Sub(st.without.Mean()).Div(float64(repeats))
+		meanCost := meanTiming.User + meanTiming.Sys
+
+		bench.Print(fmt.Sprint("Sleep mean difference: ", meanCost))
+		bench.Print(fmt.Sprint("Sleep error separated: ", withLow.Sub(woHigh).Div(float64(repeats))))
+
+		if meanCost < 0 {
+			fmt.Println("Negative user time: recalibrate:", meanCost)
 			s.recalibrate()
 			goto outer
 		}
 
-		if meanCost.Sys.Mean() < 0 && repeats < 1000 {
-			repeats *= 2
-			fmt.Println("Negative system time: double repeats to", repeats)
+		if (st.with.Sys.Mean() < 0 || st.without.Sys.Mean() < 0) && trials < 1000 {
+			trials *= 2
+			fmt.Println("Negative system time: double trials to", trials)
 			goto outer
 		}
 		// sleepTrials = append(sleepTrials, st)
@@ -621,7 +632,7 @@ func (s *benchService) runTests(b benchClient, c bench.Config) {
 
 func (s *benchService) recalibrate() {
 	for {
-		bench.Print("Calibration starting, time slice", s.TestTimeSlice)
+		bench.Print("Calibration starting, time slice", s.TestTimeSlice, "rounds", s.CalibrateRounds)
 		s.calibrations++
 		s.spansReceived = 0
 		s.spansDropped = 0
@@ -735,7 +746,7 @@ func (s *benchService) serveResult(req *http.Request) *bench.Result {
 	}
 
 	// Look for CPU contention on the machine. (TODO 100 == Hz)
-	if usage.User.Seconds() > 0.1 {
+	if usage.User.Seconds() > s.Params.TestTimeSlice.Seconds() {
 		osUser := bench.Time(float64(usageStat.User-s.beforeStat.User) / 100)
 		osSys := bench.Time(float64(usageStat.System-s.beforeStat.System) / 100)
 
@@ -746,14 +757,14 @@ func (s *benchService) serveResult(req *http.Request) *bench.Result {
 		}
 
 		du := osUser - usage.User - usageSelf.User
-		if du/osUser > 0.02 {
-			bench.Print(">2% interference: user time: ", float64(du/osUser))
+		if (du / osUser).Seconds() > s.Params.UserInterferenceThreshold {
+			bench.Print(fmt.Sprintf("User interference: %0.1f%% [%.3f/%.3f]", 100*float64(du/osUser), du, usage.User))
 			return nil
 		}
 		ds := osSys - usage.Sys - usageSelf.Sys
 		// Compare other system activity against the process's user time
-		if ds/usage.User > 0.01 {
-			bench.Print(">1% interference: system time: ", float64(ds/usage.User))
+		if (ds / usage.User).Seconds() > s.Params.SysInterferenceThreshold {
+			bench.Print(fmt.Sprintf("System interference: %0.1f%% [%.3f/%.3f]", 100*float64(ds/usage.User), ds, usage.User))
 			return nil
 		}
 	}
@@ -882,6 +893,13 @@ func main() {
 
 	readObject("Config", bench.TestConfigFile, "BENCHMARK_CONFIG_FILE", &c)
 	readObject("Params", bench.TestParamsFile, "BENCHMARK_PARAMS_FILE", &service.Params)
+
+	if service.Params.UserInterferenceThreshold == 0 {
+		service.Params.UserInterferenceThreshold = 0.01
+	}
+	if service.Params.SysInterferenceThreshold == 0 {
+		service.Params.SysInterferenceThreshold = 0.02
+	}
 
 	var err error
 	ctx := context.Background()

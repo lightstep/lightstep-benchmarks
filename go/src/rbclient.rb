@@ -1,5 +1,5 @@
 require 'json'
-require 'lightstep-tracer'
+require 'lightstep'
 require 'net/http'
 require 'pp'
 require 'uri'
