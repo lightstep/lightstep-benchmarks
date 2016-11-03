@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GaryBoone/GoStats/stats"
 	"github.com/golang/glog"
 	hstats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
@@ -34,7 +33,7 @@ var (
 )
 
 func tranchName(l float64) string {
-	return strings.Replace(fmt.Sprintf("%.2f", l), ".", "_", -1)
+	return strings.Replace(fmt.Sprintf("%.2f", l), ".", ".", -1)
 }
 
 func tracedColor(l float64) string {
@@ -249,7 +248,8 @@ func (s *summarizer) getSleepCalibration(output *bench.Output) error {
 }
 
 func (s *summarizer) getMeasurements(output *bench.Output) error {
-	loadMap := map[float64][]bench.Measurement{}
+	// by target load factor, by target rate
+	loadMap := map[float64]map[float64][]bench.Measurement{}
 	count := 0
 	for _, p := range output.Results {
 		p := p
@@ -257,11 +257,16 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 		if p.Completion < 0.95 {
 			continue
 		}
-		loadMap[p.TargetLoad] = append(loadMap[p.TargetLoad], p)
+		lm := loadMap[p.TargetLoad]
+		if lm == nil {
+			lm = map[float64][]bench.Measurement{}
+			loadMap[p.TargetLoad] = lm
+		}
+		lm[p.TargetRate] = append(lm[p.TargetRate], p)
 		count++
 	}
-	if count == 0 {
-		glog.Info("Insufficient completion")
+	if count < 5 {
+		glog.Info("%s: %d incomplete results", output, len(output.Results)-count)
 		return nil
 	}
 
@@ -277,35 +282,51 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 	allScripts := []*plotScript{comboScript}
 
 	for _, l := range loadVals {
-		measurements := loadMap[l]
-		count := len(measurements)
+		//measurements := loadMap[l]
+		//count := len(measurements)
+		experiments := loadMap[l]
 
-		tx := make([]float64, count)
-		ty := make([]float64, count)
-		ux := make([]float64, count)
-		uy := make([]float64, count)
+		// tx := make([]float64, count)
+		// ty := make([]float64, count)
+		// ux := make([]float64, count)
+		// uy := make([]float64, count)
 
 		var buffer bytes.Buffer
 
-		for _, m := range measurements {
-			tm := m.Traced
-			um := m.Untraced
-
-			tx = append(tx, tm.RequestRate)
-			ux = append(ux, um.RequestRate)
-
-			ty = append(ty, tm.VisibleImpairment())
-			uy = append(uy, um.VisibleImpairment())
-
-			buffer.Write([]byte(fmt.Sprintf("%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n",
-				um.RequestRate,
-				um.WorkRatio,
-				um.VisibleImpairment(),
-				tm.RequestRate,
-				tm.WorkRatio,
-				tm.VisibleImpairment())))
+		rateVals := []float64{}
+		for r, _ := range experiments {
+			rateVals = append(rateVals, r)
 		}
+		sort.Float64s(rateVals)
 
+		for _, r := range rateVals {
+
+			var trate, urate bench.Stats
+			var timpair, uimpair bench.Stats
+
+			for _, m := range experiments[r] {
+				tm := m.Traced
+				um := m.Untraced
+				trate.Update(tm.RequestRate)
+				urate.Update(um.RequestRate)
+				timpair.Update(tm.VisibleImpairment())
+				uimpair.Update(um.VisibleImpairment())
+			}
+			trateLow, trateHigh := trate.NormalConfidenceInterval()
+			timpairLow, timpairHigh := timpair.NormalConfidenceInterval()
+			urateLow, urateHigh := urate.NormalConfidenceInterval()
+			uimpairLow, uimpairHigh := uimpair.NormalConfidenceInterval()
+
+			buffer.Write([]byte(fmt.Sprintf("%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n",
+				trate.Mean(),
+				trateLow, trateHigh,
+				timpair.Mean(),
+				timpairLow, timpairHigh,
+				urate.Mean(),
+				urateLow, urateHigh,
+				uimpair.Mean(),
+				uimpairLow, uimpairHigh)))
+		}
 		lstr := tranchName(l)
 
 		tname := "load" + lstr
@@ -314,25 +335,15 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 		if err != nil {
 			glog.Fatal("Could not write file: ", err)
 		}
-		tslope, tinter, _, _, _, _ := stats.LinearRegression(tx, ty)
-		uslope, uinter, _, _, _, _ := stats.LinearRegression(ux, uy)
 
 		oneScript := newPlotScript(output, tname, odir)
 		allScripts = append(allScripts, oneScript)
 		mScript := multiScripter(oneScript, comboScript)
 
-		mScript.WriteString(fmt.Sprintf("t%s(x)=%f*x+%f\n", lstr, tslope, tinter))
-		mScript.WriteString(fmt.Sprintf("u%s(x)=%f*x+%f\n", lstr, uslope, uinter))
-
-		mScript.add(fmt.Sprintf("'%s' using 1:3 title 'untraced - %s' with point lc rgb '%s'",
-			loadCsv, lstr, untracedColor(l)))
-		mScript.add(fmt.Sprintf("'%s' using 4:6 title 'traced - %s' with point lc rgb '%s'",
+		mScript.add(fmt.Sprintf("'%s' using 1:4:2:3:5:6 title 'traced - %s' lc rgb '%s' with xyerrorbars",
 			loadCsv, lstr, tracedColor(l)))
-
-		mScript.add(fmt.Sprintf("u%s(x) title 'untraced - %s' with line lc rgb '%s'",
-			lstr, lstr, untracedColor(l)))
-		mScript.add(fmt.Sprintf("t%s(x) title 'traced - %s' with line lc rgb '%s'",
-			lstr, lstr, tracedColor(l)))
+		mScript.add(fmt.Sprintf("'%s' using 7:10:8:9:11:12 title 'untraced - %s' lc rgb '%s' with xyerrorbars",
+			loadCsv, lstr, untracedColor(l)))
 
 		oneScript.writeBody()
 	}
