@@ -1,24 +1,27 @@
 {
     "TestTolerance":       0.01,
-    "MinimumCalibrations": 1,
-    "CalibrateRounds":     17,
-    "TestTimeSlice":       "2s",
+    "MinimumCalibrations": 5,
+    "CalibrateRounds":     27,
+    "TestTimeSlice":       "5s",
     "NegativeRecalibrationThreshold": -0.01,
 
-    "ExperimentDuration": "15s",
-    "ExperimentRounds": 50,
+    "ExperimentDuration": "25s",
+    "ExperimentRounds": 75,
 
-    "RateIncrements": 28,
+    "RateIncrements": 8,
     "MinimumRate": 100,
-    "MaximumRate":  1500,
+    "MaximumRate":  500,
 
-    "LoadIncrements": 5,
-    "MinimumLoad":  0.5,
-    "MaximumLoad":  1.0,
+    "LoadIncrements": 2,
+    "MinimumLoad":  0.6,
+    "MaximumLoad":  0.8,
 
     "SleepTrialCount": 500,
-    "SleepRepeats":  50,
-    "SleepMinWorkFactor":  1,
-    "SleepMaxWorkFactor":   1,
+    "SleepRepeats":  1,
+    "SleepMinWorkFactor":  10,
+    "SleepMaxWorkFactor":   10,
     "SleepWorkFactorIncr":  1,
+
+    "SysInterferenceThreshold": 0.03,
+    "UserInterferenceThreshold": 0.02
 }

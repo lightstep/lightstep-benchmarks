@@ -1,5 +1,5 @@
 {
-    "TestTolerance":       0.01,
+    "TestTolerance":       0.015,
     "MinimumCalibrations": 1,
     "CalibrateRounds":     7,
     "TestTimeSlice":       "1s",
@@ -9,16 +9,19 @@
     "ExperimentRounds": 3,
 
     "RateIncrements": 4,
-    "MinimumRate": 500,
-    "MaximumRate":  1500,
+    "MinimumRate": 100,
+    "MaximumRate":  500,
 
     "LoadIncrements": 5,
-    "MinimumLoad":  0.5,
-    "MaximumLoad":  1.0,
+    "MinimumLoad":  0.6,
+    "MaximumLoad":  0.8,
 
     "SleepTrialCount": 200,
     "SleepRepeats":  1,
-    "SleepMinWorkFactor":  1,
-    "SleepMaxWorkFactor":   1,
-    "SleepWorkFactorIncr":  1
+    "SleepMinWorkFactor":  10,
+    "SleepMaxWorkFactor":   10,
+    "SleepWorkFactorIncr":  1,
+
+    "SysInterferenceThreshold": 0.03,
+    "UserInterferenceThreshold": 0.02
 }
