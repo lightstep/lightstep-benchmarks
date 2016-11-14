@@ -12,19 +12,14 @@ RUN apt-get install -y \
 	pkg-config \
 	clang-3.8 \
 	lldb-3.8 \
-        libprotobuf-dev \
-        libgrpc-dev \
 	wget
-
-# RUN wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
-# RUN apt-get install -y clang-3.8 lldb-3.8
 
 ENV CC=clang-3.8
 ENV CXX=clang++-3.8
 
 # gRPC team recommends $(curl -L http://grpc.io/release) for v1.0.0 below.
-#RUN git clone -b v1.0.0 https://github.com/grpc/grpc && \
-#    cd grpc && \
-#    git submodule update --init && \
-#    make && \
-#    make install
+RUN git clone -b v1.0.1 https://github.com/grpc/grpc && \
+    cd grpc && \
+    git submodule update --init && \
+    make && \
+    make install
