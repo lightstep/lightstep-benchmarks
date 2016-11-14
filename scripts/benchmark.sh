@@ -49,7 +49,7 @@ SCOPED="https://www.googleapis.com/auth"
 # command-line tools
 GCLOUD="gcloud"
 LDOCKER="docker"
-GLDOCKER="${GCLOUD} docker"
+GLDOCKER="${GCLOUD} docker --"
 
 SSH="${GCLOUD} compute ssh --project ${PROJECT_ID} --zone ${CLOUD_ZONE}"
 SSH_TO="${SSH} ${VM} --"         # ssh to the VM
@@ -58,7 +58,6 @@ GDOCKER="${SSH_TO} sudo docker"  # docker on the VM
 
 # use the developer gcloud profile, restore it on exit
 GCLOUD_CONFIG="devel"
-STANDING_GCLOUD_CONFIG=`${GCLOUD} config configurations list | grep True | awk '{print $1}'`
 
 # local debugging option, set CPUs="local"
 LOCAL=no
@@ -82,23 +81,21 @@ function usage()
 
 function set_config()
 {
-    ${GCLOUD} config configurations activate ${GCLOUD_CONFIG} 2> /dev/null
+    local config=`${GCLOUD} config configurations list | grep True | awk '{print $1}'`
+    if [ ${config} != ${GCLOUD_CONFIG} ]; then
+	# TODO make the gcloud project/zone parameters instead
+	echo "Please run:"
+	echo "  ${GCLOUD} config configurations activate ${GCLOUD_CONFIG}"
+    fi
 }
 
 function on_exit()
 {
     rm -rf "${DBUILD}"
-    ${GCLOUD} config configurations activate ${STANDING_GCLOUD_CONFIG} 2> /dev/null
 }
 
 function build()
 {
-    HAVE_IT=`${GLDOCKER} -- images -q ${IMG_BASE}:${TAG}`
-    if [ ! -z "${HAVE_IT}" ]; then
-	echo "${IMG_BASE}:${TAG} was already built"
-	return
-    fi
-
     rm -rf ${DBUILD}
     mkdir ${DBUILD}
 
@@ -110,17 +107,17 @@ function build()
 
     ${LDOCKER} build -t ${IMG_BASE}:${TAG} ${DBUILD}
     ${LDOCKER} tag ${IMG_BASE}:${TAG} ${IMG_BASE}:latest
-    if [ "${LOCAL}" = "no" ]; then
-	echo Push ${IMG_BASE}:${TAG}
-	${GCLOUD} docker push ${IMG_BASE}:${TAG}
-	echo Push ${IMG_BASE}:latest
-	${GCLOUD} docker push ${IMG_BASE}:latest
-    fi
     echo Built!
 }
 
 function launch_on_gcp()
 {
+    if [ "${LOCAL}" = "no" ]; then
+	echo Push ${IMG_BASE}:${TAG}
+	${GLDOCKER} push ${IMG_BASE}:${TAG}
+	echo Push ${IMG_BASE}:latest
+	${GLDOCKER} push ${IMG_BASE}:latest
+    fi
     if ${SSH_TO} true 2> /dev/null; then
 	:
     else

@@ -1,6 +1,7 @@
 {
     "TestTolerance":       0.015,
     "MinimumCalibrations": 1,
+    "MaximumCalibrations": 3,
     "CalibrateRounds":     7,
     "TestTimeSlice":       "1s",
     "NegativeRecalibrationThreshold": -0.01,

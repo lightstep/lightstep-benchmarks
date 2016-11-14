@@ -68,7 +68,10 @@ func (d Duration) String() string {
 	return time.Duration(d).String()
 }
 
-const extraVerbose = false
+const (
+	extraVerbose = false
+	warmupRatio  = 0.1
+)
 
 type Params struct {
 	CalibrateRounds                int
@@ -78,6 +81,7 @@ type Params struct {
 	MaximumLoad                    float64
 	MaximumRate                    int
 	MinimumCalibrations            int
+	MaximumCalibrations            int
 	MinimumLoad                    float64
 	MinimumRate                    int
 	NegativeRecalibrationThreshold float64
@@ -262,12 +266,16 @@ func (s *benchService) estimateWorkCost() {
 			continue
 		}
 		var st bench.TimingStats
-		for j := 0; j < s.CalibrateRounds; j++ {
+		warmup := int(float64(s.CalibrateRounds) * warmupRatio)
+		for j := 0; j < s.CalibrateRounds+warmup; j++ {
 			tm := s.run(&bench.Control{
 				Concurrent: 1,
 				Work:       multiplier,
 				Repeat:     1,
 			})
+			if j < warmup {
+				continue
+			}
 			adjusted := tm.Measured
 			st.Update(adjusted)
 			if extraVerbose {
@@ -401,12 +409,6 @@ func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoi
 		return &tm.Measured, stotal, dtotal, btotal, actualRate, workLoad, sleepLoad
 	}
 	for {
-		if s.calibrations < s.MinimumCalibrations {
-			// Adjust for on-the-fly compilation,
-			// initialization costs, etc.
-			s.recalibrate()
-		}
-
 		ss, spans, dropped, _, actualRate, workLoad, sleepLoad := runOnce()
 
 		if ss == nil {
@@ -505,6 +507,8 @@ func quickSummary(ms []bench.Measurement) string {
 }
 
 func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
+	// Note: the results of this experiment are not used to adjust
+	// the impairment measurements.
 	bench.Print("Estimating sleep cost")
 
 	type sleepTrial struct {
@@ -513,14 +517,13 @@ func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
 	}
 
 	repeats := s.SleepRepeats
-	// var sleepTrials []sleepTrial
 outer:
 	for m := s.SleepMinWorkFactor; m <= s.SleepMaxWorkFactor; m += s.SleepWorkFactorIncr {
 		equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.workCost.User.Seconds())
 		trials := s.SleepTrialCount
 
 		var st sleepTrial
-		const warmupRatio = 0.1
+
 		tci := int(float64(trials) * warmupRatio)
 		tc := trials + tci
 		for i := 0; i < tc; i++ {
@@ -574,19 +577,17 @@ outer:
 		bench.Print(fmt.Sprint("Sleep error separated: ", withLow.Sub(woHigh).Div(float64(repeats))))
 
 		if meanCost < 0 {
-			fmt.Println("Negative user time: recalibrate:", meanCost)
+			bench.Print("Negative user time: recalibrate:", meanCost)
 			s.recalibrate()
 			goto outer
 		}
 
 		if (st.with.Sys.Mean() < 0 || st.without.Sys.Mean() < 0) && trials < 1000 {
 			trials *= 2
-			fmt.Println("Negative system time: double trials to", trials)
+			bench.Print("Negative system time: double trials to", trials)
 			goto outer
 		}
-		// sleepTrials = append(sleepTrials, st)
 	}
-	// TODO _ = sleepTrials
 }
 
 func (s *benchService) warmup() {
@@ -631,7 +632,13 @@ func (s *benchService) runTests(b benchClient, c bench.Config) {
 }
 
 func (s *benchService) recalibrate() {
-	for {
+	for s.calibrations < s.MaximumCalibrations {
+		if s.calibrations >= s.MinimumCalibrations {
+			s.TestTimeSlice *= 2
+			if s.TestTimeSlice > s.ExperimentDuration {
+				s.TestTimeSlice = s.ExperimentDuration
+			}
+		}
 		bench.Print("Calibration starting, time slice", s.TestTimeSlice, "rounds", s.CalibrateRounds)
 		s.calibrations++
 		s.spansReceived = 0
@@ -660,7 +667,9 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 
 	go s.execClient(bc, ch)
 
-	s.recalibrate()
+	for s.calibrations < s.MinimumCalibrations {
+		s.recalibrate()
+	}
 
 	output := bench.Output{}
 	output.Title = bench.TestTitle
