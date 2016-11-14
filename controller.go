@@ -24,7 +24,7 @@ import (
 	"google.golang.org/cloud/storage"
 	"google.golang.org/grpc"
 
-	bench "benchlib"
+	bench "./benchlib"
 
 	proto_timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	cpb "github.com/lightstep/lightstep-tracer-go/collectorpb"
