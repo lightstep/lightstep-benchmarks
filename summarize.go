@@ -1,7 +1,6 @@
 package main
 
 import (
-	bench "benchlib"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -15,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	bench "./benchlib"
 
 	"github.com/golang/glog"
 	hstats "github.com/hermanschaaf/stats"
