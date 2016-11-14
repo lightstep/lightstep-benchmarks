@@ -18,13 +18,13 @@ import (
 	"path"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
-	"google.golang.org/cloud"
-	"google.golang.org/cloud/storage"
+	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
-	bench "./benchlib"
+	bench "github.com/lightstep/lightstep-benchmarks/benchlib"
 
 	proto_timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	cpb "github.com/lightstep/lightstep-tracer-go/collectorpb"
@@ -917,7 +917,7 @@ func main() {
 		bench.Print("GCP Default client: ", err)
 		bench.Print("Will not write results to GCP")
 	} else {
-		service.storage, err = storage.NewClient(ctx, cloud.WithBaseHTTP(service.gcpClient))
+		service.storage, err = storage.NewClient(ctx, option.WithHTTPClient(service.gcpClient))
 		if err != nil {
 			bench.Print("GCP Storage client", err)
 		} else {

@@ -15,14 +15,15 @@ import (
 	"strings"
 	"time"
 
-	bench "./benchlib"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 
+	bench "github.com/lightstep/lightstep-benchmarks/benchlib"
+
+	"cloud.google.com/go/storage"
 	"github.com/golang/glog"
-	hstats "github.com/hermanschaaf/stats"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
-	"google.golang.org/cloud"
-	"google.golang.org/cloud/storage"
 )
 
 const (
@@ -65,23 +66,24 @@ func main() {
 	if err != nil {
 		glog.Fatal("GCP Default client: ", err)
 	}
-	storageClient, err := storage.NewClient(ctx, cloud.WithBaseHTTP(gcpClient))
+	storageClient, err := storage.NewClient(ctx, option.WithHTTPClient(gcpClient))
 	if err != nil {
 		log.Fatal("GCP Storage client", err)
 	}
 	defer storageClient.Close()
 	bucket := storageClient.Bucket(testStorageBucket)
 
-	olist, err := bucket.List(ctx, nil)
-	if err != nil {
-		log.Fatal("GCP Storage client", err)
-	}
-	if olist.Next != nil {
-		log.Fatal("GCP unhandled Next result field: ", olist)
-	}
+	olist := bucket.Objects(ctx, nil)
 	s := summarizer{}
 	prefix := *testName + "/"
-	for _, obj := range olist.Results {
+	for {
+		obj, err := olist.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			log.Fatal("GCP bucket error: ", err)
+		}
 		if !strings.HasPrefix(obj.Name, prefix) {
 			continue
 		}
@@ -235,13 +237,13 @@ func (s *summarizer) getSleepCalibration(output *bench.Output) error {
 			return time.Duration(int64(ns))
 		}
 
-		rasLow, rasHigh := hstats.NormalConfidenceInterval(ras)
-		glog.V(1).Infof("RAS %v %v %v %v", dur(hstats.Mean(ras)), dur(hstats.StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
+		rasLow, rasHigh := bench.Int64NormalConfidenceInterval(ras)
+		glog.V(1).Infof("RAS %v %v %v %v", dur(bench.Int64Mean(ras)), dur(bench.Int64StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
 
-		rnsLow, rnsHigh := hstats.NormalConfidenceInterval(rns)
-		glog.V(1).Infof("RNS %v %v %v %v", dur(hstats.Mean(rns)), dur(hstats.StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
+		rnsLow, rnsHigh := bench.Int64NormalConfidenceInterval(rns)
+		glog.V(1).Infof("RNS %v %v %v %v", dur(bench.Int64Mean(rns)), dur(bench.Int64StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
 
-		glog.Infof("Sleep mean difference: %v", dur((hstats.Mean(ras)-hstats.Mean(rns))/float64(repeats)))
+		glog.Infof("Sleep mean difference: %v", dur((bench.Int64Mean(ras)-bench.Int64Mean(rns))/float64(repeats)))
 		glog.Infof("Sleep error separated: %v", dur((rasLow-rnsHigh)/float64(repeats)))
 	}
 
