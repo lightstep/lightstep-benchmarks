@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/bin/bash -e
 
-# TODO goclient moves to /github.com/lightstep/lightstep-tracer-go/benchmark
+# Note: clients/lightstep-tracer-go/cmd/benchmark/vendor copies
+# ../../benchlib (i.e., the server-side code).
 
-(GOOS=linux GOARCH=amd64 go build -o ${DBUILD}/goclient ${GOPATH}/src/github.com/lightstep/lightstep-benchmarks/goclient.go)
+(cd ${CLIENTS_DIR} && go get github.com/lightstep/lightstep-benchmarks/clients/lightstep-tracer-go/cmd/benchmark)
+
+(cd ${CLIENTS_DIR} && GOOS=linux GOARCH=amd64 go build -o ${DBUILD}/goclient lightstep-tracer-go/cmd/benchmark/main.go)

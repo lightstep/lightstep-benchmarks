@@ -40,10 +40,14 @@ if [ -z "${TEST_PARAMS_NAME}" ]; then
 fi
 
 # file system paths
+SCRIPTS_DIR="${DIR}"
+CLIENTS_DIR="$(cd ${DIR}/../clients && pwd)"
 DBUILD="${DIR}/../build/build.$$"
-SCRIPTS="${DIR}"
-TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_NAME}.json"
-TEST_PARAMS="${SCRIPTS}/params/${TEST_PARAMS_NAME}.json"
+TEST_CONFIG="${SCRIPTS_DIR}/config/${TEST_CONFIG_NAME}.json"
+TEST_PARAMS="${SCRIPTS_DIR}/params/${TEST_PARAMS_NAME}.json"
+
+export SCRIPTS_DIR
+export CLIENTS_DIR
 
 # gcp constants
 SCOPED="https://www.googleapis.com/auth"
@@ -78,7 +82,7 @@ function usage()
 {
     echo "usage: $0 title client cpus config"
     echo "  GOPATH must be set"
-    echo "  Configuration in \${SCRIPTS}"
+    echo "  Configuration in \${SCRIPTS_DIR}"
 }
 
 function set_config()
@@ -103,9 +107,9 @@ function build()
 
     (GOOS=linux GOARCH=amd64 go build -o ${DBUILD}/controller ${GOPATH}/src/github.com/lightstep/lightstep-benchmarks/cmd/controller/controller.go)
 
-    . ${SCRIPTS}/docker/${CLIENT}.sh
+    . ${SCRIPTS_DIR}/docker/${CLIENT}.sh
 
-    ln ${SCRIPTS}/docker/Dockerfile.${CLIENT} ${DBUILD}/Dockerfile
+    ln ${SCRIPTS_DIR}/docker/Dockerfile.${CLIENT} ${DBUILD}/Dockerfile
 
     ${LDOCKER} build -t ${IMG_BASE}:${TAG} ${DBUILD}
     ${LDOCKER} tag ${IMG_BASE}:${TAG} ${IMG_BASE}:latest
@@ -180,7 +184,7 @@ function run_local()
     ${LDOCKER} kill ${VM} || true 2> /dev/null
     ${LDOCKER} rm ${VM} || true 2> /dev/null
     ${LDOCKER} run \
-	       -v ${SCRIPTS}:/tmp/scripts \
+	       -v ${SCRIPTS_DIR}:/tmp/scripts \
 	       -e BENCHMARK_CONFIG_NAME=${TEST_CONFIG_NAME} \
 	       -e BENCHMARK_CONFIG_FILE=/tmp/scripts/config/${TEST_CONFIG_NAME}.json \
 	       -e BENCHMARK_PARAMS_FILE=/tmp/scripts/params/${TEST_PARAMS_NAME}.json \
@@ -208,8 +212,8 @@ if [ ! -d "${GOPATH}/src" ]; then
     exit 1
 fi
 
-if [ ! -d "${SCRIPTS}" ]; then
-    echo "Scripts directory not found (${SCRIPTS})"
+if [ ! -d "${SCRIPTS_DIR}" ]; then
+    echo "Scripts directory not found (${SCRIPTS_DIR})"
     exit 1
 fi
 

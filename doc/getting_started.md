@@ -6,8 +6,9 @@ The client library benchmarks runs in a Linux environment and is provided with s
 
 ### Quick Start
 
-1. Create a new git repository by cloning `git@github.com:lightstep/lightstep-benchmarks.git` into `${DIR}`
-2. Set $GOPATH to `${DIR}/go` 
+1. Set $GOPATH
+2. Create a new git repository by cloning `git@github.com:lightstep/lightstep-benchmarks.git` into `${GOPATH}/src/github.com/lightstep`
+3. DIR=${GOPATH}/src/github.com/lightstep/lightstep-benchmarks
 3. Change into `${DIR}/scripts`
 4. Update submodules `git submodule init`, `git submodule update`
 5. Update `golang` dependencies with `go get`
