@@ -15,6 +15,8 @@
 
 set -e
 
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # arguments
 TITLE=${1}
 CLIENT=${2}
@@ -38,8 +40,8 @@ if [ -z "${TEST_PARAMS_NAME}" ]; then
 fi
 
 # file system paths
-DBUILD="${GOPATH}/build.$$"
-SCRIPTS="${GOPATH}/../scripts"
+DBUILD="${DIR}/../build/build.$$"
+SCRIPTS="${DIR}"
 TEST_CONFIG="${SCRIPTS}/config/${TEST_CONFIG_NAME}.json"
 TEST_PARAMS="${SCRIPTS}/params/${TEST_PARAMS_NAME}.json"
 
@@ -76,7 +78,7 @@ function usage()
 {
     echo "usage: $0 title client cpus config"
     echo "  GOPATH must be set"
-    echo "  Configuration in \$GOPATH/../scripts"
+    echo "  Configuration in \${SCRIPTS}"
 }
 
 function set_config()
@@ -97,9 +99,9 @@ function on_exit()
 function build()
 {
     rm -rf ${DBUILD}
-    mkdir ${DBUILD}
+    mkdir -p ${DBUILD}
 
-    (GOOS=linux GOARCH=amd64 go build -o ${DBUILD}/controller $GOPATH/src/controller.go)
+    (GOOS=linux GOARCH=amd64 go build -o ${DBUILD}/controller ${GOPATH}/src/github.com/lightstep/lightstep-benchmarks/cmd/controller/controller.go)
 
     . ${SCRIPTS}/docker/${CLIENT}.sh
 
