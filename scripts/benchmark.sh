@@ -28,6 +28,15 @@ if [ -z "${TAG}" ]; then
     TAG=$(date "+%Y-%m-%d-%H-%M-%S")
 fi
 
+# local debugging option, set CPUs="local"
+LOCAL=no
+case ${CPUS} in
+    local|LOCAL)
+	LOCAL=yes
+	PROJECT_ID=local
+	;;
+esac
+
 # naming constants
 BUCKET="lightstep-client-benchmarks"
 CLOUD_ZONE="us-central1-a"
@@ -64,14 +73,6 @@ GDOCKER="${SSH_TO} sudo docker"  # docker on the VM
 
 # use the developer gcloud profile, restore it on exit
 GCLOUD_CONFIG="devel"
-
-# local debugging option, set CPUs="local"
-LOCAL=no
-case ${CPUS} in
-    local|LOCAL)
-	LOCAL=yes
-	;;
-esac
 
 if [ "${LOCAL}" = "no" -a -z "${PROJECT_ID}" ]; then
     echo Please set PROJECT_ID
