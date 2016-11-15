@@ -1,8 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
-# TODO rbclient moves to lightstep-tracer-ruby
-
-ln ${GOPATH}/src/github.com/lightstep/lightstep-benchmarks/rbclient.rb ${DBUILD}/rbclient.rb
-echo "source 'https://rubygems.org'" > ${DBUILD}/Gemfile
-echo "gem 'lightstep'" >> ${DBUILD}/Gemfile
-
+(cd ${CLIENTS_DIR}/lightstep-tracer-ruby && rake build && cp pkg/lightstep-*.gem ${DBUILD}/lightstep.gem)
+(cd ${CLIENTS_DIR}/lightstep-tracer-ruby && cp benchmark.rb ${DBUILD})

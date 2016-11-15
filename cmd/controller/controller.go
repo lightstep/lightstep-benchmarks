@@ -102,7 +102,7 @@ type Params struct {
 var (
 	allClients = map[string]benchClient{
 		"cpp":    {[]string{"./cppclient"}},
-		"ruby":   {[]string{"ruby", "./rbclient.rb"}},
+		"ruby":   {[]string{"ruby", "./benchmark.rb"}},
 		"python": {[]string{"./pyclient.py"}},
 		"golang": {[]string{"./goclient"}},
 		"nodejs": {[]string{"node",
