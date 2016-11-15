@@ -15,6 +15,8 @@
 export TAG
 TAG=$(date "+%Y-%m-%d-%H-%M-%S")
 
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # "test" or "logs"
 MODE=${1}
 
@@ -22,7 +24,7 @@ MODE=${1}
 TITLE=${2}
 
 # Source location
-SCRIPTS=${GOPATH}/../scripts
+SCRIPTS=${DIR}
 
 export BENCHMARK_VERBOSE
 export BENCHMARK_PARAMS
