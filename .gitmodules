@@ -1,18 +1,18 @@
-[submodule "go/src/github.com/lightstep/lightstep-tracer-java"]
-	path = go/src/github.com/lightstep/lightstep-tracer-java
-	url = https://github.com/lightstep/lightstep-tracer-java.git
-[submodule "go/src/github.com/lightstep/lightstep-tracer-ruby"]
-	path = go/src/github.com/lightstep/lightstep-tracer-ruby
-	url = https://github.com/lightstep/lightstep-tracer-ruby.git
-[submodule "go/src/github.com/lightstep/lightstep-tracer-cpp"]
-	path = go/src/github.com/lightstep/lightstep-tracer-cpp
-	url = https://github.com/lightstep/lightstep-tracer-cpp.git
-[submodule "go/src/github.com/lightstep/lightstep-tracer-javascript"]
-	path = go/src/github.com/lightstep/lightstep-tracer-javascript
-	url = https://github.com/lightstep/lightstep-tracer-javascript.git
-[submodule "go/src/github.com/lightstep/lightstep-tracer-python"]
-	path = go/src/github.com/lightstep/lightstep-tracer-python
-	url = https://github.com/lightstep/lightstep-tracer-python.git
-[submodule "go/src/github.com/lightstep/lightstep-tracer-go"]
-	path = go/src/github.com/lightstep/lightstep-tracer-go
-	url = https://github.com/lightstep/lightstep-tracer-go.git
+[submodule "clients/lightstep-tracer-cpp"]
+	path = clients/lightstep-tracer-cpp
+	url = git@github.com:lightstep/lightstep-tracer-cpp.git
+[submodule "clients/lightstep-tracer-go"]
+	path = clients/lightstep-tracer-go
+	url = git@github.com:lightstep/lightstep-tracer-go.git
+[submodule "clients/lightstep-tracer-java"]
+	path = clients/lightstep-tracer-java
+	url = git@github.com:lightstep/lightstep-tracer-java.git
+[submodule "clients/lightstep-tracer-javascript"]
+	path = clients/lightstep-tracer-javascript
+	url = git@github.com:lightstep/lightstep-tracer-javascript.git
+[submodule "clients/lightstep-tracer-python"]
+	path = clients/lightstep-tracer-python
+	url = git@github.com:lightstep/lightstep-tracer-python.git
+[submodule "clients/lightstep-tracer-ruby"]
+	path = clients/lightstep-tracer-ruby
+	url = git@github.com:lightstep/lightstep-tracer-ruby.git

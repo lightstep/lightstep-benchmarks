@@ -2,7 +2,7 @@
 
 set -e
 
-JAVA=${GOPATH}/src/github.com/lightstep/lightstep-tracer-java
+JAVA=${CLIENTS_DIR}/lightstep-tracer-java
 JRE=${JAVA}/lightstep-tracer-jre
 VERSION=`cat ${JAVA}/common/VERSION`
 

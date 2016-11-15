@@ -6,10 +6,15 @@ require 'uri'
 
 $base_url = "http://localhost:8000"
 
-$test_tracer = LightStep.init_new_tracer('ruby', 'ignored',
-                                         collector_port: 8000,
-                                         collector_host: "localhost",
-                                         collector_encryption: 'none')
+$test_tracer = LightStep.configure(
+  component_name: 'lightstep/ruby/example',
+  transport: LightStep::Transport::HTTPJSON.new(
+    host: 'localhost',
+    port: 8000,
+    encryption: LightStep::Transport::HTTPJSON::ENCRYPTION_NONE,
+    access_token: 'none'
+  )
+)
 $noop_tracer = LightStep.init_new_tracer('ruby', 'ignored',
                                          transport: 'nil')
 
