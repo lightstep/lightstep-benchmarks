@@ -1,13 +1,15 @@
-FROM ruby:2.1
+FROM ruby:2.3
 
 WORKDIR /data
 
 RUN apt-get update && \
     apt-get install -qqy \
-	ca-certificates
+	ca-certificates && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-COPY controller /data
-COPY rbclient.rb /data
-COPY Gemfile /data
+COPY controller ./
+COPY benchmark.rb ./
+COPY lightstep.gem ./
 
-RUN bundle install
+RUN gem install ./lightstep.gem
