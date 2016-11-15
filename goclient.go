@@ -1,7 +1,6 @@
 package main
 
 import (
-	"benchlib"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	bench "github.com/lightstep/lightstep-benchmarks/benchlib"
+
 	ls "github.com/lightstep/lightstep-tracer-go"
-	"github.com/opentracing/basictracer-go"
+	bt "github.com/opentracing/basictracer-go"
 	ot "github.com/opentracing/opentracing-go"
 )
 
@@ -29,7 +30,7 @@ func fatal(x ...interface{}) {
 }
 
 func init() {
-	lps := make([]byte, benchlib.LogsSizeMax)
+	lps := make([]byte, bench.LogsSizeMax)
 	for i := 0; i < len(lps); i++ {
 		lps[i] = 'A' + byte(i%26)
 	}
@@ -70,9 +71,9 @@ func (t *testClient) getURL(path string) []byte {
 
 func (t *testClient) loop() {
 	for {
-		body := t.getURL(benchlib.ControlPath)
+		body := t.getURL(bench.ControlPath)
 
-		control := benchlib.Control{}
+		control := bench.Control{}
 		if err := json.Unmarshal(body, &control); err != nil {
 			fatal("Bench control parse error: ", err)
 		}
@@ -82,7 +83,7 @@ func (t *testClient) loop() {
 		timing, flusht, sleeps, answer := t.run(&control)
 		t.getURL(fmt.Sprintf(
 			"%s?timing=%.9f&flush=%.9f&s=%.9f&a=%d",
-			benchlib.ResultPath,
+			bench.ResultPath,
 			timing.Seconds(),
 			flusht.Seconds(),
 			sleeps.Seconds(),
@@ -90,7 +91,7 @@ func (t *testClient) loop() {
 	}
 }
 
-func testBody(control *benchlib.Control) (time.Duration, int64) {
+func testBody(control *bench.Control) (time.Duration, int64) {
 	var sleep_debt time.Duration
 	var answer int64
 	var totalSleep time.Duration
@@ -115,7 +116,7 @@ func testBody(control *benchlib.Control) (time.Duration, int64) {
 	return totalSleep, answer
 }
 
-func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duration, time.Duration, int64) {
+func (t *testClient) run(control *bench.Control) (time.Duration, time.Duration, time.Duration, int64) {
 	if control.Trace {
 		ot.InitGlobalTracer(t.tracer)
 	} else {
@@ -154,7 +155,7 @@ func (t *testClient) run(control *benchlib.Control) (time.Duration, time.Duratio
 	endTime := time.Now()
 	flushDur := time.Duration(0)
 	if control.Trace {
-		recorder := t.tracer.(basictracer.Tracer).Options().Recorder.(*ls.Recorder)
+		recorder := t.tracer.(bt.Tracer).Options().Recorder.(*ls.Recorder)
 		recorder.Flush()
 		flushDur = time.Now().Sub(endTime)
 	}
@@ -165,13 +166,13 @@ func main() {
 	flag.Parse()
 	tc := &testClient{
 		baseURL: fmt.Sprint("http://",
-			benchlib.ControllerHost, ":",
-			benchlib.ControllerPort),
+			bench.ControllerHost, ":",
+			bench.ControllerPort),
 		tracer: ls.NewTracer(ls.Options{
-			AccessToken: benchlib.ControllerAccessToken,
+			AccessToken: bench.ControllerAccessToken,
 			Collector: ls.Endpoint{
-				Host:      benchlib.ControllerHost,
-				Port:      benchlib.GrpcPort,
+				Host:      bench.ControllerHost,
+				Port:      bench.GrpcPort,
 				Plaintext: true,
 			},
 			// Verbose: true,
