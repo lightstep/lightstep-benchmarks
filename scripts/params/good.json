@@ -1,8 +1,8 @@
 {
     "TestTolerance":       0.01,
     "MinimumCalibrations": 5,
-    "MaximumCalibrations": 10,
-    "CalibrateRounds":     27,
+    "MaximumCalibrations": 15,
+    "CalibrateRounds":     57,
     "TestTimeSlice":       "5s",
     "NegativeRecalibrationThreshold": -0.01,
 
@@ -11,13 +11,13 @@
 
     "RateIncrements": 8,
     "MinimumRate": 100,
-    "MaximumRate":  500,
+    "MaximumRate": 500,
 
     "LoadIncrements": 2,
     "MinimumLoad":  0.6,
     "MaximumLoad":  0.8,
 
-    "SleepTrialCount": 500,
+    "SleepTrialCount": 50,
     "SleepRepeats":  1,
     "SleepMinWorkFactor":  10,
     "SleepMaxWorkFactor":   10,

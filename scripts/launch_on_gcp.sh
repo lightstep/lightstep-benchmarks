@@ -37,11 +37,11 @@ fi
 
 case ${MODE} in
     test)
-	CMD="./benchmark.sh"
+	CMD="${DIR}/benchmark.sh"
 	set -e
 	;;
     logs)
-	CMD="./show_logs.sh"
+	CMD="${DIR}/show_logs.sh"
 	;;
     *)
 	echo "Invalid mode ${MODE}, should be 'test' or 'logs'."
