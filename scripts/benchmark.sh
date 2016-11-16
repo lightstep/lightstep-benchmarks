@@ -93,6 +93,7 @@ function set_config()
 	# TODO make the gcloud project/zone parameters instead
 	echo "Please run:"
 	echo "  ${GCLOUD} config configurations activate ${GCLOUD_CONFIG}"
+	exit 1
     fi
 }
 
