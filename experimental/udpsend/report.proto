@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package experimental.udpsend;
+
+option go_package = "main";
+
+message KeyValue {
+  string key = 1;
+  string value = 2;
+}
+
+message Report {
+  int32 id = 1;
+  repeated KeyValue field = 2;
+}
+
