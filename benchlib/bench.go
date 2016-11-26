@@ -220,6 +220,14 @@ func (ts *TimingStats) Count() int {
 	return ts.Wall.Count()
 }
 
+func NewTimingStats(ts []Timing) TimingStats {
+	s := TimingStats{}
+	for _, t := range ts {
+		s.Update(t)
+	}
+	return s
+}
+
 func (t Time) Seconds() float64 {
 	return float64(t)
 }
@@ -292,22 +300,26 @@ func Timeval(t syscall.Timeval) Time {
 }
 
 func GetChildUsage(pid int) (Timing, Timing, CPUStat) {
+	selfTime := GetSelfUsage()
+	pstat := ProcessCPUStat(pid)
+	childTime := Timing{
+		// TODO hacky the 100s below are CLK_TCK (sysconf(_SC_CLK_TCK) probably)
+		Wall: 0,
+		User: Time(float64(pstat.User) / 100),
+		Sys:  Time(float64(pstat.System) / 100),
+	}
+	return childTime, selfTime, MachineCPUStat()
+}
+
+func GetSelfUsage() Timing {
 	var self syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &self); err != nil {
 		Fatal("Can't getrusage(self)", err)
 	}
-
-	pstat := ProcessCPUStat(pid)
 	return Timing{
-			// TODO hacky the 100s below are CLK_TCK (sysconf(_SC_CLK_TCK) probably)
-			Wall: 0,
-			User: Time(float64(pstat.User) / 100),
-			Sys:  Time(float64(pstat.System) / 100),
-		}, Timing{
-			Wall: 0,
-			User: Timeval(self.Utime),
-			Sys:  Timeval(self.Stime)},
-		MachineCPUStat()
+		Wall: Time(float64(time.Now().UnixNano()) / 1e9),
+		User: Timeval(self.Utime),
+		Sys:  Timeval(self.Stime)}
 }
 
 func (ts Timing) String() string {
