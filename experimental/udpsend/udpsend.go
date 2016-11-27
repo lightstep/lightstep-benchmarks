@@ -19,10 +19,10 @@ const (
 	repeatStep     = 100
 
 	minWorkParam = 10
-	maxWorkParam = 100
+	maxWorkParam = 150
 	workStep     = 10
 
-	numTrials = 10
+	numTrials = 500
 
 	numKeys = 10
 	keySize = 10
@@ -112,7 +112,11 @@ func emptyResults() *tResults {
 func measure(test func(int32)) *tResults {
 	params := getParams()
 	results := emptyResults()
-
+	approx := benchlib.Time(0)
+	for _, tp := range params {
+		approx += roughEstimate * benchlib.Time((tp.parameter+tp.featureOn)*tp.iterations)
+	}
+	fmt.Println("experiments should take approximately", approx)
 	for _, tp := range params {
 		runtime.GC()
 		before := benchlib.GetSelfUsage()
