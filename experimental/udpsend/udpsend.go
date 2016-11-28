@@ -8,21 +8,22 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/lightstep/lightstep-benchmarks/benchlib"
 )
 
 const (
-	minRepeatParam = 100
-	maxRepeatParam = 1000
-	repeatStep     = 100
+	minRepeatParam = 1000
+	maxRepeatParam = 2000
+	repeatStep     = 250
 
-	minWorkParam = 10
-	maxWorkParam = 150
+	minWorkParam = 20
+	maxWorkParam = 200
 	workStep     = 10
 
-	numTrials = 500
+	numTrials = 100
 
 	numKeys = 10
 	keySize = 10
@@ -67,7 +68,7 @@ func udpSend(id int32, conn *net.UDPConn) {
 }
 
 func connectUDP() *net.UDPConn {
-	udpAddr, err := net.ResolveUDPAddr("udp", "localhost:1025")
+	udpAddr, err := net.ResolveUDPAddr("udp", "localhost:1026")
 	if err != nil {
 		panic(err.Error())
 	}
@@ -116,7 +117,7 @@ func measure(test func(int32)) *tResults {
 	for _, tp := range params {
 		approx += roughEstimate * benchlib.Time((tp.parameter+tp.featureOn)*tp.iterations)
 	}
-	fmt.Println("experiments should take approximately", approx)
+	fmt.Println("experiments take approximately", approx, "at", time.Now())
 	for _, tp := range params {
 		runtime.GC()
 		before := benchlib.GetSelfUsage()
@@ -140,14 +141,16 @@ func computeConstants(test func(int32)) {
 			test(math.MaxInt32)
 		}
 	})
+	const wild = 1e8 // maybe ~100ms
 	work1M := testing.Benchmark(func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			someWork(1e6)
+			someWork(wild)
 		}
 	})
 	roughEstimate = benchlib.Time(rough.T.Seconds() / float64(rough.N))
-	roughWork := work1M.T.Seconds() / float64(work1M.N) / 1e6
+	roughWork := work1M.T.Seconds() / float64(work1M.N) / wild
 	workFactor = int(roughEstimate.Seconds() / roughWork)
+	fmt.Printf("udp send rough estimate %v\nwork timing %v\n", roughEstimate, roughWork)
 }
 
 func show(results *tResults) {
