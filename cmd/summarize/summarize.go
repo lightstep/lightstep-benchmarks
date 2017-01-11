@@ -341,6 +341,8 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 			glog.Fatal("Could not write file: ", err)
 		}
 
+		// http://stackoverflow.com/questions/25512006/gnuplot-smooth-confidence-interval-lines-as-opposed-to-error-bars
+
 		oneScript := newPlotScript(output, tname, odir)
 		allScripts = append(allScripts, oneScript)
 		mScript := multiScripter(oneScript, comboScript)
