@@ -7,7 +7,7 @@
     "NegativeRecalibrationThreshold": -0.01,
 
     "ExperimentDuration": "50s",
-    "ExperimentRounds": 35,
+    "ExperimentRounds": 135,
 
     "RateIncrements": 8,
     "MinimumRate": 100,
