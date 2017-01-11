@@ -17,12 +17,6 @@
     "MinimumLoad":  0.6,
     "MaximumLoad":  0.8,
 
-    "SleepTrialCount": 200,
-    "SleepRepeats":  1,
-    "SleepMinWorkFactor":  10,
-    "SleepMaxWorkFactor":   10,
-    "SleepWorkFactorIncr":  1,
-
     "SysInterferenceThreshold": 0.03,
     "UserInterferenceThreshold": 0.02
 }

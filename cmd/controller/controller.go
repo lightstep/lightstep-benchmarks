@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -88,12 +87,6 @@ type Params struct {
 	RateIncrements                 int
 	TestTimeSlice                  Duration
 	TestTolerance                  float64
-
-	SleepTrialCount     int
-	SleepRepeats        int64
-	SleepMinWorkFactor  int64
-	SleepMaxWorkFactor  int64
-	SleepWorkFactorIncr int64
 
 	SysInterferenceThreshold  float64
 	UserInterferenceThreshold float64
@@ -506,90 +499,6 @@ func quickSummary(ms []bench.Measurement) string {
 	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f%%", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (uvl-tvh)/1e7)
 }
 
-func (s *benchService) estimateSleepCosts(_ bench.Config, o *bench.Output) {
-	// Note: the results of this experiment are not used to adjust
-	// the impairment measurements.
-	bench.Print("Estimating sleep cost")
-
-	type sleepTrial struct {
-		with    bench.TimingStats
-		without bench.TimingStats
-	}
-
-	repeats := s.SleepRepeats
-outer:
-	for m := s.SleepMinWorkFactor; m <= s.SleepMaxWorkFactor; m += s.SleepWorkFactorIncr {
-		equalWork := int64(bench.DefaultSleepInterval.Seconds() / s.workCost.User.Seconds())
-		trials := s.SleepTrialCount
-
-		var st sleepTrial
-
-		tci := int(float64(trials) * warmupRatio)
-		tc := trials + tci
-		for i := 0; i < tc; i++ {
-			var ysleep, nsleep *bench.Result
-			var s1, s2 time.Duration
-			if rand.Float64() < 0.5 {
-				s1 = bench.DefaultSleepInterval
-			} else {
-				s2 = bench.DefaultSleepInterval
-			}
-			r1 := s.run(&bench.Control{
-				Concurrent: 1, // TODO for now..., need to test >1
-				Work:       equalWork * m,
-				Sleep:      s1,
-				Repeat:     repeats,
-			})
-			r2 := s.run(&bench.Control{
-				Concurrent: 1,
-				Work:       equalWork * m,
-				Sleep:      s2,
-				Repeat:     repeats,
-			})
-
-			if i < tci {
-				continue
-			}
-			if s2 == 0 {
-				ysleep, nsleep = r1, r2
-			} else {
-				ysleep, nsleep = r2, r1
-			}
-
-			st.with.Update(ysleep.Measured)
-			st.without.Update(nsleep.Measured)
-
-			o.Sleeps = append(o.Sleeps, bench.SleepCalibration{
-				WorkFactor:  int(m),
-				RunAndSleep: ysleep.Measured,
-				RunNoSleep:  nsleep.Measured,
-				Repeats:     int(repeats),
-			})
-		}
-
-		withLow, _ := st.with.NormalConfidenceInterval()
-		_, woHigh := st.without.NormalConfidenceInterval()
-
-		meanTiming := st.with.Mean().Sub(st.without.Mean()).Div(float64(repeats))
-		meanCost := meanTiming.User + meanTiming.Sys
-
-		bench.Print(fmt.Sprint("Sleep mean difference: ", meanCost))
-		bench.Print(fmt.Sprint("Sleep error separated: ", withLow.Sub(woHigh).Div(float64(repeats))))
-
-		if meanCost < 0 {
-			bench.Print("Negative user time: recalibrate:", meanCost)
-			s.recalibrate()
-			goto outer
-		}
-
-		if (st.with.Sys.Mean() < 0 || st.without.Sys.Mean() < 0) && trials < 1000 {
-			trials *= 2
-			bench.Print("Negative system time: double trials to", trials)
-			goto outer
-		}
-	}
-}
-
 func (s *benchService) warmup() {
 	s.run(&bench.Control{
 		Concurrent:    1,
@@ -678,7 +587,6 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	output.Concurrent = c.Concurrency
 	output.LogBytes = c.LogNum * c.LogSize
 
-	// s.estimateSleepCosts(c, &output)
 	s.measureImpairment(c, &output)
 
 	s.saveResult(output)
