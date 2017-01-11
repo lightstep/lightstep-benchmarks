@@ -64,9 +64,10 @@ SCOPED="https://www.googleapis.com/auth"
 # command-line tools
 GCLOUD="gcloud"
 LDOCKER="docker"
-GLDOCKER="${GCLOUD} docker --"
+GLDOCKER="${GCLOUD} docker ${GCLOUD_ARGS} --"
 
-SSH="${GCLOUD} compute ssh --project ${PROJECT_ID} --zone ${CLOUD_ZONE}"
+GCLOUD_ARGS="--project ${PROJECT_ID} --zone ${CLOUD_ZONE}"
+SSH="${GCLOUD} compute ssh ${GCLOUD_ARGS}"
 SSH_TO="${SSH} ${VM} --"         # ssh to the VM
 GBASH="${SSH_TO} sudo bash"      # root shell on the VM
 GDOCKER="${SSH_TO} sudo docker"  # docker on the VM
@@ -84,17 +85,6 @@ function usage()
     echo "usage: $0 title client cpus config"
     echo "  GOPATH must be set"
     echo "  Configuration in \${SCRIPTS_DIR}"
-}
-
-function set_config()
-{
-    local config=`${GCLOUD} config configurations list | grep True | awk '{print $1}'`
-    if [ ${config} != ${GCLOUD_CONFIG} ]; then
-	# TODO make the gcloud project/zone parameters instead
-	echo "Please run:"
-	echo "  ${GCLOUD} config configurations activate ${GCLOUD_CONFIG}"
-	exit 1
-    fi
 }
 
 function on_exit()
@@ -129,11 +119,9 @@ function launch_on_gcp()
     if ${SSH_TO} true 2> /dev/null; then
 	:
     else
-	${GCLOUD} compute instances stop ${VM} 2> /dev/null || true
-	(yes | ${GCLOUD} compute instances delete ${VM} 2> /dev/null) || true
-	${GCLOUD} compute instances create ${VM} \
-		  --project ${PROJECT_ID} \
-		  --zone ${CLOUD_ZONE} \
+	${GCLOUD} compute instances stop ${GCLOUD_ARGS} ${VM} 2> /dev/null || true
+	(yes | ${GCLOUD} compute instances delete ${GCLOUD_ARGS} ${VM} 2> /dev/null) || true
+	${GCLOUD} compute instances create ${VM} ${GCLOUD_ARGS} \
 		  --machine-type ${CLOUD_MACH_BASE}${CPUS} \
 		  --scopes ${SCOPED}/devstorage.read_write,${SCOPED}/compute,${SCOPED}/cloud-platform \
 		  --image-family client-benchmarks \
@@ -158,8 +146,8 @@ chmod 0777 /tmp/config
 EOF
 
     # Place the configuration
-    ${GCLOUD} compute copy-files ${TEST_CONFIG} ${VM}:/tmp/config/config.json
-    ${GCLOUD} compute copy-files ${TEST_PARAMS} ${VM}:/tmp/config/params.json
+    ${GCLOUD} compute copy-files ${GCLOUD_ARGS} ${TEST_CONFIG} ${VM}:/tmp/config/config.json
+    ${GCLOUD} compute copy-files ${GCLOUD_ARGS} ${TEST_PARAMS} ${VM}:/tmp/config/params.json
 
     # Daemonize
     ${GDOCKER} run -d \
@@ -220,10 +208,6 @@ if [ ! -d "${SCRIPTS_DIR}" ]; then
 fi
 
 trap on_exit EXIT
-
-if [ "${LOCAL}" != "yes" ]; then
-    set_config
-fi
 
 build
 
