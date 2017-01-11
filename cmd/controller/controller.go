@@ -89,11 +89,11 @@ type Params struct {
 	TestTimeSlice                  Duration
 	TestTolerance                  float64
 
-	SleepTrialCount     int
-	SleepRepeats        int64
-	SleepMinWorkFactor  int64
-	SleepMaxWorkFactor  int64
-	SleepWorkFactorIncr int64
+	// SleepTrialCount     int
+	// SleepRepeats        int64
+	// SleepMinWorkFactor  int64
+	// SleepMaxWorkFactor  int64
+	// SleepWorkFactorIncr int64
 
 	SysInterferenceThreshold  float64
 	UserInterferenceThreshold float64

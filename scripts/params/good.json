@@ -9,19 +9,13 @@
     "ExperimentDuration": "50s",
     "ExperimentRounds": 35,
 
-    "RateIncrements": 4,
+    "RateIncrements": 8,
     "MinimumRate": 100,
     "MaximumRate": 500,
 
     "LoadIncrements": 2,
     "MinimumLoad":  0.6,
     "MaximumLoad":  0.8,
-
-    "SleepTrialCount": 50,
-    "SleepRepeats":  1,
-    "SleepMinWorkFactor":  10,
-    "SleepMaxWorkFactor":   10,
-    "SleepWorkFactorIncr":  1,
 
     "SysInterferenceThreshold": 0.03,
     "UserInterferenceThreshold": 0.02
