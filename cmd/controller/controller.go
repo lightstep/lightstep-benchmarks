@@ -678,7 +678,7 @@ func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	output.Concurrent = c.Concurrency
 	output.LogBytes = c.LogNum * c.LogSize
 
-	s.estimateSleepCosts(c, &output)
+	// s.estimateSleepCosts(c, &output)
 	s.measureImpairment(c, &output)
 
 	s.saveResult(output)

@@ -6,10 +6,10 @@
     "TestTimeSlice":       "5s",
     "NegativeRecalibrationThreshold": -0.01,
 
-    "ExperimentDuration": "25s",
-    "ExperimentRounds": 75,
+    "ExperimentDuration": "50s",
+    "ExperimentRounds": 35,
 
-    "RateIncrements": 8,
+    "RateIncrements": 4,
     "MinimumRate": 100,
     "MaximumRate": 500,
 
