@@ -12,14 +12,26 @@ RUN apt-get install -y \
 	pkg-config \
 	clang-3.8 \
 	lldb-3.8 \
-	wget
+	wget \
+	curl \
+	unzip
 
 ENV CC=clang-3.8
 ENV CXX=clang++-3.8
 
-# gRPC team recommends $(curl -L http://grpc.io/release) for v1.0.0 below.
+ENV LD_LIBRARY_PATH=/data:/usr/local/lib
+
+RUN git clone -b 3.0.x https://github.com/google/protobuf && \
+    cd protobuf && \
+    ./autogen.sh && \
+    ./configure --enable-shared --prefix=/usr/local && \
+    make && \
+    make check && \
+    make install
+
+# gRPC team recommends $(curl -L http://grpc.io/release) for v1.0.1 below.
 RUN git clone -b v1.0.1 https://github.com/grpc/grpc && \
     cd grpc && \
     git submodule update --init && \
     make && \
-    make install
+    make install prefix=/usr/local
