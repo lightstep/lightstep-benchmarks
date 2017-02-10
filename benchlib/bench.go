@@ -301,12 +301,25 @@ func Timeval(t syscall.Timeval) Time {
 
 func GetChildUsage(pid int) (Timing, Timing, CPUStat) {
 	selfTime := GetSelfUsage()
-	pstat := ProcessCPUStat(pid)
-	childTime := Timing{
-		// TODO hacky the 100s below are CLK_TCK (sysconf(_SC_CLK_TCK) probably)
-		Wall: 0,
-		User: Time(float64(pstat.User) / 100),
-		Sys:  Time(float64(pstat.System) / 100),
+	pstat, err := ProcessCPUStat(pid)
+	var childTime Timing
+	if err != nil {
+		// Note: this is to support development on machines w/o the proper /proc
+		// files (e.g., on OS X).
+		now := time.Now()
+		secs := Time(float64(now.Unix()) + float64(now.UnixNano()/1e9))
+		childTime = Timing{
+			Wall: secs,
+			User: secs,
+			Sys:  secs,
+		}
+	} else {
+		childTime = Timing{
+			// TODO hacky the 100s below are CLK_TCK (sysconf(_SC_CLK_TCK) probably)
+			Wall: 0,
+			User: Time(float64(pstat.User) / 100),
+			Sys:  Time(float64(pstat.System) / 100),
+		}
 	}
 	return childTime, selfTime, MachineCPUStat()
 }

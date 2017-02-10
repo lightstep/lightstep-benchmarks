@@ -2,6 +2,7 @@ package benchlib
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -111,26 +112,28 @@ func MachineCPUStat() CPUStat {
 	return mi.CPUStat
 }
 
-func ProcessCPUStat(pid int) ProcCPUStat {
+func ProcessCPUStat(pid int) (ProcCPUStat, error) {
 	var mi MachineInfo
-	readProcLine(fmt.Sprint("/proc/", pid, "/stat"), &mi, func(mi *MachineInfo, line string) {
+	err := readProcLine(fmt.Sprint("/proc/", pid, "/stat"), &mi, func(mi *MachineInfo, line string) {
 		ts := readTicks(line, 15)
 		mi.ProcCPUStat.User = ts[13]
 		mi.ProcCPUStat.System = ts[14]
 	})
-	return mi.ProcCPUStat
+	return mi.ProcCPUStat, err
 }
 
-func readProcLine(path string, mi *MachineInfo, f func(mi *MachineInfo, line string)) {
+func readProcLine(path string, mi *MachineInfo, f func(mi *MachineInfo, line string)) error {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		panic("Could not read: " + path + ": " + err.Error())
+		Print("Could not read: " + path + ": " + err.Error())
+		return err
 	}
 	ls := strings.SplitN(string(b), "\n", 2)
 	if len(ls) != 2 || len(ls[1]) != 0 {
-		panic("Expecting just one line: " + path)
+		return errors.New("Expecting just one line: " + path)
 	}
 	f(mi, ls[0])
+	return nil
 }
 
 func readMachineInfo() *MachineInfo {

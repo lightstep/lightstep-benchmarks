@@ -13,7 +13,7 @@
     "MinimumRate": 100,
     "MaximumRate":  500,
 
-    "LoadIncrements": 5,
+    "LoadIncrements": 2,
     "MinimumLoad":  0.6,
     "MaximumLoad":  0.8,
 
