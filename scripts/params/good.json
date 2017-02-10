@@ -1,17 +1,17 @@
 {
     "TestTolerance":       0.01,
-    "MinimumCalibrations": 5,
-    "MaximumCalibrations": 15,
-    "CalibrateRounds":     57,
+    "MinimumCalibrations": 3,
+    "MaximumCalibrations": 7,
+    "CalibrateRounds":     37,
     "TestTimeSlice":       "5s",
     "NegativeRecalibrationThreshold": -0.01,
 
-    "ExperimentDuration": "50s",
-    "ExperimentRounds": 135,
+    "ExperimentDuration": "37s",
+    "ExperimentRounds": 37,
 
-    "RateIncrements": 8,
-    "MinimumRate": 100,
-    "MaximumRate": 500,
+    "RateIncrements": 5,
+    "MinimumRate": 250,
+    "MaximumRate": 1500,
 
     "LoadIncrements": 2,
     "MinimumLoad":  0.6,
