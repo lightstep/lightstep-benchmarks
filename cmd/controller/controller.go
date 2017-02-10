@@ -158,9 +158,6 @@ type benchService struct {
 	// The cost of a single unit of work.
 	workCost bench.Timing
 
-	// Cost of tracing a span that does no work.
-	spanCost bench.Timing
-
 	spansReceived int64
 	spansDropped  int64
 	bytesReceived int64
@@ -233,22 +230,13 @@ func (s *benchService) BytesReceived(num int64) {
 	s.bytesReceived += num
 }
 
-// measureSpanCost runs a closed loop creating a certain
-// number of spans as quickly as possible and reporting
-// the timing.
-func (s *benchService) measureSpanCost() {
-	s.spanCost = s.measureTestLoop(true)
-	bench.Print("Cost T =", s.spanCost, "/span")
-}
-
 // estimateWorkCosts measures the cost of the work function.
-// TODO this body is now nearly identical to measureTestLoop; Fix.
 func (s *benchService) estimateWorkCost() {
 	// The work function is assumed to be fast. Find a multiplier
 	// that results in working at least bench.TestTimeSlice.
 	multiplier := int64(1000000)
 	for {
-		bench.Print("Testing work for rounds=", multiplier)
+		bench.Print("Testing work for", multiplier, "rounds")
 		tm := s.run(&bench.Control{
 			Concurrent: 1,
 			Work:       multiplier,
@@ -272,7 +260,7 @@ func (s *benchService) estimateWorkCost() {
 			adjusted := tm.Measured
 			st.Update(adjusted)
 			if extraVerbose {
-				bench.Print("Measured work for rounds", multiplier, "in", adjusted,
+				bench.Print("Measured work for", multiplier, "rounds in", adjusted,
 					"==", time.Duration(float64(adjusted.User)/float64(multiplier)*1e9))
 			}
 		}
@@ -304,39 +292,6 @@ func (s *benchService) sanityCheckWork() bool {
 		return false
 	}
 	return true
-}
-
-func (s *benchService) measureTestLoop(trace bool) bench.Timing {
-	multiplier := int64(1000000)
-	for {
-		bench.Print("Measuring loop for rounds=", multiplier)
-		tm := s.run(&bench.Control{
-			Concurrent: 1,
-			Work:       0,
-			Repeat:     multiplier,
-			Trace:      trace,
-		})
-		if tm.Measured.User.Seconds() < s.TestTimeSlice.Seconds() {
-			multiplier *= 10
-			continue
-		}
-		var ss bench.TimingStats
-		for j := 0; j < s.CalibrateRounds; j++ {
-			tm := s.run(&bench.Control{
-				Concurrent: 1,
-				Work:       0,
-				Repeat:     multiplier,
-				Trace:      trace,
-			})
-			adjusted := tm.Measured
-			ss.Update(adjusted)
-			if extraVerbose {
-				bench.Print("Measured cost for rounds", multiplier, "in", adjusted,
-					"==", time.Duration(float64(adjusted.User)/float64(multiplier)*1e9))
-			}
-		}
-		return ss.Mean().Div(float64(multiplier))
-	}
 }
 
 func (s *benchService) measureSpanImpairment(opts impairmentTest) (bench.DataPoint, float64) {
@@ -558,7 +513,6 @@ func (s *benchService) recalibrate() {
 		if !s.sanityCheckWork() {
 			continue
 		}
-		s.measureSpanCost()
 		return
 	}
 }
@@ -566,7 +520,7 @@ func (s *benchService) recalibrate() {
 func (s *benchService) runTest(bc benchClient, c bench.Config) {
 	s.benchClient = bc
 
-	bench.Print("Testing ", bench.TestClient)
+	bench.Print("Testing", bench.TestClient)
 	ch := make(chan bool)
 
 	defer func() {
@@ -781,9 +735,12 @@ func main() {
 	flag.Parse()
 	address := fmt.Sprintf(":%v", bench.ControllerPort)
 	mux := http.NewServeMux()
+	// Note: the 100000 second timeout avoids HTTP disconnections,
+	// which can confuse very simple HTTP libraries (e.g., the C++
+	// benchmark client).
 	server := &http.Server{
 		Addr:         address,
-		ReadTimeout:  30 * time.Second,
+		ReadTimeout:  100000 * time.Second,
 		WriteTimeout: 0 * time.Second,
 		Handler:      http.HandlerFunc(serializeHTTP),
 	}
