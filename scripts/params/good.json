@@ -9,8 +9,8 @@
     "ExperimentDuration": "37s",
     "ExperimentRounds": 37,
 
-    "RateIncrements": 14,
-    "MinimumRate": 100,
+    "RateIncrements": 5,
+    "MinimumRate": 250,
     "MaximumRate": 1500,
 
     "LoadIncrements": 2,

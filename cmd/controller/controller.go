@@ -699,7 +699,7 @@ func (s *benchService) ServeDefaultHTTP(res http.ResponseWriter, req *http.Reque
 }
 
 func (s *benchService) tearDown() {
-	if bench.TestVerbose != "true" && bench.TestZone != "" && bench.TestProject != "" && bench.TestInstance != "" {
+	if bench.TestZone != "" && bench.TestProject != "" && bench.TestInstance != "" {
 		// Delete this VM
 		url := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s",
 			bench.TestProject, bench.TestZone, bench.TestInstance)
