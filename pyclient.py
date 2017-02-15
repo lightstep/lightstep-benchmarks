@@ -91,6 +91,8 @@ class Worker(threading.Thread):
 
 def loop():
     while True:
+        gc.collect()
+
         request = urllib2.Request(base_url + '/control')
         response = urllib2.urlopen(request)
         response_body = response.read()
@@ -156,7 +158,7 @@ def loop():
 
 if __name__ == '__main__':
     # Note: reference counting is sufficient for this test, no GC.
-    gc.disable()
+    # gc.disable()
 
     prepare_logs()
     loop()
