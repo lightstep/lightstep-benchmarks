@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -57,9 +56,9 @@ type summarizer struct {
 func main() {
 	flag.Parse()
 
-	if *testName == "" {
-		usage()
-	}
+	// if *testName == "" {
+	// 	usage()
+	// }
 
 	ctx := context.Background()
 	gcpClient, err := google.DefaultClient(ctx, storage.ScopeFullControl)
@@ -84,10 +83,13 @@ func main() {
 		if err != nil {
 			log.Fatal("GCP bucket error: ", err)
 		}
+		if *testName == "" {
+			fmt.Println("Found test", obj.Name)
+			continue
+		}
 		if !strings.HasPrefix(obj.Name, prefix) {
 			continue
 		}
-		fmt.Println("Found test", obj.Name)
 		if err := s.getResults(ctx, bucket, obj.Name); err != nil {
 			log.Fatal("Couldn't read results: ", obj.Name)
 		}
@@ -134,9 +136,6 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 	}
 	output := bench.Output{}
 	if err := json.Unmarshal(data, &output); err != nil {
-		return err
-	}
-	if err := s.getSleepCalibration(&output); err != nil {
 		return err
 	}
 
@@ -205,49 +204,6 @@ func (m multiScript) WriteString(s string) (int, error) {
 		p.WriteString(s)
 	}
 	return len(s), nil
-}
-
-func (s *summarizer) getSleepCalibration(output *bench.Output) error {
-	fmt.Println("Sleep calibration for", output.Title, output.Client, output.Name)
-	factorMap := map[int][]bench.SleepCalibration{}
-
-	for _, s := range output.Sleeps {
-		s := s
-		factorMap[s.WorkFactor] = append(factorMap[s.WorkFactor], s)
-	}
-
-	var workVals []int
-	for w, _ := range factorMap {
-		workVals = append(workVals, w)
-	}
-	sort.Ints(workVals)
-
-	for _, w := range workVals {
-		sm := factorMap[w]
-
-		var ras, rns []int64
-		repeats := 0
-		for _, s := range sm {
-			ras = append(ras, s.RunAndSleep.User.Nanoseconds()+s.RunAndSleep.Sys.Nanoseconds())
-			rns = append(ras, s.RunNoSleep.User.Nanoseconds()+s.RunNoSleep.Sys.Nanoseconds())
-			repeats = s.Repeats
-		}
-
-		dur := func(ns float64) time.Duration {
-			return time.Duration(int64(ns))
-		}
-
-		rasLow, rasHigh := bench.Int64NormalConfidenceInterval(ras)
-		glog.V(1).Infof("RAS %v %v %v %v", dur(bench.Int64Mean(ras)), dur(bench.Int64StandardDeviation(ras)), dur(rasLow), dur(rasHigh))
-
-		rnsLow, rnsHigh := bench.Int64NormalConfidenceInterval(rns)
-		glog.V(1).Infof("RNS %v %v %v %v", dur(bench.Int64Mean(rns)), dur(bench.Int64StandardDeviation(rns)), dur(rnsLow), dur(rnsHigh))
-
-		glog.Infof("Sleep mean difference: %v", dur((bench.Int64Mean(ras)-bench.Int64Mean(rns))/float64(repeats)))
-		glog.Infof("Sleep error separated: %v", dur((rasLow-rnsHigh)/float64(repeats)))
-	}
-
-	return nil
 }
 
 func (s *summarizer) getMeasurements(output *bench.Output) error {
