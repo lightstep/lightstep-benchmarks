@@ -107,7 +107,18 @@ var (
 			"java",
 			// "-classpath",
 			// "lightstep-benchmark-0.1.28.jar",
-			// "-Xdebug", "-Xrunjdwp:transport=dt_socket,address=7000,server=y,suspend=n",
+			//"-Xdebug", "-Xrunjdwp:transport=dt_socket,address=7000,server=y,suspend=n",
+
+			// works with VisualVM... replace your localhost IP address as the RMI SERVER HOSTNAME
+			// aka the thing you get from ifconfig
+			//"-Dcom.sun.management.jmxremote",
+			//"-Dcom.sun.management.jmxremote.port=9010",
+			//"-Dcom.sun.management.jmxremote.rmi.port=9110",
+			//"-Dcom.sun.management.jmxremote.local.only=false",
+			//"-Dcom.sun.management.jmxremote.authenticate=false",
+			//"-Dcom.sun.management.jmxremote.ssl=false",
+			//"-Djava.rmi.server.hostname=192.168.27.38",
+
 			"com.lightstep.benchmark.BenchmarkClient"}},
 	}
 

@@ -173,6 +173,14 @@ function run_local()
 {
     ${LDOCKER} kill ${VM} || true 2> /dev/null
     ${LDOCKER} rm ${VM} || true 2> /dev/null
+
+    # If you want to run VisualVM to connect to the java docker, then add these expose/p lines to the
+    # docker run command below
+    #--expose 9010 \
+    #-p 9010:9010 \
+    #--expose 9110 \
+    #-p 9110:9110 \
+
     ${LDOCKER} run \
 	       -v ${SCRIPTS_DIR}:/tmp/scripts \
 	       -e BENCHMARK_CONFIG_NAME=${TEST_CONFIG_NAME} \
