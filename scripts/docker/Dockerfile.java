@@ -8,6 +8,5 @@ RUN apt-get update && \
 
 COPY controller /data
 COPY lightstep-benchmark.jar /data
-COPY lightstep-tracer-jre.jar /data
 
-ENV CLASSPATH /data/lightstep-tracer-jre.jar:/data/lightstep-benchmark.jar
+ENV CLASSPATH /data/lightstep-benchmark.jar

@@ -65,7 +65,6 @@ type Control struct {
 	// Misc control bits
 	Trace   bool // Trace the operation.
 	Exit    bool // Terminate the test.
-	Profile bool // Profile this operation
 }
 
 type Result struct {
