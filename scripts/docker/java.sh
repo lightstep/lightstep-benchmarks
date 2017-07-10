@@ -3,10 +3,10 @@
 set -e
 
 JAVA=${CLIENTS_DIR}/lightstep-tracer-java
-JRE=${JAVA}/lightstep-tracer-jre
-VERSION=`awk 'BEGIN { FS = "=" }; { printf("%s", $2) }' ${JAVA}/gradle.properties`
+BENCHMARK=${JAVA}/benchmark
 
-(cd ${JAVA} && ./gradlew -b build.gradle build)
+cd ${JAVA}
+make build
+VERSION=`mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version | grep -v '\['`
 
-ln ${JRE}/build/libs/lightstep-benchmark-${VERSION}.jar ${DBUILD}/lightstep-benchmark.jar
-ln ${JRE}/build/libs/lightstep-tracer-jre-${VERSION}.jar ${DBUILD}/lightstep-tracer-jre.jar
+ln ${BENCHMARK}/target/benchmark-${VERSION}.jar ${DBUILD}/lightstep-benchmark.jar
