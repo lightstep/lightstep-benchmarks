@@ -67,8 +67,9 @@ type HTTPTestClientController struct {
 	SysInterferenceThreshold  float64
 
 	// Client
-	client      TestClient
-	controlling bool
+	client        TestClient
+	controlling   bool
+	interferences int
 
 	// Client stats
 	before     bench.Timing
@@ -85,6 +86,26 @@ func (c *HTTPTestClientController) StopClient() {
 	c.controlCh <- &bench.Control{Exit: true}
 	c.client.WaitForExit()
 	c.controlling = false
+}
+
+func (c *HTTPTestClientController) Run(control bench.Control) (*bench.Result, error) {
+	if control.SleepInterval == 0 {
+		control.SleepInterval = bench.DefaultSleepInterval
+	}
+
+	for {
+		c.controlCh <- &control
+
+		// TODO: Maybe timeout here and help diagnose hung process?
+		if r := <-c.resultCh; r != nil {
+			return r, nil
+		}
+
+		c.interferences++
+
+	}
+
+	return nil, fmt.Errorf("Process somehow broke out of a for {} loop")
 }
 
 func (c *HTTPTestClientController) StartControlServer() {

@@ -2,6 +2,7 @@ package clientlib
 
 import (
 	"encoding/json"
+	"github.com/lightstep/lightstep-benchmarks/benchlib"
 	"time"
 )
 
@@ -35,9 +36,10 @@ func (d Duration) String() string {
 type (
 	TestClientController interface {
 		StartControlServer()
+		// StopControlServer
 
 		StartClient(TestClient) error
-		//		Run(benchlib.Control) (*benchlib.Result, error)
+		Run(benchlib.Control) (*benchlib.Result, error)
 		StopClient()
 	}
 	TestClient interface {
