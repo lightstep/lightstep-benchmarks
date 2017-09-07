@@ -36,8 +36,13 @@ type (
 	TestClientController interface {
 		StartControlServer()
 
-		StartClient([]string) error
+		StartClient(TestClient) error
 		//		Run(benchlib.Control) (*benchlib.Result, error)
 		StopClient()
+	}
+	TestClient interface {
+		Start() error
+		WaitForExit()
+		Pid() int
 	}
 )

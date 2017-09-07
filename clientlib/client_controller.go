@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
-	"os/exec"
 	"time"
 )
 
@@ -63,16 +61,14 @@ type HTTPTestClientController struct {
 	controlCh chan *bench.Control
 	resultCh  chan *bench.Result
 
-	clientStopped chan bool
-
 	// Params
 	TestTimeSlice             Duration
 	UserInterferenceThreshold float64
 	SysInterferenceThreshold  float64
 
 	// Client
-	clientProcess *exec.Cmd
-	controlling   bool
+	client      TestClient
+	controlling bool
 
 	// Client stats
 	before     bench.Timing
@@ -80,37 +76,14 @@ type HTTPTestClientController struct {
 	beforeStat bench.CPUStat
 }
 
-func (c *HTTPTestClientController) StartClient(command []string) error {
-	c.clientStopped = make(chan bool)
-	c.clientProcess = exec.Command(command[0], command[1:]...)
-	c.clientProcess.Stderr = os.Stderr
-	c.clientProcess.Stdout = os.Stdout
-	if err := c.clientProcess.Start(); err != nil {
-		bench.Fatal("Could not start client: ", err)
-	}
-	// Start watch goroutine
-	go func() {
-		if err := c.clientProcess.Wait(); err != nil {
-			perr, ok := err.(*exec.ExitError)
-			if !ok {
-				bench.Fatal("Could not await client: ", err)
-			}
-			if !perr.Exited() {
-				bench.Fatal("Client did not exit: ", err)
-			}
-			if !perr.Success() {
-				bench.Fatal("Client failed: ", string(perr.Stderr))
-			}
-		}
-		c.clientStopped <- true
-	}()
-
-	return nil
+func (c *HTTPTestClientController) StartClient(client TestClient) error {
+	c.client = client
+	return c.client.Start()
 }
 
 func (c *HTTPTestClientController) StopClient() {
 	c.controlCh <- &bench.Control{Exit: true}
-	<-c.clientStopped
+	c.client.WaitForExit()
 	c.controlling = false
 }
 
@@ -162,7 +135,7 @@ func (c *HTTPTestClientController) serveControlHTTP(res http.ResponseWriter, req
 		bench.Fatal("Out-of-phase control request", req.URL)
 	}
 
-	c.before, c.beforeSelf, c.beforeStat = bench.GetChildUsage(c.clientProcess.Process.Pid)
+	c.before, c.beforeSelf, c.beforeStat = bench.GetChildUsage(c.client.Pid())
 	c.controlling = true
 	control := <-c.controlCh
 	body, err := json.Marshal(control)
@@ -195,7 +168,7 @@ func (c *HTTPTestClientController) serveResultHTTP(res http.ResponseWriter, req 
 }
 
 func (c *HTTPTestClientController) formResult(req *http.Request) *bench.Result {
-	usage, usageSelf, usageStat := bench.GetChildUsage(c.clientProcess.Process.Pid)
+	usage, usageSelf, usageStat := bench.GetChildUsage(c.client.Pid())
 	usage = usage.Sub(c.before)
 	usageSelf = usageSelf.Sub(c.beforeSelf)
 

@@ -11,7 +11,8 @@ func TestClientStart(t *testing.T) {
 	controller.StartControlServer()
 	fmt.Printf("Control server started")
 
-	err := controller.StartClient([]string{"./goclient"})
+	client := CreateProcessClient([]string{"./goclient"})
+	err := controller.StartClient(client)
 	if err != nil {
 		t.Error("Should not have errored")
 	}
