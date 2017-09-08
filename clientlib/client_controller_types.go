@@ -3,6 +3,7 @@ package clientlib
 import (
 	"encoding/json"
 	"github.com/lightstep/lightstep-benchmarks/benchlib"
+	"net/http"
 	"time"
 )
 
@@ -36,7 +37,7 @@ func (d Duration) String() string {
 type (
 	TestClientController interface {
 		StartControlServer()
-		// StopControlServer
+		StopControlServer() error
 
 		StartClient(TestClient) error
 		Run(benchlib.Control) (*benchlib.Result, error)
@@ -47,4 +48,14 @@ type (
 		WaitForExit()
 		Pid() int
 	}
+
+	sreq struct {
+		w      http.ResponseWriter
+		r      *http.Request
+		doneCh chan struct{}
+	}
 )
+
+var Clients = map[string]TestClient{
+	"golang": CreateProcessClient([]string{"./goclient"}),
+}

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 var allClients = map[string][]string{
@@ -39,20 +41,6 @@ var allClients = map[string][]string{
 		"com.lightstep.benchmark.BenchmarkClient"},
 }
 
-type sreq struct {
-	w      http.ResponseWriter
-	r      *http.Request
-	doneCh chan struct{}
-}
-
-var requestCh = make(chan sreq)
-
-func serializeHTTP(w http.ResponseWriter, r *http.Request) {
-	doneCh := make(chan struct{})
-	requestCh <- sreq{w, r, doneCh}
-	<-doneCh
-}
-
 func CreateHTTPTestClientController() TestClientController {
 	return &HTTPTestClientController{}
 }
@@ -60,6 +48,9 @@ func CreateHTTPTestClientController() TestClientController {
 type HTTPTestClientController struct {
 	controlCh chan *bench.Control
 	resultCh  chan *bench.Result
+	requestCh chan sreq
+
+	server *http.Server
 
 	// Params
 	TestTimeSlice             Duration
@@ -77,6 +68,12 @@ type HTTPTestClientController struct {
 	beforeStat bench.CPUStat
 }
 
+func (c *HTTPTestClientController) serializeHTTP(w http.ResponseWriter, r *http.Request) {
+	doneCh := make(chan struct{})
+	c.requestCh <- sreq{w, r, doneCh}
+	<-doneCh
+}
+
 func (c *HTTPTestClientController) StartClient(client TestClient) error {
 	c.client = client
 	return c.client.Start()
@@ -89,6 +86,7 @@ func (c *HTTPTestClientController) StopClient() {
 }
 
 func (c *HTTPTestClientController) Run(control bench.Control) (*bench.Result, error) {
+
 	if control.SleepInterval == 0 {
 		control.SleepInterval = bench.DefaultSleepInterval
 	}
@@ -114,15 +112,16 @@ func (c *HTTPTestClientController) StartControlServer() {
 	// Note: the 100000 second timeout avoids HTTP disconnections,
 	// which can confuse very simple HTTP libraries (e.g., the C++
 	// benchmark client).
-	server := &http.Server{
+	c.server = &http.Server{
 		Addr:         address,
 		ReadTimeout:  100000 * time.Second,
 		WriteTimeout: 0 * time.Second,
-		Handler:      http.HandlerFunc(serializeHTTP),
+		Handler:      http.HandlerFunc(c.serializeHTTP),
 	}
 
 	c.resultCh = make(chan *bench.Result)
 	c.controlCh = make(chan *bench.Control)
+	c.requestCh = make(chan sreq)
 
 	if c.UserInterferenceThreshold == 0 {
 		c.UserInterferenceThreshold = 0.01
@@ -135,15 +134,27 @@ func (c *HTTPTestClientController) StartControlServer() {
 	mux.HandleFunc("/", c.serveDefaultHTTP)
 
 	go func() {
-		for req := range requestCh {
+		for req := range c.requestCh {
 			mux.ServeHTTP(req.w, req.r)
 			close(req.doneCh)
 		}
 	}()
 
 	go func() {
-		bench.Fatal(server.ListenAndServe())
+		err := c.server.ListenAndServe()
+		if err != http.ErrServerClosed {
+			panic(err)
+		}
 	}()
+}
+
+func (c *HTTPTestClientController) StopControlServer() error {
+	close(c.resultCh)
+	close(c.controlCh)
+	close(c.requestCh)
+
+	ctx := context.TODO()
+	return c.server.Shutdown(ctx)
 }
 
 func (c *HTTPTestClientController) serveDefaultHTTP(res http.ResponseWriter, req *http.Request) {

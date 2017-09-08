@@ -13,10 +13,10 @@ type TestClientControllerTest struct {
 }
 
 var TestClients = []TestClient{
-	CreateProcessClient([]string{"./goclient"}),
+	Clients["golang"],
 }
 
-var TestRuns = []TestClientControllerTest{
+var clientControllerTestRuns = []TestClientControllerTest{
 	TestClientControllerTest{
 		Control: benchlib.Control{
 			Concurrent:    1,
@@ -53,7 +53,7 @@ func TestClientStart(t *testing.T) {
 			t.Error("Client %v failed to start with error: %v", client, err)
 		}
 
-		for _, test := range TestRuns {
+		for _, test := range clientControllerTestRuns {
 			// Run warmup tasks
 			res, err := controller.Run(test.Control)
 			if test.ExpectedError == nil && err != nil {
@@ -71,6 +71,7 @@ func TestClientStart(t *testing.T) {
 		}
 
 		controller.StopClient()
-
 	}
+
+	controller.StopControlServer()
 }
