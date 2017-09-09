@@ -7,7 +7,7 @@ import (
 )
 
 type TestClientControllerTest struct {
-	Control          benchlib.Control
+	Control          Control
 	ExpectedResponse *benchlib.Result
 	ExpectedError    error
 }
@@ -18,7 +18,7 @@ var TestClients = []TestClient{
 
 var clientControllerTestRuns = []TestClientControllerTest{
 	TestClientControllerTest{
-		Control: benchlib.Control{
+		Control: Control{
 			Concurrent:    1,
 			Work:          1000,
 			Repeat:        10,
@@ -30,7 +30,7 @@ var clientControllerTestRuns = []TestClientControllerTest{
 		ExpectedError:    nil,
 	},
 	TestClientControllerTest{
-		Control: benchlib.Control{
+		Control: Control{
 			Concurrent:    1,
 			Work:          1000,
 			Repeat:        10,

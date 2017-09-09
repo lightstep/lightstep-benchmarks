@@ -1,7 +1,6 @@
 package clientlib
 
 import (
-	"github.com/lightstep/lightstep-benchmarks/benchlib"
 	"testing"
 )
 
@@ -11,7 +10,7 @@ var (
 )
 
 type FakeCollectorTest struct {
-	Control               benchlib.Control
+	Control               Control
 	Client                TestClient
 	GrpcPort              *int
 	HTTPPort              *int
@@ -22,7 +21,7 @@ type FakeCollectorTest struct {
 
 var fakeCollectorTestRuns = []FakeCollectorTest{
 	FakeCollectorTest{
-		Control: benchlib.Control{
+		Control: Control{
 			Concurrent:    2,
 			Work:          1000,
 			Repeat:        10,
@@ -37,7 +36,7 @@ var fakeCollectorTestRuns = []FakeCollectorTest{
 		ExpectedBytesReceived: 0,
 	},
 	FakeCollectorTest{
-		Control: benchlib.Control{
+		Control: Control{
 			Concurrent:    2,
 			Work:          1000,
 			Repeat:        100,
@@ -52,7 +51,7 @@ var fakeCollectorTestRuns = []FakeCollectorTest{
 		ExpectedBytesReceived: 0,
 	},
 	FakeCollectorTest{
-		Control: benchlib.Control{
+		Control: Control{
 			Concurrent:    2,
 			Work:          1000,
 			Repeat:        100,
@@ -67,7 +66,7 @@ var fakeCollectorTestRuns = []FakeCollectorTest{
 		ExpectedBytesReceived: 0,
 	},
 	FakeCollectorTest{ // Should drop ~39000
-		Control: benchlib.Control{
+		Control: Control{
 			Concurrent:    4,
 			Work:          1,
 			Repeat:        10000,

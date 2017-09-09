@@ -41,12 +41,18 @@ var allClients = map[string][]string{
 		"com.lightstep.benchmark.BenchmarkClient"},
 }
 
+const (
+	ControlPath    = "/control"
+	ResultPath     = "/result"
+	ControllerPort = 8000
+)
+
 func CreateHTTPTestClientController() TestClientController {
 	return &HTTPTestClientController{}
 }
 
 type HTTPTestClientController struct {
-	controlCh chan *bench.Control
+	controlCh chan *Control
 	resultCh  chan *bench.Result
 	requestCh chan sreq
 
@@ -80,12 +86,12 @@ func (c *HTTPTestClientController) StartClient(client TestClient) error {
 }
 
 func (c *HTTPTestClientController) StopClient() {
-	c.controlCh <- &bench.Control{Exit: true}
+	c.controlCh <- &Control{Exit: true}
 	c.client.WaitForExit()
 	c.controlling = false
 }
 
-func (c *HTTPTestClientController) Run(control bench.Control) (*bench.Result, error) {
+func (c *HTTPTestClientController) Run(control Control) (*bench.Result, error) {
 
 	if control.SleepInterval == 0 {
 		control.SleepInterval = bench.DefaultSleepInterval
@@ -107,7 +113,7 @@ func (c *HTTPTestClientController) Run(control bench.Control) (*bench.Result, er
 }
 
 func (c *HTTPTestClientController) StartControlServer() {
-	address := fmt.Sprintf(":%v", bench.ControllerPort)
+	address := fmt.Sprintf(":%v", ControllerPort)
 	mux := http.NewServeMux()
 	// Note: the 100000 second timeout avoids HTTP disconnections,
 	// which can confuse very simple HTTP libraries (e.g., the C++
@@ -120,7 +126,7 @@ func (c *HTTPTestClientController) StartControlServer() {
 	}
 
 	c.resultCh = make(chan *bench.Result)
-	c.controlCh = make(chan *bench.Control)
+	c.controlCh = make(chan *Control)
 	c.requestCh = make(chan sreq)
 
 	if c.UserInterferenceThreshold == 0 {
@@ -129,8 +135,8 @@ func (c *HTTPTestClientController) StartControlServer() {
 	if c.SysInterferenceThreshold == 0 {
 		c.SysInterferenceThreshold = 0.02
 	}
-	mux.HandleFunc(bench.ControlPath, c.serveControlHTTP)
-	mux.HandleFunc(bench.ResultPath, c.serveResultHTTP)
+	mux.HandleFunc(ControlPath, c.serveControlHTTP)
+	mux.HandleFunc(ResultPath, c.serveResultHTTP)
 	mux.HandleFunc("/", c.serveDefaultHTTP)
 
 	go func() {
@@ -158,13 +164,13 @@ func (c *HTTPTestClientController) StopControlServer() error {
 }
 
 func (c *HTTPTestClientController) serveDefaultHTTP(res http.ResponseWriter, req *http.Request) {
-	bench.Fatal("Unexpected HTTP request", req.URL)
+	panic(fmt.Errorf("Unexpected HTTP request: %v", req.URL))
 }
 
 func (c *HTTPTestClientController) serveControlHTTP(res http.ResponseWriter, req *http.Request) {
 
 	if c.controlling {
-		bench.Fatal("Out-of-phase control request", req.URL)
+		panic(fmt.Errorf("Out-of-phase control request: %v", req.URL))
 	}
 
 	c.before, c.beforeSelf, c.beforeStat = bench.GetChildUsage(c.client.Pid())
@@ -172,18 +178,18 @@ func (c *HTTPTestClientController) serveControlHTTP(res http.ResponseWriter, req
 	control := <-c.controlCh
 	body, err := json.Marshal(control)
 	if err != nil {
-		bench.Fatal("Marshal error: ", err)
+		panic(fmt.Errorf("Marshal error: %v", err))
 	}
 	_, err = res.Write(body)
 	if err != nil {
-		bench.Fatal("Response write error: ", err)
+		panic(fmt.Errorf("Response write error: %v", err))
 	}
 }
 
 func (c *HTTPTestClientController) serveResultHTTP(res http.ResponseWriter, req *http.Request) {
 
 	if !c.controlling {
-		bench.Fatal("Out-of-phase client result", req.URL)
+		panic(fmt.Errorf("Out-of-phase client result: %v", req.URL))
 	}
 
 	benchResult := c.formResult(req)
@@ -194,7 +200,7 @@ func (c *HTTPTestClientController) serveResultHTTP(res http.ResponseWriter, req 
 	// troubled by 0-byte responses.
 	_, err := res.Write([]byte("OK"))
 	if err != nil {
-		bench.Fatal("Response write error: ", err)
+		panic(fmt.Errorf("Response write error: %v", err))
 	}
 
 }
@@ -209,7 +215,7 @@ func (c *HTTPTestClientController) formResult(req *http.Request) *bench.Result {
 	// https://godoc.org/github.com/google/go-querystring/query
 	params, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		bench.Fatal("Error parsing URL params: ", req.URL.RawQuery)
+		panic(fmt.Errorf("Error parsing URL params: %v", req.URL.RawQuery))
 	}
 
 	// Look for CPU contention on the machine. (TODO 100 == Hz)
@@ -219,19 +225,19 @@ func (c *HTTPTestClientController) formResult(req *http.Request) *bench.Result {
 
 		stolenTicks := usageStat.Steal - c.beforeStat.Steal
 		if stolenTicks != 0 {
-			bench.Print("Stolen ticks! It's unfair!", stolenTicks)
+			fmt.Println("Stolen ticks! It's unfair!", stolenTicks)
 			return nil
 		}
 
 		du := osUser - usage.User - usageSelf.User
 		if (du / osUser).Seconds() > c.UserInterferenceThreshold {
-			bench.Print(fmt.Sprintf("User interference: %0.1f%% [%.3f/%.3f]", 100*float64(du/osUser), du, usage.User))
+			fmt.Println(fmt.Sprintf("User interference: %0.1f%% [%.3f/%.3f]", 100*float64(du/osUser), du, usage.User))
 			return nil
 		}
 		ds := osSys - usage.Sys - usageSelf.Sys
 		// Compare other system activity against the process's user time
 		if (ds / usage.User).Seconds() > c.SysInterferenceThreshold {
-			bench.Print(fmt.Sprintf("System interference: %0.1f%% [%.3f/%.3f]", 100*float64(ds/usage.User), ds, usage.User))
+			fmt.Printf("System interference: %0.1f%% [%.3f/%.3f]", 100*float64(ds/usage.User), ds, usage.User)
 			return nil
 		}
 	}

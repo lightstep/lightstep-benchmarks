@@ -40,7 +40,7 @@ type (
 		StopControlServer() error
 
 		StartClient(TestClient) error
-		Run(benchlib.Control) (*benchlib.Result, error)
+		Run(Control) (*benchlib.Result, error)
 		StopClient()
 	}
 	TestClient interface {
@@ -53,6 +53,28 @@ type (
 		w      http.ResponseWriter
 		r      *http.Request
 		doneCh chan struct{}
+	}
+	Control struct {
+		Concurrent int // How many routines, threads, etc.
+
+		// How much work to perform under one span
+		Work int64
+
+		// How many repetitions
+		Repeat int64
+
+		// How many amortized nanoseconds to sleep after each span
+		Sleep time.Duration
+		// How many nanoseconds to sleep at once
+		SleepInterval time.Duration
+
+		// How many bytes per log statement
+		BytesPerLog int64
+		NumLogs     int64
+
+		// Misc control bits
+		Trace bool // Trace the operation.
+		Exit  bool // Terminate the test.
 	}
 )
 
