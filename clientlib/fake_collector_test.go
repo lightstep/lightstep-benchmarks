@@ -6,12 +6,15 @@ import (
 )
 
 var (
-	golangClientGRPCPort = 8001
+	GrpcPort = 8001
+	HTTPPort = 8002
 )
 
 type FakeCollectorTest struct {
 	Control               benchlib.Control
 	Client                TestClient
+	GrpcPort              *int
+	HTTPPort              *int
 	ExpectedSpansReceived int64
 	ExpectedSpansDropped  int64
 	ExpectedBytesReceived int64
@@ -28,6 +31,8 @@ var fakeCollectorTestRuns = []FakeCollectorTest{
 			SleepInterval: 5,
 		},
 		Client:                Clients["golang"],
+		GrpcPort:              &GrpcPort,
+		HTTPPort:              nil,
 		ExpectedSpansDropped:  0,
 		ExpectedBytesReceived: 0,
 	},
@@ -41,6 +46,8 @@ var fakeCollectorTestRuns = []FakeCollectorTest{
 			SleepInterval: 5,
 		},
 		Client:                Clients["golang"],
+		GrpcPort:              &GrpcPort,
+		HTTPPort:              nil,
 		ExpectedSpansDropped:  0,
 		ExpectedBytesReceived: 0,
 	},
@@ -54,10 +61,12 @@ var fakeCollectorTestRuns = []FakeCollectorTest{
 			SleepInterval: 5,
 		},
 		Client:                Clients["golang"],
+		GrpcPort:              &GrpcPort,
+		HTTPPort:              nil,
 		ExpectedSpansDropped:  0,
 		ExpectedBytesReceived: 0,
 	},
-	FakeCollectorTest{ // Should drop ~3900
+	FakeCollectorTest{ // Should drop ~39000
 		Control: benchlib.Control{
 			Concurrent:    4,
 			Work:          1,
@@ -67,6 +76,8 @@ var fakeCollectorTestRuns = []FakeCollectorTest{
 			SleepInterval: 5,
 		},
 		Client:                Clients["golang"],
+		GrpcPort:              &GrpcPort,
+		HTTPPort:              nil,
 		ExpectedSpansDropped:  39000,
 		ExpectedBytesReceived: 0,
 	},
@@ -77,9 +88,9 @@ func TestFakeCollectorGRPC(t *testing.T) {
 	clientController.StartControlServer()
 
 	fc := CreateFakeCollector()
-	fc.Run(nil, &golangClientGRPCPort)
 
 	for _, test := range fakeCollectorTestRuns {
+		fc.Run(test.HTTPPort, test.GrpcPort)
 		_ = clientController.StartClient(test.Client)
 
 		_, _ = clientController.Run(test.Control)
@@ -107,7 +118,13 @@ func TestFakeCollectorGRPC(t *testing.T) {
 			t.Errorf("Fake collector should have received %v bytes, but found %v instead", test.ExpectedBytesReceived, bytesReceived)
 		}
 		fc.ResetStats()
+
+		spansReceived, spansDropped, bytesReceived = fc.GetStats()
+		if spansReceived != 0 || spansDropped != 0 || bytesReceived != 0 {
+			t.Errorf("Fake collector stats not reset, found (%v, %v, %v)", spansReceived, spansDropped, bytesReceived)
+		}
+
+		fc.Stop()
 	}
-	fc.Stop()
 
 }
