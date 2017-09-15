@@ -100,7 +100,7 @@ func CreateFakeCollector() *FakeCollector {
 
 func fakeReportResponse() *lightstep_thrift.ReportResponse {
 	nowMicros := time.Now().UnixNano() / 1000
-	return &lightstep_thrift.ReportResponse{Timing: &lightstep_thrift.Timing{&nowMicros, &nowMicros}}
+	return &lightstep_thrift.ReportResponse{Timing: &lightstep_thrift.Timing{ReceiveMicros: &nowMicros, TransmitMicros: &nowMicros}}
 }
 
 func (fc *FakeCollector) Run(collectorHTTPPort *int, collectorGrpcPort *int) {

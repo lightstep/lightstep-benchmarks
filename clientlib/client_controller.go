@@ -108,8 +108,6 @@ func (c *HTTPTestClientController) Run(control Control) (*bench.Result, error) {
 		c.interferences++
 
 	}
-
-	return nil, fmt.Errorf("Process somehow broke out of a for {} loop")
 }
 
 func (c *HTTPTestClientController) StartControlServer() {
@@ -202,7 +200,6 @@ func (c *HTTPTestClientController) serveResultHTTP(res http.ResponseWriter, req 
 	if err != nil {
 		panic(fmt.Errorf("Response write error: %v", err))
 	}
-
 }
 
 func (c *HTTPTestClientController) formResult(req *http.Request) *bench.Result {

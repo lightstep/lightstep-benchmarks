@@ -50,22 +50,22 @@ func TestClientStart(t *testing.T) {
 	for _, client := range TestClients {
 		err := controller.StartClient(client)
 		if err != nil {
-			t.Error("Client %v failed to start with error: %v", client, err)
+			t.Errorf("Client %v failed to start with error: %v", client, err)
 		}
 
 		for _, test := range clientControllerTestRuns {
 			// Run warmup tasks
 			res, err := controller.Run(test.Control)
 			if test.ExpectedError == nil && err != nil {
-				t.Error("Run with control: %v unexpectedly returned an error: %v", test.Control, err)
+				t.Errorf("Run with control: %v unexpectedly returned an error: %v", test.Control, err)
 			}
 
 			if test.ExpectedError != nil && err == nil {
-				t.Error("Run with control: %v expected error: %v, but returned no error", test.Control, test.ExpectedError)
+				t.Errorf("Run with control: %v expected error: %v, but returned no error", test.Control, test.ExpectedError)
 			}
 
 			if test.ExpectedResponse != nil && res == nil {
-				t.Error("Run with control: %v should have returned a result, but did not", test.Control)
+				t.Errorf("Run with control: %v should have returned a result, but did not", test.Control)
 			}
 
 		}
