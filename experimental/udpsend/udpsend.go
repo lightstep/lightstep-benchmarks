@@ -23,7 +23,7 @@ const (
 
 	// The expreriment performs numTrials for each combination of
 	// 'work' multiplier and 'repeat' parameter.
-	numTrials = 100 // @@@ was 50k
+	numTrials = 5000
 
 	// sendSize is the number of bytes in the UDP packet.
 	sendSize = 200
@@ -46,7 +46,7 @@ var (
 	controlParams = append(intRange(100, 1900, 100), intRange(2000, 10000, 1000)...)
 
 	// Tested values for the repeat parameter.
-	repetitionParams = intRange(5, 10, 5)
+	repetitionParams = []int{1, 2, 4, 8}
 
 	// The blank array used for sending.
 	sendBuffer = make([]byte, sendSize)
