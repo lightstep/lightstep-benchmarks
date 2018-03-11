@@ -1,9 +1,4 @@
-// Sample program measures the cost to create a small gogo protobuf,
-// serialize, and send a UDP packet.  Produces an [W x R] matrix
-// where:
-//
-// W: number of work units
-// R: repetitions
+// Sample program measures the cost to send a small UDP packet.
 package main
 
 import (
@@ -11,33 +6,38 @@ import (
 	"math/rand"
 	"net"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/lightstep/lightstep-benchmarks/benchlib"
+	"github.com/lightstep/lightstep-benchmarks/bench"
+	"github.com/lightstep/lightstep-benchmarks/common"
 )
 
 const (
 	roughTrials = 10
-	numTrials   = 50000
+	numTrials   = 10000 // @@@ was 50k
 
-	numKeys = 10
-	keySize = 10
-	valSize = 10
+	sendSize = 200
 
 	maxWorkParam   = 10000
 	maxRepeatParam = 10
 )
 
 var (
-	roughEstimate benchlib.Time // estimate by testing.Benchmark()
-	workFactor    int           // someWork(workFactor) takes ~roughEstimate
+	roughEstimate common.Time // estimate by testing.Benchmark()
+	workFactor    int         // someWork(workFactor) takes ~roughEstimate
 
 	workParams   = append(iRange(100, 1900, 100), iRange(2000, 10000, 1000)...)
 	repeatParams = iRange(10, 10, 1)
+
+	garbage = make([]byte, sendSize)
 )
+
+func init() {
+	for i := range garbage {
+		garbage[i] = byte(rand.Intn(256))
+	}
+}
 
 type tParam struct {
 	parameter  int
@@ -46,7 +46,7 @@ type tParam struct {
 }
 
 type tResults [2]tExperiment
-type tExperiment [maxWorkParam + 1][maxRepeatParam + 1][]benchlib.Timing
+type tExperiment [maxWorkParam + 1][maxRepeatParam + 1][]common.Timing
 
 func iRange(low, high, step int) []int {
 	var r []int
@@ -65,17 +65,8 @@ func someWork(c int) int32 {
 }
 
 func udpSend(id int32, conn *net.UDPConn) {
-	r := &Report{}
-	r.Id = id
-	r.Field = make([]*KeyValue, numKeys)
-	for i, _ := range r.Field {
-		r.Field[i] = &KeyValue{strings.Repeat("k", keySize), strings.Repeat("v", valSize)}
-	}
-	d, err := proto.Marshal(r)
-	if err != nil {
-		panic(err.Error())
-	}
-	conn.Write(d)
+	garbage[0] = byte(id & 0xff)
+	conn.Write(garbage)
 }
 
 func connectUDP() *net.UDPConn {
@@ -100,10 +91,9 @@ func getParams() []tParam {
 			}
 		}
 	}
-	for i := 1; i < len(params); i++ {
-		ri := rand.Intn(i)
-		params[ri], params[i] = params[i], params[ri]
-	}
+	rand.Shuffle(len(params), func(i, j int) {
+		params[j], params[i] = params[i], params[j]
+	})
 	return params
 }
 
@@ -113,7 +103,7 @@ func emptyResults() *tResults {
 		exp := tExperiment{}
 		for _, w := range workParams {
 			for _, r := range repeatParams {
-				exp[w][r] = make([]benchlib.Timing, 0, numTrials)
+				exp[w][r] = make([]common.Timing, 0, numTrials)
 			}
 		}
 		results[on] = exp
@@ -124,21 +114,21 @@ func emptyResults() *tResults {
 func measure(test func(int32)) *tResults {
 	params := getParams()
 	results := emptyResults()
-	approx := benchlib.Time(0)
+	approx := common.Time(0)
 	for _, tp := range params {
-		approx += roughEstimate * benchlib.Time((tp.parameter+tp.featureOn)*tp.iterations)
+		approx += roughEstimate * common.Time((tp.parameter+tp.featureOn)*tp.iterations)
 	}
 	fmt.Println("# experiments will take approximately", approx, "at", time.Now())
 	for _, tp := range params {
 		runtime.GC()
-		before := benchlib.GetSelfUsage()
+		before := bench.GetSelfUsage()
 		for iter := 0; iter < maxRepeatParam; iter++ {
 			value := someWork(tp.parameter * workFactor)
 			if tp.featureOn != 0 {
 				test(value)
 			}
 		}
-		after := benchlib.GetSelfUsage()
+		after := bench.GetSelfUsage()
 		diff := after.Sub(before).Div(maxRepeatParam)
 		results[tp.featureOn][tp.parameter][tp.iterations] =
 			append(results[tp.featureOn][tp.parameter][tp.iterations], diff)
@@ -149,8 +139,8 @@ func measure(test func(int32)) *tResults {
 func computeConstants(test func(int32)) {
 	fmt.Println("# work params", workParams)
 	fmt.Println("# repeat params", repeatParams)
-	var rough benchlib.Stats
-	var work benchlib.Stats
+	var rough bench.Stats
+	var work bench.Stats
 	const large = 1e8 // this many repeats to rough calibrate work function
 
 	for i := 0; i < roughTrials; i++ {
@@ -168,7 +158,7 @@ func computeConstants(test func(int32)) {
 		})
 		work.Update(work1.T.Seconds() / float64(work1.N) / large)
 	}
-	roughEstimate = benchlib.Time(rough.Mean())
+	roughEstimate = common.Time(rough.Mean())
 	roughWork := work.Mean()
 	workFactor = int(roughEstimate.Seconds() / roughWork)
 	fmt.Printf("# udp send rough estimate %v\n# work timing %v\n", roughEstimate, roughWork)
@@ -177,8 +167,8 @@ func computeConstants(test func(int32)) {
 func show(results *tResults) {
 	for _, w := range workParams {
 		for _, r := range repeatParams {
-			off := benchlib.NewTimingStats(results[0][w][r])
-			on := benchlib.NewTimingStats(results[1][w][r])
+			off := common.NewTimingStats(results[0][w][r])
+			on := common.NewTimingStats(results[1][w][r])
 
 			onlow, _ := on.NormalConfidenceInterval()
 			_, offhigh := off.NormalConfidenceInterval()
@@ -189,8 +179,8 @@ func show(results *tResults) {
 	for _, r := range repeatParams {
 		for _, w := range workParams {
 
-			off := benchlib.NewTimingStats(results[0][w][r])
-			on := benchlib.NewTimingStats(results[1][w][r])
+			off := common.NewTimingStats(results[0][w][r])
+			on := common.NewTimingStats(results[1][w][r])
 
 			onlow, onhigh := on.NormalConfidenceInterval()
 			offlow, offhigh := off.NormalConfidenceInterval()
