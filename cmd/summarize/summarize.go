@@ -17,8 +17,6 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
-	bench "github.com/lightstep/lightstep-benchmarks/benchlib"
-
 	"cloud.google.com/go/storage"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"

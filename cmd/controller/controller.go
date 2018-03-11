@@ -23,9 +23,8 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
-	bench "github.com/lightstep/lightstep-benchmarks/benchlib"
-
 	proto_timestamp "github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/lightstep/lightstep-benchmarks/bench"
 	cpb "github.com/lightstep/lightstep-tracer-go/collectorpb"
 	lst "github.com/lightstep/lightstep-tracer-go/lightstep_thrift"
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
