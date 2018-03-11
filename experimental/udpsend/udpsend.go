@@ -1,4 +1,5 @@
-// Sample program measures the cost to send a small UDP packet.
+// A differential microbenchmark to compute the cost of sending a
+// small packet interleaved with a CPU-bound process.
 package main
 
 import (
@@ -14,41 +15,73 @@ import (
 )
 
 const (
+	// Before running the experiment, `testing.Benchmark` is used
+	// to calculate a rough estimate for both the cost of the
+	// busywork function and the cost of the UDP packet.  We take
+	// the mean from this many tests for the initial estimates.
 	roughTrials = 10
-	numTrials   = 10000 // @@@ was 50k
 
+	// The expreriment performs numTrials for each combination of
+	// 'work' multiplier and 'repeat' parameter.
+	numTrials = 100 // @@@ was 50k
+
+	// sendSize is the number of bytes in the UDP packet.
 	sendSize = 200
 
-	maxWorkParam   = 10000
-	maxRepeatParam = 10
+	// The control factor indicates how much longer the synthetic
+	// control computation takes, compared to the rough estimate
+	// of the experiment.  The maximum value is so that a sparse
+	// array can be used.
+	maxControlFactor = 10000
+
+	// The repeat parameter multiplies the number of times both
+	// the work/send computation is repeated in a single trial
+	// measurement.  We have a null hypothesis that this variable
+	// has no effect.
+	maxRepetitionFactor = 10
 )
 
 var (
-	roughEstimate common.Time // estimate by testing.Benchmark()
-	workFactor    int         // someWork(workFactor) takes ~roughEstimate
+	// Tested values for the work parameter.
+	controlParams = append(intRange(100, 1900, 100), intRange(2000, 10000, 1000)...)
 
-	workParams   = append(iRange(100, 1900, 100), iRange(2000, 10000, 1000)...)
-	repeatParams = iRange(10, 10, 1)
+	// Tested values for the repeat parameter.
+	repetitionParams = intRange(5, 10, 5)
 
-	garbage = make([]byte, sendSize)
+	// The blank array used for sending.
+	sendBuffer = make([]byte, sendSize)
 )
 
+type (
+	// testParams describes a single trial measurement.
+	testParams struct {
+		// control is the ratio between the busywork duration
+		// and the estimated experiment duration.
+		control int
+		// repetition is the number of times the busywork/send
+		// is repeated.
+		repetition int
+		// is this testing the experiment or the control? 1 or 0
+		featureOn int
+	}
+
+	// testResults is indexed by featureOn == 0 or 1
+	testResults [2]testTrials
+
+	// testTrials collects the array of [controlParams x
+	// repetitionParams] measurements.
+	testTrials [maxControlFactor + 1][maxRepetitionFactor + 1][]common.Timing
+)
+
+// init fills in `sendBuffer` with random bytes.
 func init() {
-	for i := range garbage {
-		garbage[i] = byte(rand.Intn(256))
+	for i := range sendBuffer {
+		sendBuffer[i] = byte(rand.Intn(256))
 	}
 }
 
-type tParam struct {
-	parameter  int
-	iterations int
-	featureOn  int // 0 or 1
-}
-
-type tResults [2]tExperiment
-type tExperiment [maxWorkParam + 1][maxRepeatParam + 1][]common.Timing
-
-func iRange(low, high, step int) []int {
+// intRange returns a slice of ints from low to high in steps.
+func intRange(low, high, step int) []int {
 	var r []int
 	for i := low; i <= high; i += step {
 		r = append(r, i)
@@ -56,6 +89,7 @@ func iRange(low, high, step int) []int {
 	return r
 }
 
+// someWork is the busywork function
 func someWork(c int) int32 {
 	s := int32(1)
 	for ; c != 0; c-- {
@@ -64,30 +98,42 @@ func someWork(c int) int32 {
 	return s
 }
 
+// udpSend is the function being measured.
 func udpSend(id int32, conn *net.UDPConn) {
-	garbage[0] = byte(id & 0xff)
-	conn.Write(garbage)
+	// Prevent the compiler from observing the unused variable.
+	sendBuffer[0] = byte(id & 0xff)
+	if n, err := conn.Write(sendBuffer); err != nil || n != len(sendBuffer) {
+		panic(err.Error())
+	}
 }
 
+// connectUDP returns a connection for testing with.
 func connectUDP() *net.UDPConn {
-	udpAddr, err := net.ResolveUDPAddr("udp", "localhost:1026")
+	// Note: /255 is a broadcast address, this prevents the
+	// connection from failure (assumes netmask is /24).
+	address := "192.168.0.255:8765"
+
+	raddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		panic(err.Error())
 	}
-	conn, err := net.ListenUDP("udp", udpAddr)
+
+	conn, err := net.DialUDP("udp", nil, raddr)
 	if err != nil {
 		panic(err.Error())
 	}
 	return conn
 }
 
-func getParams() []tParam {
-	var params []tParam
-	for _, w := range workParams {
-		for _, r := range repeatParams {
+// experimentTestParams returns a full experiment worth of test
+// parameters, randomly shuffled.
+func experimentTestParams() []testParams {
+	var params []testParams
+	for _, w := range controlParams {
+		for _, r := range repetitionParams {
 			for t := 0; t < numTrials; t++ {
-				params = append(params, tParam{w, r, 1})
-				params = append(params, tParam{w, r, 0})
+				params = append(params, testParams{w, r, 1})
+				params = append(params, testParams{w, r, 0})
 			}
 		}
 	}
@@ -97,12 +143,14 @@ func getParams() []tParam {
 	return params
 }
 
-func emptyResults() *tResults {
-	results := &tResults{}
+// emptyResults returns an empty table of results, which simplifies
+// the logic for appending new trial results in `measure`.
+func emptyResults() *testResults {
+	results := &testResults{}
 	for on := 0; on < 2; on++ {
-		exp := tExperiment{}
-		for _, w := range workParams {
-			for _, r := range repeatParams {
+		exp := testTrials{}
+		for _, w := range controlParams {
+			for _, r := range repetitionParams {
 				exp[w][r] = make([]common.Timing, 0, numTrials)
 			}
 		}
@@ -111,34 +159,40 @@ func emptyResults() *tResults {
 	return results
 }
 
-func measure(test func(int32)) *tResults {
-	params := getParams()
+// measure performs the complete experiment and returns the results.
+func measure(test func(int32)) *testResults {
+	roughEstimate, workFactor := computeRoughEstimate(test)
+	params := experimentTestParams()
 	results := emptyResults()
 	approx := common.Time(0)
 	for _, tp := range params {
-		approx += roughEstimate * common.Time((tp.parameter+tp.featureOn)*tp.iterations)
+		approx += roughEstimate * common.Time((tp.control+tp.featureOn)*tp.repetition)
 	}
 	fmt.Println("# experiments will take approximately", approx, "at", time.Now())
 	for _, tp := range params {
 		runtime.GC()
 		before := bench.GetSelfUsage()
-		for iter := 0; iter < maxRepeatParam; iter++ {
-			value := someWork(tp.parameter * workFactor)
+		for iter := 0; iter < tp.repetition; iter++ {
+			value := someWork(tp.control * workFactor)
 			if tp.featureOn != 0 {
 				test(value)
 			}
 		}
 		after := bench.GetSelfUsage()
-		diff := after.Sub(before).Div(maxRepeatParam)
-		results[tp.featureOn][tp.parameter][tp.iterations] =
-			append(results[tp.featureOn][tp.parameter][tp.iterations], diff)
+		diff := after.Sub(before).Div(float64(tp.repetition))
+		results[tp.featureOn][tp.control][tp.repetition] =
+			append(results[tp.featureOn][tp.control][tp.repetition], diff)
 	}
 	return results
 }
 
-func computeConstants(test func(int32)) {
-	fmt.Println("# work params", workParams)
-	fmt.Println("# repeat params", repeatParams)
+// computeRoughEstimate returns `roughEstimate` and `workFactor`.  The
+// rough estimate is the estimated cost of a UDP send, taken using
+// `testing.Benchmark`.  The busywork function `somework(workFactor)`
+// has duration approximately equal to `roughEstimate`.
+func computeRoughEstimate(test func(int32)) (roughEstimate common.Time, workFactor int) {
+	fmt.Println("# work params", controlParams)
+	fmt.Println("# repeat params", repetitionParams)
 	var rough bench.Stats
 	var work bench.Stats
 	const large = 1e8 // this many repeats to rough calibrate work function
@@ -162,11 +216,12 @@ func computeConstants(test func(int32)) {
 	roughWork := work.Mean()
 	workFactor = int(roughEstimate.Seconds() / roughWork)
 	fmt.Printf("# udp send rough estimate %v\n# work timing %v\n", roughEstimate, roughWork)
+	return
 }
 
-func show(results *tResults) {
-	for _, w := range workParams {
-		for _, r := range repeatParams {
+func show(results *testResults) {
+	for _, w := range controlParams {
+		for _, r := range repetitionParams {
 			off := common.NewTimingStats(results[0][w][r])
 			on := common.NewTimingStats(results[1][w][r])
 
@@ -176,8 +231,9 @@ func show(results *tResults) {
 				w, r, on.Mean().Sub(off.Mean()), onlow.Sub(offhigh))
 		}
 	}
-	for _, r := range repeatParams {
-		for _, w := range workParams {
+	for _, r := range repetitionParams {
+		fmt.Printf("# R=%v\n", r)
+		for _, w := range controlParams {
 
 			off := common.NewTimingStats(results[0][w][r])
 			on := common.NewTimingStats(results[1][w][r])
@@ -217,7 +273,6 @@ func main() {
 	conn := connectUDP()
 	test := func(id int32) { udpSend(id, conn) }
 
-	computeConstants(test)
 	results := measure(test)
 
 	show(results)
