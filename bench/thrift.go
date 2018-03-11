@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/lightstep/lightstep-benchmarks/env"
 	"github.com/lightstep/lightstep-tracer-go/thrift_0_9_2/lib/go/thrift"
 )
 
@@ -35,7 +36,7 @@ func (t *ThriftFactories) ServeThriftHTTP(res http.ResponseWriter, req *http.Req
 	rdbuffer := bytes.NewBuffer(nil)
 	rdbytes, err := rdbuffer.ReadFrom(req.Body)
 	if err != nil {
-		Print("Could not read body: ", err)
+		env.Print("Could not read body: ", err)
 	}
 
 	client := &ThriftHTTPTransport{ioutil.NopCloser(rdbuffer), wrbuffer}
@@ -48,14 +49,14 @@ func (t *ThriftFactories) ServeThriftHTTP(res http.ResponseWriter, req *http.Req
 	ok, err := tprocessor.Process(tprotocol, tprotocol)
 
 	if err != nil {
-		Print("RPC Error: ", err)
+		env.Print("RPC Error: ", err)
 	} else if !ok {
-		Print("RPC request failed")
+		env.Print("RPC request failed")
 	}
 
 	res.Header().Set("Content-Type", "application/octet-stream")
 
 	if _, err := io.Copy(res, wrbuffer); err != nil {
-		Print("ResponseWriter.Write", err)
+		env.Print("ResponseWriter.Write", err)
 	}
 }

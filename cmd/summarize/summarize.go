@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -19,7 +20,9 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/golang/glog"
-	"golang.org/x/net/context"
+	"github.com/lightstep/lightstep-benchmarks/bench"
+	"github.com/lightstep/lightstep-benchmarks/common"
+	"github.com/lightstep/lightstep-benchmarks/env"
 	"golang.org/x/oauth2/google"
 )
 
@@ -96,12 +99,12 @@ func main() {
 }
 
 type outputDir struct {
-	*bench.Output
+	*common.Output
 	dir string
 	out string
 }
 
-func newOutputDir(output *bench.Output) outputDir {
+func newOutputDir(output *common.Output) outputDir {
 	idir := fmt.Sprintf("./%s/%s-%s", output.Title, output.Client, output.Name)
 	if err := os.MkdirAll(idir, 0755); err != nil {
 		glog.Fatal("Could not mkdir: ", idir)
@@ -132,7 +135,7 @@ func (s *summarizer) getResults(ctx context.Context, b *storage.BucketHandle, na
 	if err != nil {
 		return err
 	}
-	output := bench.Output{}
+	output := common.Output{}
 	if err := json.Unmarshal(data, &output); err != nil {
 		return err
 	}
@@ -155,7 +158,7 @@ func multiScripter(plots ...*plotScript) multiScript {
 	return multiScript{plots: plots}
 }
 
-func newPlotScript(output *bench.Output, name string, odir outputDir) *plotScript {
+func newPlotScript(output *common.Output, name string, odir outputDir) *plotScript {
 	p := &plotScript{Name: name, outputDir: odir}
 	p.writeHeader()
 	return p
@@ -204,9 +207,9 @@ func (m multiScript) WriteString(s string) (int, error) {
 	return len(s), nil
 }
 
-func (s *summarizer) getMeasurements(output *bench.Output) error {
+func (s *summarizer) getMeasurements(output *common.Output) error {
 	// by target load factor, by target rate
-	loadMap := map[float64]map[float64][]bench.Measurement{}
+	loadMap := map[float64]map[float64][]common.Measurement{}
 	count := 0
 	for _, p := range output.Results {
 		p := p
@@ -216,7 +219,7 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 		}
 		lm := loadMap[p.TargetLoad]
 		if lm == nil {
-			lm = map[float64][]bench.Measurement{}
+			lm = map[float64][]common.Measurement{}
 			loadMap[p.TargetLoad] = lm
 		}
 		lm[p.TargetRate] = append(lm[p.TargetRate], p)
@@ -315,7 +318,7 @@ func (s *summarizer) getMeasurements(output *bench.Output) error {
 		gp := exec.Command("gnuplot", path)
 		gp.Dir = odir.dir
 		if err := gp.Run(); err != nil {
-			bench.Fatal("gnuplot", path, err)
+			env.Fatal("gnuplot", path, err)
 		}
 	}
 

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lightstep/lightstep-benchmarks/env"
 )
 
 // See http://man7.org/linux/man-pages/man5/proc.5.html
@@ -125,7 +127,7 @@ func ProcessCPUStat(pid int) (ProcCPUStat, error) {
 func readProcLine(path string, mi *MachineInfo, f func(mi *MachineInfo, line string)) error {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		Print("Could not read: " + path + ": " + err.Error())
+		env.Print("Could not read: " + path + ": " + err.Error())
 		return err
 	}
 	ls := strings.SplitN(string(b), "\n", 2)
@@ -151,7 +153,7 @@ func readProcKeyValues(path string, mi *MachineInfo, sep string, pf procFunc) {
 		err = scanProcKeyValues(f, mi, sep, pf)
 	}
 	if err != nil {
-		Print("Could not read ", path, ": ", err)
+		env.Print("Could not read ", path, ": ", err)
 	}
 }
 
@@ -174,10 +176,10 @@ func scanProcKeyValues(f io.Reader, mi *MachineInfo, sep string, pf procFunc) er
 func readProcFileUint64(path string, p *uint64) {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		Print("Could not read ", path, ": ", err)
+		env.Print("Could not read ", path, ": ", err)
 	}
 	if err := parseProcFileUint64(b, p); err != nil {
-		Print("Could not parse in ", path, ": '", string(b), "': ", err)
+		env.Print("Could not parse in ", path, ": '", string(b), "': ", err)
 	}
 
 }
