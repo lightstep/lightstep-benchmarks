@@ -406,17 +406,17 @@ func (s *benchService) measureImpairmentAtRateAndLoad(c common.Config, rate, loa
 }
 
 func quickSummary(ms []common.Measurement) string {
-	var tvr []int64
-	var uvr []int64
-	var cr []int64
+	var tvr common.Stats
+	var uvr common.Stats
+	var cr common.Stats
 	for _, m := range ms {
-		tvr = append(tvr, int64((m.Traced.WorkRatio+m.Traced.SleepRatio)*1e9))
-		uvr = append(uvr, int64((m.Untraced.WorkRatio+m.Untraced.SleepRatio)*1e9))
-		cr = append(cr, int64(m.Completion*1e9))
+		tvr = append(tvr, (m.Traced.WorkRatio+m.Traced.SleepRatio)*1e9)
+		uvr = append(uvr, (m.Untraced.WorkRatio+m.Untraced.SleepRatio)*1e9)
+		cr = append(cr, m.Completion*1e9)
 	}
-	tvl, tvh := bench.Int64NormalConfidenceInterval(tvr)
-	uvl, uvh := bench.Int64NormalConfidenceInterval(uvr)
-	cm := bench.Int64Mean(cr)
+	tvl, tvh := tvr.NormalConfidenceInterval()
+	uvl, uvh := uvr.NormalConfidenceInterval()
+	cm := cr.Mean()
 	return fmt.Sprintf("%.2f%% traced [%.3f-%.3f%%] untraced [%.3f-%.3f%%] gap %.3f%%", cm/1e7, tvl/1e7, tvh/1e7, uvl/1e7, uvh/1e7, (uvl-tvh)/1e7)
 }
 
