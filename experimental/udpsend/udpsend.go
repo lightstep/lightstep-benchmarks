@@ -3,9 +3,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net"
+	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -23,7 +26,7 @@ const (
 
 	// The expreriment performs numTrials for each combination of
 	// 'work' multiplier and 'repeat' parameter.
-	numTrials = 5000
+	numTrials = 10000
 
 	// sendSize is the number of bytes in the UDP packet.
 	sendSize = 200
@@ -36,17 +39,16 @@ const (
 
 	// The repeat parameter multiplies the number of times both
 	// the work/send computation is repeated in a single trial
-	// measurement.  We have a null hypothesis that this variable
-	// has no effect.
+	// measurement.
 	maxRepetitionFactor = 10
 )
 
 var (
-	// Tested values for the work parameter.
-	controlParams = append(intRange(100, 1900, 100), intRange(2000, 10000, 1000)...)
+	// Tested values for the work
+	controlParams = intRange(100, 1000, 50)
 
 	// Tested values for the repeat parameter.
-	repetitionParams = []int{1, 2, 4, 8}
+	repetitionParams = []int{2, 6, 8, 10}
 
 	// The blank array used for sending.
 	sendBuffer = make([]byte, sendSize)
@@ -144,7 +146,8 @@ func experimentTestParams() []testParams {
 }
 
 // emptyResults returns an empty table of results, which simplifies
-// the logic for appending new trial results in `measure`.
+// the logic for appending new trial results in `measure`, and avoids
+// memory growth during the test.
 func emptyResults() *testResults {
 	results := &testResults{}
 	for on := 0; on < 2; on++ {
@@ -193,8 +196,8 @@ func measure(test func(int32)) *testResults {
 func computeRoughEstimate(test func(int32)) (roughEstimate common.Time, workFactor int) {
 	fmt.Println("# work params", controlParams)
 	fmt.Println("# repeat params", repetitionParams)
-	var rough bench.Stats
-	var work bench.Stats
+	var rough common.Stats
+	var work common.Stats
 	const large = 1e8 // this many repeats to rough calibrate work function
 
 	for i := 0; i < roughTrials; i++ {
@@ -219,61 +222,102 @@ func computeRoughEstimate(test func(int32)) (roughEstimate common.Time, workFact
 	return
 }
 
-func show(results *testResults) {
-	for _, w := range controlParams {
-		for _, r := range repetitionParams {
-			off := common.NewTimingStats(results[0][w][r])
-			on := common.NewTimingStats(results[1][w][r])
+func contName(work, repeat int) string {
+	return fmt.Sprintf("cont.w=%v.r=%v", work, repeat)
+}
 
-			onlow, _ := on.NormalConfidenceInterval()
-			_, offhigh := off.NormalConfidenceInterval()
-			fmt.Printf("# W/R=%v/%v MDIFF=%v SPREAD=%v\n",
-				w, r, on.Mean().Sub(off.Mean()), onlow.Sub(offhigh))
-		}
+func exptName(work, repeat int) string {
+	return fmt.Sprintf("test.w=%v.r=%v", work, repeat)
+}
+
+func writeTo(name string, data *bytes.Buffer) {
+	if err := ioutil.WriteFile(name, data.Bytes(), os.ModePerm); err != nil {
+		panic(err)
 	}
+}
+
+func write(off, on []common.Timing, work, repeat int, surface *bytes.Buffer) {
+	var onBuf, offBuf bytes.Buffer
+
+	onStats := common.NewTimingStats(on)
+	offStats := common.NewTimingStats(off)
+
+	onMean := onStats.Mean()
+	offMean := offStats.Mean()
+
+	onHigh, onLow := onStats.NormalConfidenceInterval()
+
+	for i := range off {
+		onBuf.WriteString(fmt.Sprintln(on[i].Sub(offMean).RawString()))
+		offBuf.WriteString(fmt.Sprintln(off[i].Sub(offMean).RawString()))
+	}
+
+	surface.WriteString(fmt.Sprintln(work, onMean.Sub(offMean).RawString(),
+		onLow.Sub(offMean).RawString(), onHigh.Sub(offMean).RawString()))
+
+	writeTo(contName(work, repeat), &offBuf)
+	writeTo(exptName(work, repeat), &onBuf)
+}
+
+func save(results *testResults) {
 	for _, r := range repetitionParams {
-		fmt.Printf("# R=%v\n", r)
+		var surfaceData bytes.Buffer
 		for _, w := range controlParams {
-
-			off := common.NewTimingStats(results[0][w][r])
-			on := common.NewTimingStats(results[1][w][r])
-
-			onlow, onhigh := on.NormalConfidenceInterval()
-			offlow, offhigh := off.NormalConfidenceInterval()
-
-			// Gross
-			fmt.Printf("%v %v %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f\n",
-				w, r, // 1 2
-				on.Wall.Mean(), onlow.Wall.Seconds(), onhigh.Wall.Seconds(), // 3 4/5
-				off.Wall.Mean(), offlow.Wall.Seconds(), offhigh.Wall.Seconds(), // 6 7/8
-
-				on.User.Mean(), onlow.User.Seconds(), onhigh.User.Seconds(), // 9 10/11
-				off.User.Mean(), offlow.User.Seconds(), offhigh.User.Seconds(), // 12 13/14
-
-				on.Sys.Mean(), onlow.Sys.Seconds(), onhigh.Sys.Seconds(), // 15 16/17
-				off.Sys.Mean(), offlow.Sys.Seconds(), offhigh.Sys.Seconds()) // 18 19/20
-
-			// Use gnuplot e.g., for walltime
-			// plot 'data' using 1:($4-$6):($5-$6) with filledcurves lt rgb "gray" title '95% confidence',  '' using 1:($3-$6) with lines title 'mean value'
-
-			// For user+system
-			// plot 'n=10.dat' using 1:($10+$16-$12-$18):($11+$17-$12-$18) with filledcurves lt rgb "#b0b0b0" title '95% confidence', '' using 1:($9+$15-$12-$18) with lines title 'mean value', '' using 1:($13+$19-$12-$18):($14+$20-$12-$18) with filledcurves lt rgb "#d0d0d0" title '95% confidence', '' using 1:($12+$18-$12-$18) with lines title 'mean value'
-			// For user
-			// plot 'data.dat' using 1:($13-$12):($14-$12) with filledcurves lt rgb "#d0d0d0" title '95% confidence', '' using 1:($12-$12) with lines title 'mean value', '' using 1:($10-$12):($11-$12) with filledcurves lt rgb "#b0b0b0" title '95% confidence', '' using 1:($9-$12) with lines title 'mean value'
-
-			// For system
-			// plot 'data.dat' using 1:($19-$18):($20-$18) with filledcurves lt rgb "#d0d0d0" title '95% confidence', '' using 1:($18-$18) with lines title 'mean value', '' using 1:($16-$18):($17-$18) with filledcurves lt rgb "#b0b0b0" title '95% confidence', '' using 1:($15-$18) with lines title 'mean value'
-
+			write(results[0][w][r], results[1][w][r], w, r, &surfaceData)
 		}
-		fmt.Println("")
+		writeTo(fmt.Sprint("surface.r=", r), &surfaceData)
 	}
+}
+
+func script() {
+	const boxPlot = `
+set style fill solid 0.5 border -1
+set style boxplot outliers pointtype 7
+set style data boxplot
+set boxwidth  0.5
+set pointsize 0.5
+set linetype 53 lc "dark-red"
+set linetype 54 lc "midnight-blue"
+
+unset key
+set border 2
+set xtics nomirror
+set ytics nomirror
+
+plot `
+
+	for _, r := range repetitionParams {
+		var script bytes.Buffer
+		script.WriteString(boxPlot)
+
+		for _, w := range controlParams {
+			script.WriteString(fmt.Sprintf("'%s' using (%d):($2+$3):(50) title 'cont' lt 53 lw 2,", contName(w, r), w))
+			script.WriteString(fmt.Sprintf("'%s' using (%d):($2+$3):(50) title 'expt' lt 54 lw 2,", exptName(w, r), w))
+		}
+
+		writeTo(fmt.Sprint("script.r=", r), &script)
+	}
+
+	const surfacePlot = `
+set grid
+set hidden3d
+set pm3d depthorder
+set style fill transparent solid 0.5
+
+splot `
+	var surfaceScript bytes.Buffer
+	surfaceScript.WriteString(surfacePlot)
+	for _, r := range repetitionParams {
+		surfaceScript.WriteString(fmt.Sprintf("'surface.r=%v' using 1:(%d):($3+$4):($5+$6):($9+$10) with zerror, ", r, r))
+	}
+	writeTo("script.surface", &surfaceScript)
+
 }
 
 func main() {
 	conn := connectUDP()
 	test := func(id int32) { udpSend(id, conn) }
-
 	results := measure(test)
-
-	show(results)
+	save(results)
+	script()
 }

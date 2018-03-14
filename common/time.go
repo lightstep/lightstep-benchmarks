@@ -73,3 +73,7 @@ func (t Time) String() string {
 func (ts Timing) String() string {
 	return fmt.Sprintf("W: %v U: %v S: %v", ts.Wall, ts.User, ts.Sys)
 }
+
+func (ts Timing) RawString() string {
+	return fmt.Sprintf("%e %e %e", ts.Wall, ts.User, ts.Sys)
+}

@@ -14,8 +14,8 @@ type (
 	}
 )
 
-func NewTimingStats(ts []Timing) TimingStats {
-	s := TimingStats{}
+func NewTimingStats(ts []Timing) *TimingStats {
+	s := &TimingStats{}
 	for _, t := range ts {
 		s.Update(t)
 	}
@@ -68,7 +68,7 @@ func (ts *TimingStats) Count() int {
 	return ts.Wall.Count()
 }
 
-func (ts TimingStats) String() string {
+func (ts *TimingStats) String() string {
 	l, h := ts.NormalConfidenceInterval()
 	return fmt.Sprintf("[%v - %v]", l, h)
 }
