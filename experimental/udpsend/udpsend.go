@@ -3,7 +3,7 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -26,7 +26,7 @@ const (
 
 	// The expreriment performs numTrials for each combination of
 	// 'work' multiplier and 'repeat' parameter.
-	numTrials = 10000
+	numTrials = 100000
 
 	// sendSize is the number of bytes in the UDP packet.
 	sendSize = 200
@@ -45,10 +45,10 @@ const (
 
 var (
 	// Tested values for the work
-	controlParams = intRange(100, 1000, 50)
+	experimentParams = intRange(100, 1000, 50)
 
 	// Tested values for the repeat parameter.
-	repetitionParams = []int{2, 6, 8, 10}
+	repetitionParams = []int{2, 4, 6, 8, 10}
 
 	// The blank array used for sending.
 	sendBuffer = make([]byte, sendSize)
@@ -70,9 +70,32 @@ type (
 	// testResults is indexed by featureOn == 0 or 1
 	testResults [2]testTrials
 
-	// testTrials collects the array of [controlParams x
+	// testTrials collects the array of [experimentParams x
 	// repetitionParams] measurements.
-	testTrials [maxControlFactor + 1][maxRepetitionFactor + 1][]common.Timing
+	testTrials       [maxRepetitionFactor + 1]testMeasurements
+	testMeasurements [maxControlFactor + 1]Timings
+)
+
+// The exported types
+type (
+	Measurements struct {
+		// Indexed by the backoff factor
+		Backoff map[int]*Timings
+	}
+
+	Trials struct {
+		// Indexed by the repetition factor
+		Repeat map[int]Measurements
+	}
+
+	Exported struct {
+		RepeatParams     []int
+		ExperimentParams []int
+		Control          Trials
+		Experiment       Trials
+	}
+
+	Timings []common.Timing
 )
 
 // init fills in `sendBuffer` with random bytes.
@@ -131,7 +154,7 @@ func connectUDP() *net.UDPConn {
 // parameters, randomly shuffled.
 func experimentTestParams() []testParams {
 	var params []testParams
-	for _, w := range controlParams {
+	for _, w := range experimentParams {
 		for _, r := range repetitionParams {
 			for t := 0; t < numTrials; t++ {
 				params = append(params, testParams{w, r, 1})
@@ -151,13 +174,11 @@ func experimentTestParams() []testParams {
 func emptyResults() *testResults {
 	results := &testResults{}
 	for on := 0; on < 2; on++ {
-		exp := testTrials{}
-		for _, w := range controlParams {
-			for _, r := range repetitionParams {
-				exp[w][r] = make([]common.Timing, 0, numTrials)
+		for _, r := range repetitionParams {
+			for _, w := range experimentParams {
+				results[on][r][w] = make([]common.Timing, 0, numTrials)
 			}
 		}
-		results[on] = exp
 	}
 	return results
 }
@@ -183,8 +204,8 @@ func measure(test func(int32)) *testResults {
 		}
 		after := bench.GetSelfUsage()
 		diff := after.Sub(before).Div(float64(tp.repetition))
-		results[tp.featureOn][tp.control][tp.repetition] =
-			append(results[tp.featureOn][tp.control][tp.repetition], diff)
+		results[tp.featureOn][tp.repetition][tp.control] =
+			append(results[tp.featureOn][tp.repetition][tp.control], diff)
 	}
 	return results
 }
@@ -194,7 +215,7 @@ func measure(test func(int32)) *testResults {
 // `testing.Benchmark`.  The busywork function `somework(workFactor)`
 // has duration approximately equal to `roughEstimate`.
 func computeRoughEstimate(test func(int32)) (roughEstimate common.Time, workFactor int) {
-	fmt.Println("# work params", controlParams)
+	fmt.Println("# work params", experimentParams)
 	fmt.Println("# repeat params", repetitionParams)
 	var rough common.Stats
 	var work common.Stats
@@ -222,96 +243,44 @@ func computeRoughEstimate(test func(int32)) (roughEstimate common.Time, workFact
 	return
 }
 
-func contName(work, repeat int) string {
-	return fmt.Sprintf("cont.w=%v.r=%v", work, repeat)
-}
-
-func exptName(work, repeat int) string {
-	return fmt.Sprintf("test.w=%v.r=%v", work, repeat)
-}
-
-func writeTo(name string, data *bytes.Buffer) {
-	if err := ioutil.WriteFile(name, data.Bytes(), os.ModePerm); err != nil {
+func writeTo(name string, data []byte) {
+	if err := ioutil.WriteFile(name, data, os.ModePerm); err != nil {
 		panic(err)
 	}
 }
 
-func write(off, on []common.Timing, work, repeat int, surface *bytes.Buffer) {
-	var onBuf, offBuf bytes.Buffer
-
-	onStats := common.NewTimingStats(on)
-	offStats := common.NewTimingStats(off)
-
-	onMean := onStats.Mean()
-	offMean := offStats.Mean()
-
-	onHigh, onLow := onStats.NormalConfidenceInterval()
-
-	for i := range off {
-		onBuf.WriteString(fmt.Sprintln(on[i].Sub(offMean).RawString()))
-		offBuf.WriteString(fmt.Sprintln(off[i].Sub(offMean).RawString()))
-	}
-
-	surface.WriteString(fmt.Sprintln(work, onMean.Sub(offMean).RawString(),
-		onLow.Sub(offMean).RawString(), onHigh.Sub(offMean).RawString()))
-
-	writeTo(contName(work, repeat), &offBuf)
-	writeTo(exptName(work, repeat), &onBuf)
-}
-
 func save(results *testResults) {
-	for _, r := range repetitionParams {
-		var surfaceData bytes.Buffer
-		for _, w := range controlParams {
-			write(results[0][w][r], results[1][w][r], w, r, &surfaceData)
-		}
-		writeTo(fmt.Sprint("surface.r=", r), &surfaceData)
+	exp := &Exported{
+		RepeatParams:     repetitionParams,
+		ExperimentParams: experimentParams,
+		Control:          toTrials(&results[0]),
+		Experiment:       toTrials(&results[1]),
 	}
+	data, err := json.MarshalIndent(exp, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	writeTo("output", data)
 }
 
-func script() {
-	const boxPlot = `
-set style fill solid 0.5 border -1
-set style boxplot outliers pointtype 7
-set style data boxplot
-set boxwidth  0.5
-set pointsize 0.5
-set linetype 53 lc "dark-red"
-set linetype 54 lc "midnight-blue"
-
-unset key
-set border 2
-set xtics nomirror
-set ytics nomirror
-
-plot `
-
-	for _, r := range repetitionParams {
-		var script bytes.Buffer
-		script.WriteString(boxPlot)
-
-		for _, w := range controlParams {
-			script.WriteString(fmt.Sprintf("'%s' using (%d):($2+$3):(50) title 'cont' lt 53 lw 2,", contName(w, r), w))
-			script.WriteString(fmt.Sprintf("'%s' using (%d):($2+$3):(50) title 'expt' lt 54 lw 2,", exptName(w, r), w))
-		}
-
-		writeTo(fmt.Sprint("script.r=", r), &script)
+func toTrials(tt *testTrials) Trials {
+	t := Trials{
+		Repeat: map[int]Measurements{},
 	}
-
-	const surfacePlot = `
-set grid
-set hidden3d
-set pm3d depthorder
-set style fill transparent solid 0.5
-
-splot `
-	var surfaceScript bytes.Buffer
-	surfaceScript.WriteString(surfacePlot)
 	for _, r := range repetitionParams {
-		surfaceScript.WriteString(fmt.Sprintf("'surface.r=%v' using 1:(%d):($3+$4):($5+$6):($9+$10) with zerror, ", r, r))
+		t.Repeat[r] = toMeasurements(&tt[r])
 	}
-	writeTo("script.surface", &surfaceScript)
+	return t
+}
 
+func toMeasurements(tm *testMeasurements) Measurements {
+	m := Measurements{
+		Backoff: map[int]*Timings{},
+	}
+	for _, e := range experimentParams {
+		m.Backoff[e] = &tm[e]
+	}
+	return m
 }
 
 func main() {
@@ -319,5 +288,4 @@ func main() {
 	test := func(id int32) { udpSend(id, conn) }
 	results := measure(test)
 	save(results)
-	script()
 }
