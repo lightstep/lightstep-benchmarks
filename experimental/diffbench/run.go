@@ -215,7 +215,7 @@ func save(file string, results *testResults) {
 		Control:          toTrials(&results[0]),
 		Experiment:       toTrials(&results[1]),
 	}
-	data, err := json.MarshalIndent(exp, "", "  ")
+	data, err := json.Marshal(exp)
 	if err != nil {
 		panic(err)
 	}
