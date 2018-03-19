@@ -8,7 +8,9 @@ import (
 )
 
 func main() {
-	test := func(id int32) { time.Now() }
+	test := func(x int32) int32 {
+		return x ^ int32(time.Now().UnixNano())
+	}
 
 	diffbench.RunAndSave("output", test)
 }

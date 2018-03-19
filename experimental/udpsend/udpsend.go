@@ -12,12 +12,13 @@ import (
 const sendSize = 200
 
 // udpSend is the function being measured.
-func udpSend(sendBuffer []byte, id int32, conn *net.UDPConn) {
+func udpSend(sendBuffer []byte, id int32, conn *net.UDPConn) int32 {
 	// Prevent the compiler from observing the unused variable.
-	sendBuffer[0] = byte(id & 0xff)
+	sendBuffer[0] = byte(id ^ 0xff)
 	if n, err := conn.Write(sendBuffer); err != nil || n != len(sendBuffer) {
 		panic(err.Error())
 	}
+	return int32(sendBuffer[0])
 }
 
 // connectUDP returns a connection for testing with.
@@ -46,7 +47,9 @@ func main() {
 	}
 
 	conn := connectUDP()
-	test := func(id int32) { udpSend(sendBuffer, id, conn) }
+	test := func(id int32) int32 {
+		return udpSend(sendBuffer, id, conn)
+	}
 
 	diffbench.RunAndSave("output", test)
 }

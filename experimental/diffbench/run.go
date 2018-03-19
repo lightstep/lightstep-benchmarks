@@ -27,24 +27,16 @@ const (
 	// 'work' multiplier and 'repeat' parameter.
 	numTrials = 100000
 
-	// The control factor indicates how much longer the synthetic
-	// control computation takes, compared to the rough estimate
-	// of the experiment.  The maximum value is so that a sparse
-	// array can be used.
-	maxControlFactor = 10000
-
-	// The repeat parameter multiplies the number of times both
-	// the work/send computation is repeated in a single trial
-	// measurement.
-	maxRepetitionFactor = 10
+	// This many repeats are used to rough-calibrate the work function.
+	workFunctionCalibrationFactor = 1e8
 )
 
 var (
 	// Tested values for the work
-	experimentParams = intRange(100, 1000, 50)
+	experimentParams = intRange(10, 100, 10)
 
 	// Tested values for the repeat parameter.
-	repetitionParams = []int{2, 4, 6, 8, 10}
+	repetitionParams = []int{1, 2, 3, 4, 5}
 )
 
 type (
@@ -60,17 +52,6 @@ type (
 		featureOn int
 	}
 
-	// testResults is indexed by featureOn == 0 or 1
-	testResults [2]testTrials
-
-	// testTrials collects the array of [experimentParams x
-	// repetitionParams] measurements.
-	testTrials       [maxRepetitionFactor + 1]testMeasurements
-	testMeasurements [maxControlFactor + 1]Timings
-)
-
-// The exported types
-type (
 	Measurements struct {
 		// Indexed by the backoff factor
 		Backoff map[int]*Timings
@@ -78,14 +59,14 @@ type (
 
 	Trials struct {
 		// Indexed by the repetition factor
-		Repeat map[int]Measurements
+		Repeat map[int]*Measurements
 	}
 
 	Exported struct {
 		RepeatParams     []int
 		ExperimentParams []int
-		Control          Trials
-		Experiment       Trials
+		Control          *Trials
+		Experiment       *Trials
 	}
 
 	Timings []common.Timing
@@ -100,19 +81,17 @@ func intRange(low, high, step int) []int {
 	return r
 }
 
-// someWork is the busywork function
-func someWork(c int) int32 {
-	s := int32(1)
-	for ; c != 0; c-- {
-		s *= 982451653
+// WorkFunc is the busywork function
+func WorkFunc(in int32, count int) int32 {
+	for ; count != 0; count-- {
+		in *= 982451653
 	}
-	return s
+	return in
 }
 
 // experimentTestParams returns a full experiment worth of test
 // parameters, randomly shuffled.
-func experimentTestParams() []testParams {
-	var params []testParams
+func experimentTestParams() (params []testParams) {
 	for _, w := range experimentParams {
 		for _, r := range repetitionParams {
 			for t := 0; t < numTrials; t++ {
@@ -130,41 +109,61 @@ func experimentTestParams() []testParams {
 // emptyResults returns an empty table of results, which simplifies
 // the logic for appending new trial results in `measure`, and avoids
 // memory growth during the test.
-func emptyResults() *testResults {
-	results := &testResults{}
-	for on := 0; on < 2; on++ {
-		for _, r := range repetitionParams {
-			for _, w := range experimentParams {
-				results[on][r][w] = make([]common.Timing, 0, numTrials)
-			}
+func emptyResults() *Exported {
+	newMeas := func() *Measurements {
+		m := &Measurements{Backoff: map[int]*Timings{}}
+		for _, b := range experimentParams {
+			timings := make(Timings, 0, numTrials)
+			m.Backoff[b] = &timings
 		}
+		return m
 	}
-	return results
+	newTrials := func() *Trials {
+		t := &Trials{Repeat: map[int]*Measurements{}}
+		for _, r := range repetitionParams {
+			t.Repeat[r] = newMeas()
+		}
+		return t
+	}
+	return &Exported{
+		RepeatParams:     repetitionParams,
+		ExperimentParams: experimentParams,
+		Control:          newTrials(),
+		Experiment:       newTrials(),
+	}
+}
+
+func (e *Exported) trialsFor(on int) *Trials {
+	if on != 0 {
+		return e.Experiment
+	}
+	return e.Control
 }
 
 // measure performs the complete experiment and returns the results.
-func measure(test func(int32)) *testResults {
+func measure(test func(int32) int32) *Exported {
 	roughEstimate, workFactor := computeRoughEstimate(test)
 	params := experimentTestParams()
 	results := emptyResults()
 	approx := common.Time(0)
 	for _, tp := range params {
-		approx += roughEstimate * common.Time((tp.control+tp.featureOn)*tp.repetition)
+		approx += roughEstimate * common.Time((2*tp.control+tp.featureOn)*tp.repetition)
 	}
 	fmt.Println("# experiments will take approximately", approx, "at", time.Now())
 	for _, tp := range params {
 		runtime.GC()
 		before := bench.GetSelfUsage()
+		value := int32(1)
 		for iter := 0; iter < tp.repetition; iter++ {
-			value := someWork(tp.control * workFactor)
+			value = WorkFunc(value, tp.control*workFactor)
 			if tp.featureOn != 0 {
-				test(value)
+				value = test(value)
 			}
 		}
 		after := bench.GetSelfUsage()
 		diff := after.Sub(before).Div(float64(tp.repetition))
-		results[tp.featureOn][tp.repetition][tp.control] =
-			append(results[tp.featureOn][tp.repetition][tp.control], diff)
+		timings := results.trialsFor(tp.featureOn).Repeat[tp.repetition].Backoff[tp.control]
+		(*timings) = append(*timings, diff)
 	}
 	return results
 }
@@ -173,12 +172,11 @@ func measure(test func(int32)) *testResults {
 // rough estimate is the estimated cost of a UDP send, taken using
 // `testing.Benchmark`.  The busywork function `somework(workFactor)`
 // has duration approximately equal to `roughEstimate`.
-func computeRoughEstimate(test func(int32)) (roughEstimate common.Time, workFactor int) {
+func computeRoughEstimate(test func(int32) int32) (roughEstimate common.Time, workFactor int) {
 	fmt.Println("# work params", experimentParams)
 	fmt.Println("# repeat params", repetitionParams)
 	var rough common.Stats
 	var work common.Stats
-	const large = 1e8 // this many repeats to rough calibrate work function
 
 	for i := 0; i < roughTrials; i++ {
 		rough1 := testing.Benchmark(func(b *testing.B) {
@@ -189,16 +187,14 @@ func computeRoughEstimate(test func(int32)) (roughEstimate common.Time, workFact
 		rough.Update(rough1.T.Seconds() / float64(rough1.N))
 
 		work1 := testing.Benchmark(func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				someWork(large)
-			}
+			_ = WorkFunc(1, b.N*workFunctionCalibrationFactor)
 		})
-		work.Update(work1.T.Seconds() / float64(work1.N) / large)
+		work.Update(work1.T.Seconds() / float64(work1.N) / workFunctionCalibrationFactor)
 	}
 	roughEstimate = common.Time(rough.Mean())
 	roughWork := work.Mean()
 	workFactor = int(roughEstimate.Seconds() / roughWork)
-	fmt.Printf("# udp send rough estimate %v\n# work timing %v\n", roughEstimate, roughWork)
+	fmt.Printf("# rough estimate %v\n# work timing %v\n", roughEstimate, roughWork)
 	return
 }
 
@@ -208,13 +204,7 @@ func writeTo(name string, data []byte) {
 	}
 }
 
-func save(file string, results *testResults) {
-	exp := &Exported{
-		RepeatParams:     repetitionParams,
-		ExperimentParams: experimentParams,
-		Control:          toTrials(&results[0]),
-		Experiment:       toTrials(&results[1]),
-	}
+func save(file string, exp *Exported) {
 	data, err := json.Marshal(exp)
 	if err != nil {
 		panic(err)
@@ -222,26 +212,6 @@ func save(file string, results *testResults) {
 	writeTo(file, data)
 }
 
-func toTrials(tt *testTrials) Trials {
-	t := Trials{
-		Repeat: map[int]Measurements{},
-	}
-	for _, r := range repetitionParams {
-		t.Repeat[r] = toMeasurements(&tt[r])
-	}
-	return t
-}
-
-func toMeasurements(tm *testMeasurements) Measurements {
-	m := Measurements{
-		Backoff: map[int]*Timings{},
-	}
-	for _, e := range experimentParams {
-		m.Backoff[e] = &tm[e]
-	}
-	return m
-}
-
-func RunAndSave(file string, test func(id int32)) {
+func RunAndSave(file string, test func(id int32) int32) {
 	save(file, measure(test))
 }
