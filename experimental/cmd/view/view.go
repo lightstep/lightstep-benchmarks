@@ -13,12 +13,6 @@ import (
 	"github.com/lightstep/lightstep-benchmarks/experimental/diffbench"
 )
 
-func mkdir(d string) {
-	if err := os.Mkdir(d, os.ModePerm); err != nil {
-		log.Fatal("Couldn't mkdir: ", d, ": ", err)
-	}
-}
-
 func main() {
 	var result diffbench.Exported
 
@@ -40,23 +34,29 @@ func main() {
 	}
 }
 
+func mkdir(d string) {
+	if err := os.Mkdir(d, os.ModePerm); err != nil {
+		log.Fatal("Couldn't mkdir: ", d, ": ", err)
+	}
+}
+
 func view(result diffbench.Exported, dir string) {
 	for _, confidence := range common.ConfidenceAll {
 		cdir := path.Join(dir, fmt.Sprint("conf=", confidence.C))
 		mkdir(cdir)
-		for _, r := range result.RepeatParams {
+		for _, repeat := range result.RepeatParams {
 			var (
 				ews, eus, ess, cws, cus, css common.StatsSeries
 			)
-			rdir := path.Join(cdir, fmt.Sprint("repeat=", r))
+			rdir := path.Join(cdir, fmt.Sprint("repeat=", repeat))
 			mkdir(rdir)
 			for _, e := range result.ExperimentParams {
 				var expt, cont common.TimingStats
 
-				for _, t := range *result.Experiment.Repeat[r].Backoff[e] {
+				for _, t := range *result.Experiment.Repeat[repeat].Backoff[e] {
 					expt.Update(t)
 				}
-				for _, t := range *result.Control.Repeat[r].Backoff[e] {
+				for _, t := range *result.Control.Repeat[repeat].Backoff[e] {
 					cont.Update(t)
 				}
 
@@ -88,6 +88,10 @@ func view(result diffbench.Exported, dir string) {
 			writeTiming(nameFor("cont.wall"), cws)
 			writeTiming(nameFor("cont.user"), cus)
 			writeTiming(nameFor("cont.u--s"), css)
+
+			plotPair(repeat, confidence, nameFor("expt.wall"), nameFor("cont.wall"), nameFor("wall"))
+			plotPair(repeat, confidence, nameFor("expt.user"), nameFor("cont.user"), nameFor("user"))
+			plotPair(repeat, confidence, nameFor("expt.u--s"), nameFor("cont.u--s"), nameFor("u--s"))
 		}
 	}
 }
@@ -109,5 +113,7 @@ func writeTiming(file string, ts common.StatsSeries) {
 		buf.WriteString(str[1 : len(str)-2])
 		buf.WriteString("\n")
 	}
-	ioutil.WriteFile(file, buf.Bytes(), os.ModePerm)
+	if err := ioutil.WriteFile(file, buf.Bytes(), os.ModePerm); err != nil {
+		log.Fatal("Could not write: ", file, ": ", err)
+	}
 }
