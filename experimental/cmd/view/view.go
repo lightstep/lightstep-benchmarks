@@ -35,28 +35,48 @@ func main() {
 }
 
 func mkdir(d string) {
-	if err := os.Mkdir(d, os.ModePerm); err != nil {
+	if err := os.MkdirAll(d, os.ModePerm); err != nil {
 		log.Fatal("Couldn't mkdir: ", d, ": ", err)
 	}
 }
 
 func view(result diffbench.Exported, dir string) {
+	viewDimension(
+		result, dir, "backoff", "repeat",
+		result.ExperimentParams, result.RepeatParams,
+		func(t *diffbench.Trials, x, y int) diffbench.Timings {
+			return *t.Repeat[y].Backoff[x]
+		},
+	)
+
+	viewDimension(
+		result, dir, "repeat", "backoff",
+		result.RepeatParams, result.ExperimentParams,
+		func(t *diffbench.Trials, x, y int) diffbench.Timings {
+			return *t.Repeat[x].Backoff[y]
+		},
+	)
+}
+
+func viewDimension(result diffbench.Exported, dir, xname, yname string, xvals, yvals []int, values func(t *diffbench.Trials, x, y int) diffbench.Timings) {
 	for _, confidence := range common.ConfidenceAll {
 		cdir := path.Join(dir, fmt.Sprint("conf=", confidence.C))
-		mkdir(cdir)
-		for _, repeat := range result.RepeatParams {
+
+		yDir := func(confidence common.ZValue, y int) string {
+			return path.Join(cdir, fmt.Sprint(yname, "=", y))
+		}
+
+		for _, yval := range yvals {
 			var (
 				ews, eus, ess, cws, cus, css common.StatsSeries
 			)
-			rdir := path.Join(cdir, fmt.Sprint("repeat=", repeat))
-			mkdir(rdir)
-			for _, e := range result.ExperimentParams {
+			for _, xval := range xvals {
 				var expt, cont common.TimingStats
 
-				for _, t := range *result.Experiment.Repeat[repeat].Backoff[e] {
+				for _, t := range values(result.Experiment, xval, yval) {
 					expt.Update(t)
 				}
-				for _, t := range *result.Control.Repeat[repeat].Backoff[e] {
+				for _, t := range values(result.Control, xval, yval) {
 					cont.Update(t)
 				}
 
@@ -68,17 +88,18 @@ func view(result diffbench.Exported, dir string) {
 				cusc := cont.User.Summary(confidence)
 				cssc := cont.UserSys().Summary(confidence)
 
-				ews.Add(float64(e), ewsc.SubScalar(cwsc.Mean))
-				eus.Add(float64(e), eusc.SubScalar(cusc.Mean))
-				ess.Add(float64(e), essc.SubScalar(cssc.Mean))
+				ews.Add(float64(xval), ewsc.SubScalar(cwsc.Mean))
+				eus.Add(float64(xval), eusc.SubScalar(cusc.Mean))
+				ess.Add(float64(xval), essc.SubScalar(cssc.Mean))
 
-				cws.Add(float64(e), cwsc.SubScalar(cwsc.Mean))
-				cus.Add(float64(e), cusc.SubScalar(cusc.Mean))
-				css.Add(float64(e), cssc.SubScalar(cssc.Mean))
+				cws.Add(float64(xval), cwsc.SubScalar(cwsc.Mean))
+				cus.Add(float64(xval), cusc.SubScalar(cusc.Mean))
+				css.Add(float64(xval), cssc.SubScalar(cssc.Mean))
 			}
 
+			mkdir(yDir(confidence, yval))
 			nameFor := func(n string) string {
-				return path.Join(rdir, n)
+				return path.Join(yDir(confidence, yval), n)
 			}
 
 			writeTiming(nameFor("expt.wall"), ews)
@@ -89,10 +110,29 @@ func view(result diffbench.Exported, dir string) {
 			writeTiming(nameFor("cont.user"), cus)
 			writeTiming(nameFor("cont.u--s"), css)
 
-			plotPair(repeat, confidence, nameFor("expt.wall"), nameFor("cont.wall"), nameFor("wall"))
-			plotPair(repeat, confidence, nameFor("expt.user"), nameFor("cont.user"), nameFor("user"))
-			plotPair(repeat, confidence, nameFor("expt.u--s"), nameFor("cont.u--s"), nameFor("u--s"))
+			plotPair(confidence, nameFor("expt.wall"), nameFor("cont.wall"), nameFor("wall"))
+			plotPair(confidence, nameFor("expt.user"), nameFor("cont.user"), nameFor("user"))
+			plotPair(confidence, nameFor("expt.u--s"), nameFor("cont.u--s"), nameFor("u--s"))
 		}
+
+		plotOne := func(kind string) {
+			dataLoc := func(loc string) func(r int) string {
+				return func(y int) string {
+					return path.Join(yDir(confidence, y), fmt.Sprint(loc, ".", kind))
+				}
+			}
+			plotExpt(fmt.Sprint(kind, " conf=", confidence.C),
+				confidence,
+				xvals,
+				yvals,
+				dataLoc("expt"),
+				dataLoc("cont"),
+				path.Join(cdir, yname),
+			)
+		}
+		plotOne("wall")
+		plotOne("user")
+		plotOne("u--s")
 	}
 }
 

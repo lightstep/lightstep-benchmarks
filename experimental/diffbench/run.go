@@ -25,7 +25,7 @@ const (
 
 	// The expreriment performs numTrials for each combination of
 	// 'work' multiplier and 'repeat' parameter.
-	numTrials = 100000
+	numTrials = 250000
 
 	// This many repeats are used to rough-calibrate the work function.
 	workFunctionCalibrationFactor = 1e8
