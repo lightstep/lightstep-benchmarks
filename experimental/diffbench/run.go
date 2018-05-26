@@ -8,12 +8,15 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/lightstep/lightstep-benchmarks/bench"
 	"github.com/lightstep/lightstep-benchmarks/common"
+	"github.com/lightstep/sandbox/jmacd/essay"
 )
 
 const (
@@ -25,7 +28,7 @@ const (
 
 	// The expreriment performs numTrials for each combination of
 	// 'work' multiplier and 'repeat' parameter.
-	numTrials = 250000
+	numTrials = 10000
 
 	// This many repeats are used to rough-calibrate the work function.
 	workFunctionCalibrationFactor = 1e8
@@ -33,7 +36,7 @@ const (
 
 var (
 	// Tested values for the work
-	experimentParams = intRange(10, 100, 10)
+	experimentParams = append([]int{10}, intRange(100, 1000, 100)...)
 
 	// Tested values for the repeat parameter.
 	repetitionParams = []int{1, 2, 3, 4, 5}
@@ -141,7 +144,7 @@ func (e *Exported) trialsFor(on int) *Trials {
 }
 
 // measure performs the complete experiment and returns the results.
-func measure(test func(int32) int32) *Exported {
+func measure(test func(int32) int32, doc essay.Document) *Exported {
 	roughEstimate, workFactor := computeRoughEstimate(test)
 	params := experimentTestParams()
 	results := emptyResults()
@@ -198,20 +201,41 @@ func computeRoughEstimate(test func(int32) int32) (roughEstimate common.Time, wo
 	return
 }
 
-func writeTo(name string, data []byte) {
+func writeTo(name string, data []byte) error {
 	if err := ioutil.WriteFile(name, data, os.ModePerm); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
-func save(file string, exp *Exported) {
+func save(file string, exp *Exported) error {
 	data, err := json.Marshal(exp)
 	if err != nil {
 		panic(err)
 	}
-	writeTo(file, data)
+	return writeTo(file, data)
 }
 
-func RunAndSave(file string, test func(id int32) int32) {
-	save(file, measure(test))
+func RunAndSave(title string, test func(id int32) int32) error {
+	dir := strings.Replace(strings.ToLower(title), " .", "_", -1)
+
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return err
+	}
+
+	ess, err := essay.New(essay.Config{
+		Title: title,
+		Dir:   dir,
+	})
+	if err != nil {
+		return err
+	}
+
+	data := measure(test, ess)
+
+	if err := ess.Close(); err != nil {
+		return err
+	}
+
+	return save(path.Join(dir, "output.json"), data)
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"os/exec"
 	"text/template"
@@ -45,9 +44,6 @@ plot {{ range $index, $input := .Data }}{{ $input.TwoD }},{{ end }}
 	repeatPlot = `
 set border 127 front lt black linewidth 1.000 dashtype solid
 set style fill transparent solid 0.50 border
-
-set border 127 front lt black linewidth 1.000 dashtype solid
-set style fill  transparent solid 0.50 border
 
 set terminal png
 set output '{{.OutputFile}}'
@@ -93,7 +89,6 @@ func plotPair(confidence common.ZValue, expt, cont, output string) {
 
 func gnuplot(script string) {
 	var stdout, stderr bytes.Buffer
-	fmt.Print("SCRIPT is ", script)
 
 	cmd := exec.Command("gnuplot")
 	cmd.Stdin = bytes.NewBufferString(script)

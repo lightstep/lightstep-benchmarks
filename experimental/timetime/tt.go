@@ -12,5 +12,5 @@ func main() {
 		return x ^ int32(time.Now().UnixNano())
 	}
 
-	diffbench.RunAndSave("output", test)
+	diffbench.RunAndSave("System clock timing", test)
 }
