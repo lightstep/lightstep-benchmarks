@@ -1,8 +1,15 @@
 import generated.collector_pb2 as collector
 import google.protobuf
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import binascii
 import sys
+import threading
+
+
+
+spans_received = 0
+global_lock = threading.Lock()
+
 
 """
 A class that extends BaseHTTPRequestHandler to support chunked encoding. The
@@ -78,66 +85,73 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
 
         return -1
 
-
-spans_received = 0
-
 class SatelliteRequestHandler(ChunkedRequestHandler):
-    # def __init__(self, *args, **kwargs):
-    #     self._spans_received = 0
-    #
-    #     super(SatelliteRequestHandler, self).__init__(*args, **kwargs)
-
-    def _send_response(self, response_code):
+    def _send_response(self, response_code, body_string=None):
         self.send_response(response_code)
+
+        if body_string:
+            self.send_header("Content-Length", len(body_string))
+
         self.end_headers()
+
+        if body_string:
+            self.wfile.write((body_string).encode('utf-8'))
+
+    """
+    We want to delay mock satellites a little bit so that they have
+    more realistic latency. Real latency numbers for gRPC are shown in this
+    snapshot:
+
+    https://app-meta.lightstep.com/lightstep-public/explorer?snapshot_id=bzB51UI9Nj
+    """
+    def _delay(self):
+        pass
 
     # can't make a GET request to satellite server
     def GET(self):
-        global spans_received
-
         if self.path == "/spans_received":
-            message = str(spans_received).encode('utf-8')
-
-            self.send_response(200)
-            self.send_header("Content-Length", len(message))
-            self.end_headers()
-
-             # needs to be binary encoded because this is a binary stream
-            self.wfile.write(message)
+            # don't need to worry about locking here since we're not going to
+            # modify
+            global spans_received
+            self._send_response(200, body_string=str(spans_received))
             return
         else:
             self._send_response(400)
 
 
     def POST(self):
-        global spans_received
-
+        print("starting: ", threading.get_ident())
         if self.path == "/api/v2/reports":
             report_request = collector.ReportRequest()
             try:
                 report_request.ParseFromString(self.binary_body)
             except google.protobuf.message.DecodeError as e:
-                # TODO: what should satellites do when the report_request can't
-                # be parsed?
-                print("error: ", e)
-                self._send_response(400)
+                # when satellites are unable to parse the report_request, they
+                # send a 500 with a brief description
+                self._send_response(500, str(e))
                 return
 
-
+            global spans_received
             spans_in_report = len(report_request.spans)
-            spans_received += spans_in_report # TODO: is there a more threadsafe way to do this ??
+
+            # aquire the global variable lock because we are using a
+            # "multithreaded" server
+            with global_lock:
+                spans_received += spans_in_report
+
             print("read", spans_in_report, "spans, total", spans_received)
 
             self._send_response(200)
         else:
             self._send_response(400)
 
-def run():
-    server_address = ('', 8012)
-    httpd = HTTPServer(server_address, SatelliteRequestHandler)
-    httpd.serve_forever()
+        print("ending: ", threading.get_ident())
 
-    print("something here??")
 
 if __name__ == "__main__":
-    run()
+    server_address = ('', 8012)
+
+    # although this can't use "real" threading because of GIL, it can switch to
+    # execute something else when we are waiting on a synchronous syscall
+    httpd = ThreadingHTTPServer(server_address, SatelliteRequestHandler)
+    httpd.serve_forever()
