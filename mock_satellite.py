@@ -1,10 +1,8 @@
 import generated.collector_pb2 as collector
 import google.protobuf
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
-import binascii
-import sys
 import threading
-
+import argparse
 
 
 spans_received = 0
@@ -149,7 +147,11 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
 
 
 if __name__ == "__main__":
-    server_address = ('', 8012)
+    parser = argparse.ArgumentParser(description='Start a mock LightStep satellite.')
+    parser.add_argument('port', type=int, help='port satellite will listen on')
+    args = parser.parse_args()
+
+    server_address = ('', args.port)
 
     # although this can't use "real" threading because of GIL, it can switch to
     # execute something else when we are waiting on a synchronous syscall
