@@ -1,22 +1,24 @@
-import profile
+import benchmark
 import time
 import lightstep
 import numpy as np
+from satellite_wrapper import MockSatelliteGroup
 
-class TracerProfilingRig(profile.ProfilingRig):
-    def startup(self, span_frequency=None):
+class TracedWorkWrapper(benchmark.WorkWrapper):
+    def startup(self, span_frequency=None, satellite_port=8012):
         self.span_frequency = span_frequency;
+        self.spans_written = 0
 
         if self.span_frequency:
-            self._setup_tracing()
+            self._setup_tracing(satellite_port)
 
-    def _setup_tracing(self):
+    def _setup_tracing(self, port):
         self.last_update_time = time.time()
-        self.span_period = 1.0 / span_frequency
+        self.span_period = 1.0 / self.span_frequency
 
         self.tracer = lightstep.Tracer(
             component_name='isaac_service',
-            collector_port=8012,
+            collector_port=port,
             collector_host='localhost',
             collector_encryption='none',
             use_http=True,
@@ -43,6 +45,7 @@ class TracerProfilingRig(profile.ProfilingRig):
     def shutdown(self):
         if self.span_frequency:
             self.tracer.flush()
+        return self.spans_written
 
 
 # # g = MockSatelliteGroup([satellite_port])
@@ -55,9 +58,34 @@ class TracerProfilingRig(profile.ProfilingRig):
 #     print("current usage:", current_usage, "target usage:", target_usage, "work_per_sleep", work_per_sleep)
 #     work_per_sleep += (target_usage - current_usage) / 5
 
-print(profile.find_work_per_sleep(TracerProfilingRig, 70, runs=1000, span_frequency=None))
 
-# usage = []
+
+# span frequency is not a kwarg of find_work_per_sleep, so it will be passed to
+# TracedWorkWrapper's startup method
+work_per_sleep = benchmark.find_work_per_sleep(TracedWorkWrapper, 70, max_runs=200, span_frequency=None)
+print(f'settled on work per sleep: {work_per_sleep}')
+
+
+mock_satellites = MockSatelliteGroup([8012])
+
+try:
+    for spans_per_second in [100, 200, 500, 1000, 2000]:
+        cpu_usage, cpu_usage_stderr, test_time, spans_sent = \
+            benchmark.find_cpu_usage(TracedWorkWrapper, work_per_sleep, runs=1000, span_frequency=spans_per_second, satellite_port=8012)
+
+        if not mock_satellites.all_running():
+            raise Exception("There was a problem with one or more of the satellites")
+
+        time.sleep(1)
+        spans_received = mock_satellites.get_spans_received()
+        mock_satellites.reset_spans_received()
+
+        print(f'{(spans_sent / test_time):.1f} spans / second (target {spans_per_second}): {cpu_usage:.2f}% CPU, ({spans_sent - spans_received} spans dropped)')
+
+finally:
+    print("Terminating mock satellites.")
+    mock_satellites.terminate()
+
 # stderr = []
 #
 # for i in range(0, 10):
