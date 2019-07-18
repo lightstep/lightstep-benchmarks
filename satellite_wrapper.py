@@ -20,6 +20,10 @@ class MockSatelliteHandler:
         return self._handler.poll() == None
 
     def get_spans_received(self):
+        # before trying to communicate with the mock, check if its running
+        if not self.is_running():
+            raise Exception("Mock satellite not running.")
+
         host = "http://localhost:" + str(self.port)
         res = requests.get(host + "/spans_received")
 

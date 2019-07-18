@@ -3,6 +3,7 @@ import google.protobuf
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import threading
 import argparse
+import sys
 
 
 spans_received = 0
@@ -118,7 +119,8 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
 
 
     def POST(self):
-        print("starting: ", threading.get_ident())
+        print("starting: ", threading.get_ident(), file=sys.stderr)
+
         if self.path == "/api/v2/reports":
             report_request = collector.ReportRequest()
             try:
