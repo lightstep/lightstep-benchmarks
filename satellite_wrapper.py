@@ -49,6 +49,7 @@ class MockSatelliteHandler:
             pass
 
         # read & close the logfile
+        self.logfile.seek(0) # seek to beginning of file
         logs = self.logfile.read()
         self.logfile.close()
         return logs
