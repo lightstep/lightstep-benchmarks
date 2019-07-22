@@ -18,6 +18,7 @@ jobs:
     working_directory: ~/repo
 
     steps:
+      # checkout project code into working directory (~/repo)
       - checkout
 
       # Download and cache dependencies
@@ -47,6 +48,7 @@ jobs:
       - run:
           name: run tests
           command: |
+            echo "running tests"
             . venv/bin/activate
             python manage.py test
 
