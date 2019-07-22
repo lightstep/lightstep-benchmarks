@@ -6,6 +6,7 @@ import copy
 from urllib.parse import urlparse, parse_qs
 from satellite_wrapper import MockSatelliteGroup
 import time
+import os
 
 
 CONTROLLER_PORT = 8023
