@@ -29,8 +29,8 @@ jobs:
             - v1-dependencies-
 
       - run:
-        name: upgrade pip
-        command: pip install --upgrade pip
+          name: upgrade pip
+          command: pip install --upgrade pip
 
       - run:
           name: install dependencies
@@ -45,8 +45,8 @@ jobs:
           key: v1-dependencies-{{ checksum "requirements.txt" }}
 
       - run:
-        name: build protobuf
-        command: ./scripts/compile-proto.sh
+          name: build protobuf
+          command: ./scripts/compile-proto.sh
 
       # run tests!
       # this example uses Django's built-in test-runner
