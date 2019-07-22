@@ -95,7 +95,7 @@ class Command:
             self,
             # spans_per_second,
             trace=True,
-            sleep=10**5,
+            sleep_per_work=100,
             sleep_interval=10**7,
             # test_time=5,
             work=1000,
@@ -104,7 +104,7 @@ class Command:
             exit=False):
         # self._spans_per_second = spans_per_second
         self._trace = trace
-        self._sleep = sleep
+        self._sleep = sleep_per_work * work
         self._sleep_interval = sleep_interval
         # self._test_time = test_time
         self._with_satellites = with_satellites
@@ -189,6 +189,12 @@ class Controller:
         # the client is probably dead
         self.server.timeout = 30
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.shutdown()
+        return False
 
     def _ensure_satellite_running(self):
         if not getattr(self, 'satellites', None):

@@ -52,22 +52,22 @@ jobs:
       - run:
           name: compile protobuf
           command: ./scripts/compile-proto.sh
-
-      - run:
-          name: make logs folder
-          command: mkdir logs
-      
-      # run tests!
-      # this example uses Django's built-in test-runner
-      # other common Python testing frameworks include pytest and nose
-      # https://pytest.org
-      # https://nose.readthedocs.io
+        
       - run:
           name: run tests
           command: |
-            echo "running tests"
+            mkdir logs
             . venv/bin/activate
             pytest ci_test.py
+
+      - run:
+          name: make graphs
+          command: |
+            mkdir graphs
+            python3 make_graphs.py graphs
+
+      - store_artifacts:
+          path: graphs
 
       # - store_artifacts:
       #     path: test-reports
