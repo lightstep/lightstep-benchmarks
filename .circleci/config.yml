@@ -42,8 +42,10 @@ jobs:
           key: v1-dependencies-{{ checksum "requirements.txt" }}
 
       - run:
-          name: build protobuf
-          command: ./scripts/compile-proto.sh
+          name: setup protobuf
+          command: |
+            ./scripts/install-proto.sh
+            ./scripts/compile-proto.sh
 
       # run tests!
       # this example uses Django's built-in test-runner
