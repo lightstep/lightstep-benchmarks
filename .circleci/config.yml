@@ -52,13 +52,13 @@ jobs:
       - run:
           name: compile protobuf
           command: ./scripts/compile-proto.sh
-        
+
       - run:
           name: run tests
           command: |
             mkdir logs
             . venv/bin/activate
-            pytest ci_test.py
+            pytest test.py
 
       - run:
           name: make graphs
