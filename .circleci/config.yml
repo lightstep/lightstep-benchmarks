@@ -53,6 +53,10 @@ jobs:
           name: compile protobuf
           command: ./scripts/compile-proto.sh
 
+      - run:
+          name: make logs folder
+          command: mkdir logs
+      
       # run tests!
       # this example uses Django's built-in test-runner
       # other common Python testing frameworks include pytest and nose
