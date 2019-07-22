@@ -59,9 +59,7 @@ def perform_work(command):
     else:
         tracer = opentracing.Tracer()
 
-
-    span_period = 1.0 / command['SpansPerSecond'] if command['SpansPerSecond'] else 0
-
+        
     sleep_debt = 0
     start_time = time.time()
     last_span_time = 0
@@ -69,23 +67,25 @@ def perform_work(command):
     timer = Stopwatch()
     timer.start()
 
-    while time.time() < start_time + command['TestTime']:
-        work(10000)
+    sleep_times = 0
 
-        if span_period and time.time() > last_span_time + span_period:
-            last_span_time = time.time()
-            with tracer.start_active_span('TestSpan') as scope:
-                spans_sent += 1
+    for i in range(command['Repeat']): # time.time() < start_time + command['TestTime']:
+        with tracer.start_active_span('TestSpan') as scope:
+            work(command['Work'])
+            spans_sent += 1
 
         sleep_debt += command['Sleep']
 
         if sleep_debt > command['SleepInterval']:
             sleep_debt -= command['SleepInterval']
             time.sleep(command['SleepInterval'] * 10**-9) # because there are 10^-9 nanoseconds / second
+            sleep_times += 1
 
     # do / don't include flush in time measurement depending on instructions
     if command['Trace']:
         tracer.flush()
+
+    print("sleep times", sleep_times)
 
     cpu_time, clock_time = timer.stop()
 

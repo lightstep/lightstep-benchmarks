@@ -91,14 +91,26 @@ class RequestHandler(BaseHTTPRequestHandler):
         return
 
 class Command:
-    def __init__(self, spans_per_second, trace=True, sleep=10**5, sleep_interval=10**7, test_time=5, with_satellites=True, exit=False):
-        self._spans_per_second = spans_per_second
+    def __init__(
+            self,
+            # spans_per_second,
+            trace=True,
+            sleep=10**5,
+            sleep_interval=10**7,
+            # test_time=5,
+            work=1000,
+            repeat=1000,
+            with_satellites=True,
+            exit=False):
+        # self._spans_per_second = spans_per_second
         self._trace = trace
         self._sleep = sleep
         self._sleep_interval = sleep_interval
-        self._test_time = test_time
+        # self._test_time = test_time
         self._with_satellites = with_satellites
         self._exit = exit
+        self._work = work
+        self._repeat = repeat
 
     @staticmethod
     def exit():
@@ -110,12 +122,14 @@ class Command:
 
     def to_dict(self):
         return {
-            'SpansPerSecond': self._spans_per_second,
+            # 'SpansPerSecond': self._spans_per_second,
             'Trace': self._trace,
             'Sleep': self._sleep,
-            'SleepInterval': self._sleep,
-            'TestTime': self._test_time,
-            'Exit': self._exit
+            'SleepInterval': self._sleep_interval,
+            # 'TestTime': self._test_time,
+            'Exit': self._exit,
+            'Work': self._work,
+            'Repeat': self._repeat,
         }
 
 

@@ -52,6 +52,6 @@ Note that `sleep` and `sleep_interval` are both in nanoseconds, while `test_time
 
 # Using the Testing Framework -- When to Stop
 
-So you have a nice testing framework setup and you are ready to take data! But CPU data is notoriously sloppy for a slew of systematic reasons. If you just run 30 2s tests and calculate the standard error, this will be low because you aren't factoring in systematic error.
+So you have a nice testing framework setup and you are ready to measure how spans per second influenced tracer CPU usage! But CPU usage data is riddled with random error because an OS is a complicated beast and it has lots more to do than just run a single Python program. To filter out random error, we run the same test many times -- around 50. We have observed that when the number of tests run n > 50 the CPU usage data are normally distributed. This analysis is located in a Jupyter notebook located in the analysis folder.  
 
-You have to run enough tests over a long enough period to be sure that you have run your tests in a smattering of all conditions -- making "condition" into another random variable. At this point you can honestly use a metric like standard error (standard deviation of calculated mean) and feel confident.
+The data we are collecting is CPU usage data over a time interval of 2 seconds. These data are means, since we are averaging over time. By the [Central Limit Theorem]() ...
