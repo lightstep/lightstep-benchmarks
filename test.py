@@ -15,7 +15,7 @@ def test_controller(vanilla_controller):
     result = vanilla_controller.benchmark(Command(
         trace=True,
         with_satellites=True,
-        sleep=10**5,
+        sleep_per_work=25,
         work=1000,
         repeat=1000))
 
