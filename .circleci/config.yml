@@ -44,7 +44,7 @@ jobs:
       - run:
           name: setup protobuf
           command: |
-            ./scripts/install-proto.sh
+            sudo ./scripts/install-proto.sh
             ./scripts/compile-proto.sh
 
       # run tests!
