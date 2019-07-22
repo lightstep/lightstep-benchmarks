@@ -179,6 +179,9 @@ class Result:
 
 class Controller:
     def __init__(self, client_startup_args, client_name='client'):
+        # make all of the required directories
+        os.makedirs("logs/temp", exist_ok=True)
+
         self.client_startup_args = client_startup_args
         self.client_name = client_name
 
