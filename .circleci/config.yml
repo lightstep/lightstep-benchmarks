@@ -30,7 +30,9 @@ jobs:
 
       - run:
           name: upgrade pip
-          command: sudo pip install --upgrade pip
+          command: |
+            sudo python3 -m pip install -U pip
+            pip --version
 
       - run:
           name: install dependencies
