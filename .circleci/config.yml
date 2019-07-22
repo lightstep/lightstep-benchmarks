@@ -30,8 +30,7 @@ jobs:
 
       - run:
         name: upgrade pip
-        command: |
-          pip install --upgrade pip
+        command: pip install --upgrade pip
 
       - run:
           name: install dependencies
@@ -47,8 +46,7 @@ jobs:
 
       - run:
         name: build protobuf
-        command: |
-          ./scripts/compile-proto.sh
+        command: ./scripts/compile-proto.sh
 
       # run tests!
       # this example uses Django's built-in test-runner
