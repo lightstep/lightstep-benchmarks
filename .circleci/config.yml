@@ -11,25 +11,25 @@ jobs:
       # checkout project code into working directory (~/repo)
       - checkout
 
-      # Download and cache dependencies
-      - restore_cache:
-          keys:
-            - v1-dependencies-{{ checksum "requirements.txt" }}
-            # fallback to using the latest cache if no exact match is found
-            - v1-dependencies-
+      # # Download and cache dependencies
+      # - restore_cache:
+      #     keys:
+      #       - v1-dependencies-{{ checksum "requirements.txt" }}
+      #       # fallback to using the latest cache if no exact match is found
+      #       - v1-dependencies-
 
       - run:
           name: install dependencies
           command: |
             python -m venv venv
             . venv/bin/activate
-            python -m pip install -U pip setuptools
-            python -m pip install -r requirements.txt
+            pip install -U pip setuptools
+            pip install -r requirements.txt # is this right ??
 
-      - save_cache:
-          paths:
-            - ./venv
-          key: v1-dependencies-{{ checksum "requirements.txt" }}
+      # - save_cache:
+      #     paths:
+      #       - ./venv
+      #     key: v1-dependencies-{{ checksum "requirements.txt" }}
 
       - run:
           name: install protobuf
