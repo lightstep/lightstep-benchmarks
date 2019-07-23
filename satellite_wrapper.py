@@ -1,6 +1,7 @@
 import subprocess
 import time
 import requests
+import os
 
 class MockSatelliteHandler:
     def __init__(self, port):
@@ -57,6 +58,9 @@ class MockSatelliteHandler:
 
 class MockSatelliteGroup:
     def __init__(self, ports):
+        # make all of the required directories
+        os.makedirs("logs/temp", exist_ok=True)
+
         self._satellites = \
             [MockSatelliteHandler(port) for port in ports]
 

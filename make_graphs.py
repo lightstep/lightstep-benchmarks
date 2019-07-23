@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from controller import Controller, Command
+from controller import Controller
 import numpy as np
 import argparse
 from os import path
@@ -10,25 +10,26 @@ if __name__ == '__main__':
     parser.add_argument('dir', help='Directory to save graphs to.')
     args = parser.parse_args()
 
-    with Controller(['python3', 'clients/python_client.py', 'vanilla'], client_name='vanilla_python_client') as controller:
-        spans_per_second = []
-        percent_dropped = []
+    with Controller(['python3', 'clients/python_client.py', 'vanilla'],
+            client_name='vanilla_python_client',
+            target_cpu_usage=.7) as controller:
 
-        for work in range(15000, 45000, 5000):
-            result = controller.benchmark(Command(
+        sps_list = []
+        dropped_list = []
+
+        for sps in range(100, 1500, 100):
+            result = controller.benchmark(
                 trace=True,
                 with_satellites=True,
-                # sleep=4*10**5,
-                sleep_per_work=25, # sleep 25ns per work
-                work=work,
-                repeat=10000))
+                spans_per_second=sps,
+                runtime=5)
 
-            print(f'spans per second: {result.spans_per_second}, dropped: {result.dropped_spans}, cpu usage: {result.cpu_usage}')
+            print(result)
 
-            percent_dropped.append(result.dropped_spans / result.spans_sent)
-            spans_per_second.append(result.spans_per_second)
+            dropped_list.append(result.dropped_spans / result.spans_sent)
+            sps_list.append(result.spans_per_second)
 
-        plt.plot(spans_per_second, percent_dropped, label='vanilla python tracer')
+        plt.plot(sps_list, dropped_list, label='vanilla python tracer')
         plt.xlabel("Spans Per Second")
         plt.ylabel("Percent Spans Dropped")
         plt.title("Spans Per Second vs. Spans Dropped")

@@ -7,8 +7,9 @@ from urllib.parse import urlparse, parse_qs
 from satellite_wrapper import MockSatelliteGroup
 import time
 import os
+import numpy as np
 
-
+LONGEST_TEST = 30
 CONTROLLER_PORT = 8023
 SATELLITE_PORT = 8012
 VALID_COMMAND_KEYS = ['Trace', 'Sleep', 'SpansPerSecond', 'NoFlush', 'TestTime', 'Exit', 'NumLogs', 'BytesPerLog', 'SleepInterval']
@@ -94,20 +95,17 @@ class RequestHandler(BaseHTTPRequestHandler):
 class Command:
     def __init__(
             self,
-            # spans_per_second,
             trace=True,
-            sleep_per_work=100,
+            with_satellites=True,
+            sleep=100,
             sleep_interval=10**7,
-            # test_time=5,
             work=1000,
             repeat=1000,
-            with_satellites=True,
             exit=False):
-        # self._spans_per_second = spans_per_second
+
         self._trace = trace
-        self._sleep = sleep_per_work * work
-        self._sleep_interval = sleep_interval
-        # self._test_time = test_time
+        self._sleep = sleep
+        self._sleep_interval = sleep_interval # 1ms
         self._with_satellites = with_satellites
         self._exit = exit
         self._work = work
@@ -123,11 +121,9 @@ class Command:
 
     def to_dict(self):
         return {
-            # 'SpansPerSecond': self._spans_per_second,
             'Trace': self._trace,
             'Sleep': self._sleep,
             'SleepInterval': self._sleep_interval,
-            # 'TestTime': self._test_time,
             'Exit': self._exit,
             'Work': self._work,
             'Repeat': self._repeat,
@@ -141,6 +137,16 @@ class Result:
         self._program_time = program_time
         self._clock_time = clock_time
         self.spans_received = spans_received
+
+    def __str__(self):
+        ret = "controller.Results object:\n"
+        ret += f'\t{self.spans_per_second:.1f} spans / sec\n'
+        ret += f'\t{self.cpu_usage * 100:.2f}% CPU usage\n'
+        if self.spans_sent > 0:
+            ret += f'\t{self.dropped_spans / self.spans_sent * 100:.1f}% spans dropped (out of {self.spans_sent} sent)\n'
+        ret += f'\ttook {self.clock_time:.1f}s'
+
+        return ret
 
     @staticmethod
     def from_dict(result_dict, spans_received=0):
@@ -179,19 +185,26 @@ class Result:
 
 
 class Controller:
-    def __init__(self, client_startup_args, client_name='client'):
-        # make all of the required directories
-        os.makedirs("logs/temp", exist_ok=True)
-
+    def __init__(self, client_startup_args, client_name='client', target_cpu_usage=.7):
         self.client_startup_args = client_startup_args
         self.client_name = client_name
 
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
+        print("Started controller server.")
 
-        # server.handle_request() will fail after 30 seconds since at that point
-        # the client is probably dead
-        self.server.timeout = 30
+        # server timeout is twice the longest test length
+        self.server.timeout = LONGEST_TEST * 2
+
+        # calibrate the amount of work the controller does so that when we are using
+        # a noop tracer the CPU usage is around 70%
+        self._sleep_per_work = self._estimate_sleep_per_work(target_cpu_usage)
+        print(f'Estimated that we need {self._sleep_per_work}ns of sleep per work to achieve {target_cpu_usage*100}% CPU usage.')
+
+        # calculate work per second, which we can use to estimate spans per second
+        self._work_per_second = self._estimate_work_per_second()
+        print(f'Calculated that this client completes {self._work_per_second} units of work / second.')
+        print("Controller has initialized.")
 
     def __enter__(self):
         return self
@@ -216,7 +229,69 @@ class Controller:
         print("Controller shutdown called")
         self._ensure_satellite_shutdown()
 
-    def benchmark(self, command):
+    """ Estimate how much work per second the client does. Although in practice
+    this is slightly dependent on work and repeat values, it is mostly dependent on
+    the sleep value. """
+    def _estimate_work_per_second(self):
+        work = 1000
+        result = self.raw_benchmark(Command(
+            trace=False,
+            with_satellites=False,
+            sleep=work * self._sleep_per_work,
+            work=work,
+            repeat=10000))
+
+        return work * result.spans_per_second
+
+    """ Finds sleep per work which leads to target CPU usage. """
+    def _estimate_sleep_per_work(self, target_cpu_usage):
+        sleep_per_work = 25
+        p_constant = 10
+        work = 1000
+
+        for i in range(0, 20):
+            result = self.raw_benchmark(Command(
+                trace=False,
+                with_satellites=False,
+                sleep=sleep_per_work * work,
+                work=work,
+                repeat=5000))
+
+            if abs(result.cpu_usage - target_cpu_usage) < .005: # within 1/2 a percent
+                return sleep_per_work
+
+            # make sure sleep per work is in range [1, 1000]
+            sleep_per_work = np.clip(sleep_per_work + (result.cpu_usage - target_cpu_usage) * p_constant, 1, 1000)
+
+        return sleep_per_work
+
+    def benchmark(self,
+            trace=True,
+            with_satellites=True,
+            spans_per_second=100,
+            runtime=10):
+
+        if spans_per_second == 0:
+            raise Exception("Cannot target 0 spans per second.")
+
+        if runtime < 1:
+            raise Exception("Runtime needs to be longer than 1s.")
+
+        if runtime > LONGEST_TEST:
+            raise Exception("Runtime cannot be longer than 30s.")
+
+        work = self._work_per_second / spans_per_second
+        repeat = self._work_per_second * runtime / work
+
+        return self.raw_benchmark(Command(
+            trace=True,
+            with_satellites=True,
+            sleep=int(work * self._sleep_per_work),
+            work=int(work),
+            repeat=int(repeat)))
+
+
+    def raw_benchmark(self, command):
         # save commands to server, where they will be used to control stuff
         self.server.add_command(command)
         self.server.add_command(Command.exit())
