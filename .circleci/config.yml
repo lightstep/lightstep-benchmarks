@@ -11,12 +11,12 @@ jobs:
       # checkout project code into working directory (~/repo)
       - checkout
 
-      # # Download and cache dependencies
-      # - restore_cache:
-      #     keys:
-      #       - v1-dependencies-{{ checksum "requirements.txt" }}
-      #       # fallback to using the latest cache if no exact match is found
-      #       - v1-dependencies-
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "requirements.txt" }}
+            # fallback to using the latest cache if no exact match is found
+            - v1-dependencies-
 
       - run:
           name: install dependencies
@@ -24,12 +24,12 @@ jobs:
             python -m venv venv
             . venv/bin/activate
             pip install -U pip setuptools
-            pip install -r requirements.txt # is this right ??
+            pip install -r requirements.txt
 
-      # - save_cache:
-      #     paths:
-      #       - ./venv
-      #     key: v1-dependencies-{{ checksum "requirements.txt" }}
+      - save_cache:
+          paths:
+            - ./venv
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
 
       - run:
           name: install protobuf
@@ -52,6 +52,7 @@ jobs:
       - run:
           name: make graphs
           command: |
+            . venv/bin/activate
             mkdir graphs
             python make_graphs.py graphs
 
