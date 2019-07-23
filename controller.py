@@ -189,6 +189,9 @@ class Controller:
         self.client_startup_args = client_startup_args
         self.client_name = client_name
 
+        # makes sure that the logs dir exists
+        os.makedirs("logs", exist_ok=True)
+
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
         print("Started controller server.")

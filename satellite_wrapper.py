@@ -5,6 +5,7 @@ import os
 
 class MockSatelliteHandler:
     def __init__(self, port):
+        os.makedirs("logs/temp", exist_ok=True)
         self.logfile = open('logs/temp/mock_satellite_' + str(port) + '.log', 'w+')
         self.port = port
 
@@ -58,8 +59,7 @@ class MockSatelliteHandler:
 
 class MockSatelliteGroup:
     def __init__(self, ports):
-        # make all of the required directories
-        os.makedirs("logs/temp", exist_ok=True)
+        os.makedirs("logs", exist_ok=True)
 
         self._satellites = \
             [MockSatelliteHandler(port) for port in ports]
