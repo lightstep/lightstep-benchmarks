@@ -4,7 +4,7 @@ import threading
 import json
 import copy
 from urllib.parse import urlparse, parse_qs
-from satellite_wrapper import MockSatelliteGroup
+from satellite.controller import MockSatelliteGroup
 import time
 import os
 import numpy as np

@@ -1,7 +1,7 @@
 import generated.collector_pb2 as collector
 import requests
 from time import time, sleep
-from satellite_wrapper import MockSatelliteGroup
+from controller import MockSatelliteGroup
 
 SPANS_IN_REPORT_REQUEST = 100
 TEST_LENGTH = 10

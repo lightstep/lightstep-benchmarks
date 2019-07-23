@@ -2,11 +2,16 @@ import subprocess
 import time
 import requests
 import os
+from os import path
+
+# top level directory
+SATELLITE_DIR = path.dirname(path.realpath(__file__))
+PROJECT_DIR = path.join(SATELLITE_DIR, "..")
 
 class MockSatelliteHandler:
     def __init__(self, port):
-        os.makedirs("logs/temp", exist_ok=True)
-        self.logfile = open('logs/temp/mock_satellite_' + str(port) + '.log', 'w+')
+        os.makedirs(path.join(PROJECT_DIR, "logs/temp"), exist_ok=True)
+        self.logfile = open(path.join(PROJECT_DIR, f'logs/temp/mock_satellite_{str(port)}.log'), 'w+')
         self.port = port
 
         # we will subtract this number from how many received spans satellites report
@@ -14,8 +19,10 @@ class MockSatelliteHandler:
         # with satellites
         self._spans_received_baseline = 0
 
+        mock_satellite_path = path.join(SATELLITE_DIR, 'mock_satellite.py')
+
         self._handler = subprocess.Popen(
-            ["python3", "mock_satellite.py", str(port)],
+            ["python3", mock_satellite_path, str(port)],
             stdout=self.logfile, stderr=self.logfile)
 
     def is_running(self):
@@ -59,7 +66,7 @@ class MockSatelliteHandler:
 
 class MockSatelliteGroup:
     def __init__(self, ports):
-        os.makedirs("logs", exist_ok=True)
+        os.makedirs(path.join(PROJECT_DIR, "logs"), exist_ok=True)
 
         self._satellites = \
             [MockSatelliteHandler(port) for port in ports]
@@ -79,7 +86,7 @@ class MockSatelliteGroup:
 
     """ Shutdown all satellites and save their logs into a single file """
     def terminate(self):
-        with open('logs/mock_satellites.log', 'w+') as logfile:
+        with open(path.join(PROJECT_DIR, 'logs/mock_satellites.log'), 'w+') as logfile:
             for s in self._satellites:
                 logs = s.terminate()
                 logfile.write(logs)

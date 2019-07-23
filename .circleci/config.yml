@@ -41,7 +41,7 @@ jobs:
 
       - run:
           name: compile protobuf
-          command: ./scripts/compile-proto.sh
+          command: ./satellite/compile-proto.sh
 
       - run:
           name: run tests
