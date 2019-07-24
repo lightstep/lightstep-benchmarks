@@ -19,7 +19,7 @@ jobs:
             - v1-dependencies-
 
       - run:
-          name: install dependencies
+          name: install pip dependencies
           command: |
             python -m venv venv
             . venv/bin/activate
@@ -30,6 +30,14 @@ jobs:
           paths:
             - ./venv
           key: v1-dependencies-{{ checksum "requirements.txt" }}
+
+      # https://docs.bazel.build/versions/master/install-ubuntu.html#install-with-installer-ubuntu
+      - run:
+        name: install bazel
+        command: |
+          echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+          curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
+          sudo apt-get update && sudo apt-get install bazel=0.27.0
 
       - run:
           name: install protobuf
@@ -42,6 +50,13 @@ jobs:
       - run:
           name: compile protobuf
           command: ./satellite/compile-proto.sh
+
+      - run:
+          name: build sidecar
+          command:
+            git clone git@github.com:isaaczinda/sidecar-cpp.git
+            cd sidecar-cpp
+            bazel build //:boost_example
 
       - run:
           name: run tests
