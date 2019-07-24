@@ -1,3 +1,0 @@
-[submodule "libs/lightstep-tracer-python"]
-	path = libs/lightstep-tracer-python
-	url = git@github.com:lightstep/lightstep-tracer-python.git

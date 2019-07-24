@@ -1,19 +1,13 @@
 import psutil
 import numpy as np
 import time
+import lightstep
 import opentracing
 import json
 import sys
 import requests
 import argparse
 import time
-from os import path
-
-# change directory so we can import LightStep
-CLIENT_DIR = path.dirname(path.realpath(__file__))
-sys.path.insert(0, path.join(CLIENT_DIR, '../libs/lightstep-tracer-python'))
-
-import lightstep
 
 CONTROLLER_PORT = 8023
 SATELLITE_PORT = 8012
@@ -104,6 +98,15 @@ def perform_work(command):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Python client for LightStep Tracer benchmarking.')
+    parser.add_argument('tracer', type=str, choices=["vanilla", "cpp_bindings"], help='Name of the tracer to use. Can be "vanilla" or "cpp_bindings"')
+    args = parser.parse_args()
+
+    if args.tracer == "vanilla":
+        import lightstep
+    if args.tracer == "cpp_bindings":
+        raise Exception("Not yet implemented.")
+
     while True:
         r = requests.get(f'http://localhost:{CONTROLLER_PORT}/control')
         perform_work(r.json())
