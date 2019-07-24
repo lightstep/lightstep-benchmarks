@@ -7,7 +7,7 @@ with Controller(['python3', 'clients/python_client.py', 'vanilla'],
     result = controller.benchmark(
         trace=True,
         with_satellites=True,
-        runtime=10,
+        runtime=2,
         spans_per_second=200)
 
     print(result)

@@ -12,7 +12,6 @@ import numpy as np
 LONGEST_TEST = 30
 CONTROLLER_PORT = 8023
 SATELLITE_PORT = 8012
-VALID_COMMAND_KEYS = ['Trace', 'Sleep', 'SpansPerSecond', 'NoFlush', 'TestTime', 'Exit', 'NumLogs', 'BytesPerLog', 'SleepInterval']
 
 """ Dictionaries created by urllib.parse.parse_qs looks like {key: [value], ...}
 This function take dictionaries of that format and makes them normal. """
