@@ -9,7 +9,7 @@ SATELLITE_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(SATELLITE_DIR, "..")
 
 class MockSatelliteHandler:
-    def __init__(self, port):
+    def __init__(self, port, mode):
         os.makedirs(path.join(PROJECT_DIR, "logs/temp"), exist_ok=True)
         self.logfile = open(path.join(PROJECT_DIR, f'logs/temp/mock_satellite_{str(port)}.log'), 'w+')
         self.port = port
@@ -22,7 +22,7 @@ class MockSatelliteHandler:
         mock_satellite_path = path.join(SATELLITE_DIR, 'mock_satellite.py')
 
         self._handler = subprocess.Popen(
-            ["python3", mock_satellite_path, str(port)],
+            ["python3", mock_satellite_path, str(port), mode],
             stdout=self.logfile, stderr=self.logfile)
 
     def is_running(self):
@@ -65,11 +65,11 @@ class MockSatelliteHandler:
 
 
 class MockSatelliteGroup:
-    def __init__(self, ports):
+    def __init__(self, ports, mode):
         os.makedirs(path.join(PROJECT_DIR, "logs"), exist_ok=True)
 
         self._satellites = \
-            [MockSatelliteHandler(port) for port in ports]
+            [MockSatelliteHandler(port, mode) for port in ports]
 
     def get_spans_received(self):
         return sum([s.get_spans_received() for s in self._satellites])

@@ -30,6 +30,10 @@ class Stopwatch:
     def __init__(self):
         self.process = psutil.Process()
 
+    """ Returns the size of process virtual memory """
+    def get_memory(self):
+        return self.process.memory_info()[0]
+
     def start(self):
         user, system, _, _ = self.process.cpu_times()
         self.start_cpu_time = user + system
@@ -59,15 +63,13 @@ def perform_work(command):
     else:
         tracer = opentracing.Tracer()
 
-        
+
     sleep_debt = 0
     start_time = time.time()
     last_span_time = 0
     spans_sent = 0
     timer = Stopwatch()
     timer.start()
-
-    sleep_times = 0
 
     for i in range(command['Repeat']): # time.time() < start_time + command['TestTime']:
         with tracer.start_active_span('TestSpan') as scope:
@@ -79,17 +81,21 @@ def perform_work(command):
         if sleep_debt > command['SleepInterval']:
             sleep_debt -= command['SleepInterval']
             time.sleep(command['SleepInterval'] * 10**-9) # because there are 10^-9 nanoseconds / second
-            sleep_times += 1
 
-    # do / don't include flush in time measurement depending on instructions
-    if command['Trace']:
+    memory = timer.get_memory()
+
+    # don't include flush in time measurement
+    if command['Trace'] and not command['NoFlush']:
         tracer.flush()
 
-    print("sleep times", sleep_times)
-
     cpu_time, clock_time = timer.stop()
+    send_result({
+        'ProgramTime': cpu_time,
+        'ClockTime': clock_time,
+        'SpansSent': spans_sent,
+        'Memory': memory,
+    })
 
-    send_result({'ProgramTime': cpu_time, 'ClockTime': clock_time, 'SpansSent': spans_sent})
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Python client for LightStep Tracer benchmarking.')

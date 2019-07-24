@@ -4,7 +4,6 @@ import numpy as np
 import argparse
 from os import path
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Produce graphs of tests results.')
     parser.add_argument('dir', help='Directory to save graphs to.')
@@ -15,24 +14,33 @@ if __name__ == '__main__':
             target_cpu_usage=.7) as controller:
 
         sps_list = []
+        cpu_list = []
         dropped_list = []
+        memory_list = []
 
         for sps in range(100, 1500, 100):
             result = controller.benchmark(
                 trace=True,
                 with_satellites=True,
                 spans_per_second=sps,
-                runtime=5)
+                runtime=2)
 
-            print(result)
-
+            memory_list.append(int(result.memory / 2**10)) # bytes --> kb
             dropped_list.append(result.dropped_spans / result.spans_sent)
+            cpu_list.append(result.cpu_usage)
             sps_list.append(result.spans_per_second)
 
-        plt.plot(sps_list, dropped_list, label='vanilla python tracer')
-        plt.xlabel("Spans Per Second")
-        plt.ylabel("Percent Spans Dropped")
-        plt.title("Spans Per Second vs. Spans Dropped")
-        plt.savefig(path.join(args.dir, 'sps_vs_dropped.png'))
+        fig, ax = plt.subplots()
+        ax.plot(sps_list, dropped_list)
+        ax.set(xlabel="Spans Per Second", ylabel="Percent Spans Dropped")
+        fig.savefig(path.join(args.dir, "sps_vs_dropped.png"))
 
-print("Done making graphs.")
+        fig, ax = plt.subplots()
+        ax.plot(sps_list, cpu_list)
+        ax.set(xlabel="Spans Per Second", ylabel="Percent CPU Utilization")
+        fig.savefig(path.join(args.dir, "sps_vs_cpu.png"))
+
+        fig, ax = plt.subplots()
+        ax.plot(sps_list, memory_list)
+        ax.set(xlabel="Spans Per Second", ylabel="Kilobytes Memory")
+        fig.savefig(path.join(args.dir, "sps_vs_memory.png"))

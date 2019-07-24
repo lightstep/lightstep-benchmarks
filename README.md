@@ -1,4 +1,13 @@
-The **controller** (controller.py) will be a server which clients will hit with requests for work. The controller will respond with descriptions of work to do.
+# Testing Methodology
+
+
+
+# Parts of the System
+The test suite is made up of three distinct parts. The **mock satellites** simulate real LightStep satellites under different conditions, the **clients** test LightStep's tracers and are implemented in various languages, and the **controller** orchestrates the tests.
+
+
+
+# Writing Clients
 
 1. controller creates a client
 2. client makes GET request to /control
@@ -6,8 +15,9 @@ The **controller** (controller.py) will be a server which clients will hit with 
 4. client does work (or may exit)
 5. client makes POST request with JSON body to send test results
 
-# Wire Format
-## Getting Control Command
+
+## Wire Format
+
 Clients will make GET request to http://localhost:8023/control and will receive a response with a JSON body:
 
 ```python
@@ -21,8 +31,13 @@ Clients will make GET request to http://localhost:8023/control and will receive 
   'BytesPerLog': int}
 ```
 
-When clients have completed the work requested in the command, they will respond with a GET to http://localhost:8023/result?Timing=12.1 if the work tool 12.1 seconds to complete.
+When clients have completed the work requested in the command, they will respond with a GET to http://localhost:8023/result if the work tool 12.1 seconds to complete.
 
+They will need to pass `ProgramTime`, `ClockTime`, and `SpansSent` key-value pairs in the query string of this get request.
+
+## Nuances
+
+Don't include flush time in the measurement of CPU usage. 
 
 # Ports
 8023 will be the standard port for the controller to run on.
@@ -30,14 +45,12 @@ When clients have completed the work requested in the command, they will respond
 
 # Controller API
 
-The controller has a really simple interface that you can use to design your own tests!
-
-The entire API uses the controller class: `c = controller.Controller(["python3", "python_client.py"])`. Once you have a controller object, you can benchmark using `c.benchmark(command)`. Command is an instance of the `controller.Command` class.
-
-
+To use the controller API to write tests, we must use
 
 ```python
-controller.Command(spans_per_second, trace=True, sleep=10**5, sleep_interval=10**7, test_time=5, with_satellite=True)
+
+
+
 ```
 
 Note that `sleep` and `sleep_interval` are both in nanoseconds, while `test_time` is in seconds.

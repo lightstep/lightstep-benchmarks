@@ -101,7 +101,8 @@ class Command:
             sleep_interval=10**7,
             work=1000,
             repeat=1000,
-            exit=False):
+            exit=False,
+            no_flush=False):
 
         self._trace = trace
         self._sleep = sleep
@@ -110,6 +111,7 @@ class Command:
         self._exit = exit
         self._work = work
         self._repeat = repeat
+        self._no_flush = no_flush
 
     @staticmethod
     def exit():
@@ -127,21 +129,24 @@ class Command:
             'Exit': self._exit,
             'Work': self._work,
             'Repeat': self._repeat,
+            'NoFlush': self._no_flush
         }
 
 
 ''' allows us to set spans_received even after initializing ...'''
 class Result:
-    def __init__(self, spans_sent, program_time, clock_time, spans_received=0):
+    def __init__(self, spans_sent, program_time, clock_time, memory, spans_received=0):
         self._spans_sent = spans_sent
         self._program_time = program_time
         self._clock_time = clock_time
+        self._memory = memory
         self.spans_received = spans_received
 
     def __str__(self):
         ret = "controller.Results object:\n"
         ret += f'\t{self.spans_per_second:.1f} spans / sec\n'
         ret += f'\t{self.cpu_usage * 100:.2f}% CPU usage\n'
+        ret += f'\t{self.memory} bytes of virtual memory used\n'
         if self.spans_sent > 0:
             ret += f'\t{self.dropped_spans / self.spans_sent * 100:.1f}% spans dropped (out of {self.spans_sent} sent)\n'
         ret += f'\ttook {self.clock_time:.1f}s'
@@ -153,8 +158,13 @@ class Result:
         spans_sent = result_dict.get('SpansSent', 0)
         program_time = result_dict.get('ProgramTime', 0)
         clock_time = result_dict.get('ClockTime', 0)
+        memory = result_dict.get('Memory', 0)
 
-        return Result(int(spans_sent), float(program_time), float(clock_time), spans_received=int(spans_received))
+        return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), spans_received=int(spans_received))
+
+    @property
+    def memory(self):
+        return self._memory
 
     @property
     def spans_per_second(self):
@@ -189,6 +199,9 @@ class Controller:
         self.client_startup_args = client_startup_args
         self.client_name = client_name
 
+        # can be 'typical', 'slow', 'no_response'
+        self._satellite_mode = 'typical'
+
         # makes sure that the logs dir exists
         os.makedirs("logs", exist_ok=True)
 
@@ -219,8 +232,12 @@ class Controller:
     def _ensure_satellite_running(self):
         if not getattr(self, 'satellites', None):
             print("Starting up satellites.")
-            self.satellites = MockSatelliteGroup([SATELLITE_PORT])
+            self.satellites = MockSatelliteGroup([SATELLITE_PORT], self.satellite_mode)
             time.sleep(1) # wait for satellite to startup
+
+        if not self.satellites.all_running():
+            raise Exception("One or more satellites failed to start.")
+
 
     def _ensure_satellite_shutdown(self):
         if getattr(self, 'satellites', None): # if there is a satellite running
@@ -268,8 +285,19 @@ class Controller:
 
         return sleep_per_work
 
+
+    def set_satellite_mode(self, mode):
+        self._satellite_mode = mode
+        self._ensure_satellite_shutdown()
+        self._ensure_satellite_running()
+
+    @property
+    def satellite_mode(self):
+        return self._satellite_mode
+
     def benchmark(self,
             trace=True,
+            no_flush=False, # we typically want flush included with our measurements
             with_satellites=True,
             spans_per_second=100,
             runtime=10):
@@ -288,6 +316,7 @@ class Controller:
 
         return self.raw_benchmark(Command(
             trace=True,
+            no_flush=no_flush,
             with_satellites=True,
             sleep=int(work * self._sleep_per_work),
             work=int(work),
@@ -309,15 +338,19 @@ class Controller:
 
         # startup test process
         with open(f'logs/{self.client_name}.log', 'w+') as logfile:
+            print("Starting client...")
             client_handle = subprocess.Popen(self.client_startup_args, stdout=logfile, stderr=logfile)
+            print("Client started.")
 
             while self.server.length_results() < number_commands:
                 self.server.handle_request()
 
             # at this point, we have sent the exit command and received a response
             # wait for the client program to shutdown
+            print("Waiting for client to shutdown...")
             while client_handle.poll() == None:
                 pass
+            print("Client shutdown.")
 
         spans_received = self.satellites.get_spans_received() if command.with_satellites else 0
 

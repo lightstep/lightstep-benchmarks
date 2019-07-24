@@ -1,88 +1,31 @@
 import generated.collector_pb2 as collector
 import google.protobuf
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
+from utils import ChunkedRequestHandler, Histogram
 import threading
 import argparse
 import sys
+import random
+import time
 
-
+# this
 spans_received = 0
 global_lock = threading.Lock()
 
+# fine to have these global w/o locks because they are not mutable
+mode = None
 
-"""
-A class that extends BaseHTTPRequestHandler to support chunked encoding. The
-class will read POST request headers and determine if the request is in
-fixed-length or chunked format. The request body will be parsed and saved
-in @binary_body bytearray.
+typical_hist = Histogram({
+    (100, 300): 500000,
+    (300, 1000): 100000,
+    (1000, 5000): 2000,
+    (5000, 50000): 500,
+})
 
-Derrived classes should use POST and GET instead of do_POST and do_GET.
-"""
-class ChunkedRequestHandler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        # if there is a content-length header, we know how much data to read
-        if "Content-Length" in self.headers:
-            content_length = int(self.headers["Content-Length"])
-            self.binary_body = self.rfile.read(content_length)
+slow_hist = Histogram({
+    (5 * 10**6, 10 * 10**6): 1,
+})
 
-        # if there is a chunked encoding,
-        elif 'Transfer-Encoding' in self.headers and self.headers['Transfer-Encoding'] == 'chunked': # see http://en.wikipedia.org/wiki/Chunked_transfer_encoding
-            self.binary_body = bytearray()
-
-            while True:
-                # chunk begind with [length hex]\r\n
-                read_len = self._read_chunk_length()
-
-                # when there is a 0-length chunk we are done
-                if read_len <= 0:
-                    break
-
-                # read appropriate number of bytes
-                binary_chunk = self.rfile.read(read_len)
-                self.binary_body += binary_chunk
-
-                # chunk ends with /r/n
-                self._read_delimiter()
-
-        else:
-            raise Exception("POST request didn't have Content-Length or Transfer-Encoding headers")
-
-        self.POST()
-
-    def do_GET(self):
-        self.GET()
-
-    def POST(self):
-        pass
-
-    def GET(self):
-        pass
-
-    def _read_delimiter(self, delimiter=b'\r\n'):
-        bytes_read = self.rfile.read(len(delimiter))
-
-        if bytes_read != delimiter:
-            raise Exception()
-
-    def _read_chunk_length(self, delimiter=b'\r\n', max_bytes=16):
-        buf = bytearray()
-        delim_len = len(delimiter)
-
-        while len(buf) < max_bytes:
-            c = self.rfile.read(1)
-
-            buf += c
-
-            if buf[-delim_len:] == delimiter:
-
-                try:
-                    l = int(bytes(buf[:-delim_len]), 16)
-                    # print("read", len(buf), "bytes:", l)
-                    return l
-                except ValueError:
-                    return -1
-
-        return -1
 
 class SatelliteRequestHandler(ChunkedRequestHandler):
     def _send_response(self, response_code, body_string=None):
@@ -96,15 +39,6 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
         if body_string:
             self.wfile.write((body_string).encode('utf-8'))
 
-    """
-    We want to delay mock satellites a little bit so that they have
-    more realistic latency. Real latency numbers for gRPC are shown in this
-    snapshot:
-
-    https://app-meta.lightstep.com/lightstep-public/explorer?snapshot_id=bzB51UI9Nj
-    """
-    def _delay(self):
-        pass
 
     # can't make a GET request to satellite server
     def GET(self):
@@ -120,7 +54,21 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
 
     def POST(self):
         if self.path == "/api/v2/reports":
+            global mode
+
+            print("starting")
+
+            if mode == 'typical':
+                time.sleep(typical_hist.sample() * 10**-6)
+            if mode == 'slow_succeed':
+                time.sleep(slow_hist.sample() * 10**-6)
+            if mode == 'slow_fail':
+                time.sleep(slow_hist.sample() * 10**-6)
+                self._send_response(400)
+                return
+
             report_request = collector.ReportRequest()
+
             try:
                 report_request.ParseFromString(self.binary_body)
             except google.protobuf.message.DecodeError as e:
@@ -144,14 +92,16 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             self._send_response(400)
 
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Start a mock LightStep satellite.')
     parser.add_argument('port', type=int, help='port satellite will listen on')
+    parser.add_argument('mode', type=str, choices=["typical", "slow_succeed", "slow_fail"], help='how the satellites will respond to requests')
     args = parser.parse_args()
 
-    server_address = ('', args.port)
+    mode = args.mode
 
     # although this can't use "real" threading because of GIL, it can switch to
     # execute something else when we are waiting on a synchronous syscall
-    httpd = ThreadingHTTPServer(server_address, SatelliteRequestHandler)
+    httpd = ThreadingHTTPServer(('', args.port), SatelliteRequestHandler)
     httpd.serve_forever()
