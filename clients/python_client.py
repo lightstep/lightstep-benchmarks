@@ -8,12 +8,7 @@ import requests
 import argparse
 import time
 from os import path
-
-# change directory so we can import LightStep
-CLIENT_DIR = path.dirname(path.realpath(__file__))
-sys.path.insert(0, path.join(CLIENT_DIR, '../libs/lightstep-tracer-python'))
-
-import lightstep
+import lightstep # this is actually a submodule
 
 CONTROLLER_PORT = 8023
 SATELLITE_PORT = 8012
