@@ -1,17 +1,15 @@
 import psutil
 import numpy as np
 import time
-import lightstep
 import opentracing
 import json
 import sys
 import requests
 import argparse
 import time
-import lightstep
 
 CONTROLLER_PORT = 8023
-SATELLITE_PORT = 8012
+SATELLITE_PORT = 8360
 
 def work(units):
     i = 1.12563
@@ -44,7 +42,8 @@ class Stopwatch:
         user, system, _, _ = self.process.cpu_times()
         return (user + system - self.start_cpu_time, time.time() - self.start_clock_time)
 
-def perform_work(command):
+""" Mode is either vanilla or cpp_bindings. """
+def perform_work(command, tracer_name):
     print("performing work:", command)
 
     # if exit is set to true, end the program
@@ -52,7 +51,8 @@ def perform_work(command):
         send_result({})
         sys.exit()
 
-    if command['Trace']:
+    if command['Trace'] and tracer_name == "vanilla":
+        import lightstep
         tracer = lightstep.Tracer(
             component_name='isaac_service',
             collector_port=SATELLITE_PORT,
@@ -60,6 +60,15 @@ def perform_work(command):
             collector_encryption='none',
             use_http=True,
             access_token='developer'
+        )
+    elif command['Trace'] and tracer_name == "cpp":
+        import lightstep_native
+        tracer = lightstep_native.Tracer(
+            component_name='isaac_service',
+            access_token='developer',
+            use_stream_recorder=True,
+            collector_plaintext=True,
+            satellite_endpoints=[{'host':'locahost', 'port':SATELLITE_PORT}],
         )
     else:
         tracer = opentracing.Tracer()
@@ -99,6 +108,10 @@ def perform_work(command):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Start a client to test a LightStep tracer.')
+    parser.add_argument('tracer', type=str, choices=["vanilla", "cpp"], help='Which LightStep tracer to use.')
+    args = parser.parse_args()
+
     while True:
         r = requests.get(f'http://localhost:{CONTROLLER_PORT}/control')
-        perform_work(r.json())
+        perform_work(r.json(), args.tracer)

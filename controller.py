@@ -11,8 +11,8 @@ import numpy as np
 
 LONGEST_TEST = 30
 CONTROLLER_PORT = 8023
-SATELLITE_PORT = 8012
-VALID_COMMAND_KEYS = ['Trace', 'Sleep', 'SpansPerSecond', 'NoFlush', 'TestTime', 'Exit', 'NumLogs', 'BytesPerLog', 'SleepInterval']
+SATELLITE_PORT = 8360
+
 
 """ Dictionaries created by urllib.parse.parse_qs looks like {key: [value], ...}
 This function take dictionaries of that format and makes them normal. """
@@ -195,12 +195,13 @@ class Result:
 
 
 class Controller:
-    def __init__(self, client_startup_args, client_name='client', target_cpu_usage=.7):
+    def __init__(self, client_startup_args, client_name='client', target_cpu_usage=.7, num_satellites=1):
         self.client_startup_args = client_startup_args
         self.client_name = client_name
 
         # can be 'typical', 'slow', 'no_response'
         self._satellite_mode = 'typical'
+        self._satellite_ports = range(SATELLITE_PORT, SATELLITE_PORT + num_satellites)
 
         # makes sure that the logs dir exists
         os.makedirs("logs", exist_ok=True)
@@ -232,7 +233,7 @@ class Controller:
     def _ensure_satellite_running(self):
         if not getattr(self, 'satellites', None):
             print("Starting up satellites.")
-            self.satellites = MockSatelliteGroup([SATELLITE_PORT], self.satellite_mode)
+            self.satellites = MockSatelliteGroup(self._satellite_ports, self.satellite_mode)
             time.sleep(1) # wait for satellite to startup
 
         if not self.satellites.all_running():
