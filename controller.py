@@ -248,7 +248,9 @@ class Controller:
 
     def shutdown(self):
         print("Controller shutdown called")
-        self._ensure_satellite_shutdown()
+        self._ensure_satellite_shutdown() # stop satellites
+        self.server.server_close() # unbind controller server from socket
+        print("Controller shutdown complete")
 
     """ Estimate how much work per second the client does. Although in practice
     this is slightly dependent on work and repeat values, it is mostly dependent on
