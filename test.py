@@ -27,7 +27,7 @@ class TestVanilla:
 
 ## CPP TESTS ##
 
-class TestSidecar:
+class TestCPP:
     @pytest.fixture(scope='class')
     def client(self):
         with Controller(['python3', 'clients/python_client.py', '8360', 'cpp'],
@@ -48,6 +48,7 @@ class TestSidecar:
 
 
 ## VANILLA TESTS WITH SIDECAR ##
+
 class TestSidecar:
     @pytest.fixture(scope='class')
     def client(self):

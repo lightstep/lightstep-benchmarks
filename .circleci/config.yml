@@ -1,6 +1,6 @@
 version: 2
 jobs:
-  build:
+  setup:
     docker:
 
       - image: circleci/python:3.7.4
@@ -74,15 +74,21 @@ jobs:
             ./sidecar/bazel-bin/sidecar &
             pytest test.py
 
-      # - run:
-      #     name: make graphs
-      #     command: |
-      #       . venv/bin/activate
-      #       mkdir graphs
-      #       python make_graphs.py graphs
-
       - store_artifacts:
-          path: graphs
+          path: logs
+          destination: test
+
+      - run:
+          name: make graphs
+          command: |
+            . venv/bin/activate
+            mkdir graphs
+            ./sidecar/bazel-bin/sidecar &
+            python make_graphs.py graphs
 
       - store_artifacts:
           path: logs
+          destination: graphs
+
+      - store_artifacts:
+          path: graphs

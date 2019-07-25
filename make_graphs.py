@@ -9,38 +9,44 @@ if __name__ == '__main__':
     parser.add_argument('dir', help='Directory to save graphs to.')
     args = parser.parse_args()
 
-    with Controller(['python3', 'clients/python_client.py', '8360', 'vanilla'],
-            client_name='vanilla_python_client',
-            target_cpu_usage=.7) as controller:
+    for port, name, fname in [
+            ('8360', 'vanilla', 'vanilla'),
+            ('8024', 'vanilla', 'sidecar'),
+            ('8360', 'cpp', 'cpp')]:
 
-        sps_list = []
-        cpu_list = []
-        dropped_list = []
-        memory_list = []
+        with Controller(['python3', 'clients/python_client.py', port, name],
+                client_name=f'{fname}_client',
+                target_cpu_usage=.7,
+                num_satellites= 8 if name=='cpp' else 1) as controller:
 
-        for sps in range(100, 1500, 100):
-            result = controller.benchmark(
-                trace=True,
-                with_satellites=True,
-                spans_per_second=sps,
-                runtime=2)
+            sps_list = []
+            cpu_list = []
+            dropped_list = []
+            memory_list = []
 
-            memory_list.append(int(result.memory / 2**10)) # bytes --> kb
-            dropped_list.append(result.dropped_spans / result.spans_sent)
-            cpu_list.append(result.cpu_usage)
-            sps_list.append(result.spans_per_second)
+            for sps in range(100, 1500, 100):
+                result = controller.benchmark(
+                    trace=True,
+                    with_satellites=True,
+                    spans_per_second=sps,
+                    runtime=5)
 
-        fig, ax = plt.subplots()
-        ax.plot(sps_list, dropped_list)
-        ax.set(xlabel="Spans Per Second", ylabel="Percent Spans Dropped")
-        fig.savefig(path.join(args.dir, "sps_vs_dropped.png"))
+                memory_list.append(int(result.memory / 2**10)) # bytes --> kb
+                dropped_list.append(result.dropped_spans / result.spans_sent)
+                cpu_list.append(result.cpu_usage)
+                sps_list.append(result.spans_per_second)
 
-        fig, ax = plt.subplots()
-        ax.plot(sps_list, cpu_list)
-        ax.set(xlabel="Spans Per Second", ylabel="Percent CPU Utilization")
-        fig.savefig(path.join(args.dir, "sps_vs_cpu.png"))
+            fig, ax = plt.subplots()
+            ax.plot(sps_list, dropped_list)
+            ax.set(xlabel="Spans Per Second", ylabel="Percent Spans Dropped")
+            fig.savefig(path.join(args.dir, f'{fname}_sps_vs_dropped.png'))
 
-        fig, ax = plt.subplots()
-        ax.plot(sps_list, memory_list)
-        ax.set(xlabel="Spans Per Second", ylabel="Kilobytes Memory")
-        fig.savefig(path.join(args.dir, "sps_vs_memory.png"))
+            fig, ax = plt.subplots()
+            ax.plot(sps_list, cpu_list)
+            ax.set(xlabel="Spans Per Second", ylabel="Percent CPU Utilization")
+            fig.savefig(path.join(args.dir, f'{fname}_sps_vs_cpu.png'))
+
+            fig, ax = plt.subplots()
+            ax.plot(sps_list, memory_list)
+            ax.set(xlabel="Spans Per Second", ylabel="Kilobytes Memory")
+            fig.savefig(path.join(args.dir, f'{fname}_sps_vs_memory.png'))
