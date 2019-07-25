@@ -24,7 +24,7 @@ if __name__ == '__main__':
             dropped_list = []
             memory_list = []
 
-            for sps in range(100, 1500, 100):
+            for sps in list(range(100, 1600, 100)) + [2000, 3000, 4000]:
                 result = controller.benchmark(
                     trace=True,
                     with_satellites=True,
