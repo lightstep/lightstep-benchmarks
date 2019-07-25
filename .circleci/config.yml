@@ -33,11 +33,11 @@ jobs:
 
       # https://docs.bazel.build/versions/master/install-ubuntu.html#install-with-installer-ubuntu
       - run:
-        name: install bazel
-        command: |
-          echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
-          curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
-          sudo apt-get update && sudo apt-get install bazel=0.27.0
+          name: install bazel
+          command: |
+            echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+            curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
+            sudo apt-get update && sudo apt-get install bazel=0.27.0
 
       - run:
           name: install protobuf
