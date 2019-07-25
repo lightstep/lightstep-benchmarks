@@ -9,7 +9,7 @@ import argparse
 import time
 
 CONTROLLER_PORT = 8023
-SATELLITE_PORT = 8360
+NUM_SATELLITES = 8
 
 def work(units):
     i = 1.12563
@@ -43,7 +43,7 @@ class Stopwatch:
         return (user + system - self.start_cpu_time, time.time() - self.start_clock_time)
 
 """ Mode is either vanilla or cpp_bindings. """
-def perform_work(command, tracer_name):
+def perform_work(command, tracer_name, port):
     print("performing work:", command)
 
     # if exit is set to true, end the program
@@ -55,7 +55,7 @@ def perform_work(command, tracer_name):
         import lightstep
         tracer = lightstep.Tracer(
             component_name='isaac_service',
-            collector_port=SATELLITE_PORT,
+            collector_port=port,
             collector_host='localhost',
             collector_encryption='none',
             use_http=True,
@@ -68,7 +68,7 @@ def perform_work(command, tracer_name):
             access_token='developer',
             use_stream_recorder=True,
             collector_plaintext=True,
-            satellite_endpoints=[{'host':'locahost', 'port':SATELLITE_PORT}],
+            satellite_endpoints=[{'host':'localhost', 'port':p} for p in range(port, port + NUM_SATELLITES)],
         )
     else:
         tracer = opentracing.Tracer()
@@ -76,7 +76,6 @@ def perform_work(command, tracer_name):
 
     sleep_debt = 0
     start_time = time.time()
-    last_span_time = 0
     spans_sent = 0
     timer = Stopwatch()
     timer.start()
@@ -109,9 +108,11 @@ def perform_work(command, tracer_name):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Start a client to test a LightStep tracer.')
+    parser.add_argument('port', type=int, help='Which port to connect to the satellite on.')
     parser.add_argument('tracer', type=str, choices=["vanilla", "cpp"], help='Which LightStep tracer to use.')
+
     args = parser.parse_args()
 
     while True:
         r = requests.get(f'http://localhost:{CONTROLLER_PORT}/control')
-        perform_work(r.json(), args.tracer)
+        perform_work(r.json(), args.tracer, args.port)

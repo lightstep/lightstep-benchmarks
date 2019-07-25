@@ -201,7 +201,7 @@ class Controller:
 
         # can be 'typical', 'slow', 'no_response'
         self._satellite_mode = 'typical'
-        self._satellite_ports = range(SATELLITE_PORT, SATELLITE_PORT + num_satellites)
+        self._satellite_ports = list(range(SATELLITE_PORT, SATELLITE_PORT + num_satellites))
 
         # makes sure that the logs dir exists
         os.makedirs("logs", exist_ok=True)

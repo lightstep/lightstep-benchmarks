@@ -71,15 +71,15 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
-            python demo.py
+            ./sidecar/bazel-bin/sidecar &
             pytest test.py
 
-      - run:
-          name: make graphs
-          command: |
-            . venv/bin/activate
-            mkdir graphs
-            python make_graphs.py graphs
+      # - run:
+      #     name: make graphs
+      #     command: |
+      #       . venv/bin/activate
+      #       mkdir graphs
+      #       python make_graphs.py graphs
 
       - store_artifacts:
           path: graphs

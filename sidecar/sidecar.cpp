@@ -15,7 +15,7 @@ taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tu
 
 #include <sstream>
 
-#define SERVER_PORT 1998
+#define SERVER_PORT 8024
 #define SATELLITE_IP "127.0.0.1"
 #define SATELLITE_PORT "8360"
 #define ACCESS_TOKEN "testtesttest"

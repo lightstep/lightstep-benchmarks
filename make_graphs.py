@@ -9,7 +9,7 @@ if __name__ == '__main__':
     parser.add_argument('dir', help='Directory to save graphs to.')
     args = parser.parse_args()
 
-    with Controller(['python3', 'clients/python_client.py', 'vanilla'],
+    with Controller(['python3', 'clients/python_client.py', '8360', 'vanilla'],
             client_name='vanilla_python_client',
             target_cpu_usage=.7) as controller:
 
