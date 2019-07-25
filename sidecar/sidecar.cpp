@@ -2,8 +2,6 @@
 taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tutorial/tutdaytime3/src.html
 */
 
-#include <collector.pb.h>
-
 #include <ctime>
 #include <iostream>
 #include <string>
@@ -244,36 +242,15 @@ private:
     }
 
     /*
-    parse the message to make sure that
-      1) it has some spans in it
-      2) it is valid protobuf !
-    before we forward to satellite
+    pass string by value because this is a simple first implementatiokn
+    to actually make this performant we will want to stop some of this copying
+
+    all of the retry logic and stuff should be isolated to this class
+
+    11 == HTTP/1.1
     */
-
-    // convert the request body from string --> stringstream
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-    std::stringstream body_stream(request_.body());
-    lightstep::collector::ReportRequest report_request;
-
-    if (!report_request.ParseFromIstream(&body_stream)) {
-      std::cerr << "there was an error parsing the report request" << std::endl;
-      return;
-    }
-
-
-    if (report_request.spans().size() != 0) {
-      /*
-      pass string by value because this is a simple first implementatiokn
-      to actually make this performant we will want to stop some of this copying
-
-      all of the retry logic and stuff should be isolated to this class
-
-      11 == HTTP/1.1
-      */
-      std::cout << "sending " << report_request.spans().size() << " spans" << std::endl;
-      std::make_shared<session>(io_context_)->run(SATELLITE_IP, SATELLITE_PORT, "/api/v2/reports", 11, request_.body());
-    }
+    std::cout << "sending " << report_request.spans().size() << " spans" << std::endl;
+    std::make_shared<session>(io_context_)->run(SATELLITE_IP, SATELLITE_PORT, "/api/v2/reports", 11, request_.body());
 
     write_response("200 OK");
   }

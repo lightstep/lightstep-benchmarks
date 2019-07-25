@@ -51,7 +51,7 @@ jobs:
           name: compile protobuf
           command: ./satellite/compile-proto.sh
 
-      # Download and cache dependencies
+      # cache the sidecar build because this is fairly time-consuming
       - restore_cache:
           keys:
             - sidecar-build
