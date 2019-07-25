@@ -53,7 +53,7 @@ jobs:
 
       - run:
           name: build sidecar
-          command:
+          command: |
             git clone git@github.com:isaaczinda/sidecar-cpp.git
             cd sidecar-cpp
             bazel build //:boost_example
