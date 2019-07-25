@@ -249,7 +249,7 @@ private:
 
     11 == HTTP/1.1
     */
-    std::cout << "sending " << report_request.spans().size() << " spans" << std::endl;
+    std::cout << "sending " << request_.body().size() << " bytes" << std::endl;
     std::make_shared<session>(io_context_)->run(SATELLITE_IP, SATELLITE_PORT, "/api/v2/reports", 11, request_.body());
 
     write_response("200 OK");

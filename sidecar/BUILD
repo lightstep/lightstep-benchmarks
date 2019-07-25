@@ -5,6 +5,5 @@ cc_binary(
     ],
     deps = [
       "@boost//:boost_headers",
-      "@com_lightstep_tracer_common//:collector"
     ]
 )
