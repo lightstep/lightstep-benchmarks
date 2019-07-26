@@ -11,12 +11,13 @@ if __name__ == '__main__':
 
     for port, name, fname in [
             ('8360', 'vanilla', 'vanilla'),
-            ('8024', 'vanilla', 'sidecar')]:
+            ('8024', 'vanilla', 'sidecar'),
+            ('8360', 'cpp', 'cpp')]:
 
         with Controller(['python3', 'clients/python_client.py', port, name],
                 client_name=f'{fname}_client',
                 target_cpu_usage=.7,
-                num_satellites=1) as controller:
+                num_satellites=8 if name=='cpp' else 1) as controller:
 
             sps_list = []
             cpu_list = []
@@ -24,13 +25,13 @@ if __name__ == '__main__':
             memory_list = []
 
 
-            for sps in range(100, 1600, 100):
+            for sps in list(range(100, 1600, 100)) + [3000, 5000]:
                 result = controller.benchmark(
                     trace=True,
                     with_satellites=True,
                     spans_per_second=sps,
-                    runtime=30,
-                    no_flush=True,
+                    runtime=10,
+                    no_flush=False,
                 )
 
                 print(result)
@@ -42,7 +43,7 @@ if __name__ == '__main__':
 
             fig, ax = plt.subplots()
             ax.plot(sps_list, dropped_list)
-            plt.title("Spans Dropped No Flush")
+            plt.title("Spans Dropped")
             ax.set(xlabel="Spans Per Second", ylabel="Percent Spans Dropped")
             fig.savefig(path.join(args.dir, f'{fname}_sps_vs_dropped.png'))
 
