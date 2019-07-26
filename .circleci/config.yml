@@ -68,6 +68,16 @@ jobs:
           key: sidecar-build
 
       - run:
+          name: run cpp test
+          command: |
+            . venv/bin/activate
+            python cpp_test.py
+
+      - store_artifacts:
+          path: logs
+          destination: cpp_test_logs
+
+      - run:
           name: run tests
           command: |
             . venv/bin/activate

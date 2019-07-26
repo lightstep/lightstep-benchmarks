@@ -10,7 +10,7 @@ import os
 import numpy as np
 import logging
 
-LONGEST_TEST = 30
+LONGEST_TEST = 100
 CONTROLLER_PORT = 8023
 SATELLITE_PORT = 8360
 

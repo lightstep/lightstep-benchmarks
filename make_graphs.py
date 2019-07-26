@@ -11,22 +11,20 @@ if __name__ == '__main__':
 
     for port, name, fname in [
             ('8360', 'vanilla', 'vanilla'),
-            ('8024', 'vanilla', 'sidecar'),
-            ('8360', 'cpp', 'cpp')]:
+            ('8024', 'vanilla', 'sidecar')]:
 
         with Controller(['python3', 'clients/python_client.py', port, name],
                 client_name=f'{fname}_client',
                 target_cpu_usage=.7,
-                num_satellites= 8 if name=='cpp' else 1) as controller:
+                num_satellites=1) as controller:
 
             sps_list = []
             cpu_list = []
             dropped_list = []
             memory_list = []
 
-            sps_values = list(range(100, 1600, 100)) + ([2000, 3000, 4000, 8000, 16000, 32000, 64000] if name=='cpp' else [])
 
-            for sps in sps_values:
+            for sps in range(100, 1600, 100):
                 result = controller.benchmark(
                     trace=True,
                     with_satellites=True,
