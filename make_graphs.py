@@ -24,12 +24,14 @@ if __name__ == '__main__':
             dropped_list = []
             memory_list = []
 
-            for sps in list(range(100, 1600, 100)) + [2000, 3000, 4000]:
+            for sps in list(range(100, 1600, 100)) + [2000, 3000, 4000, 8000, 16000]:
                 result = controller.benchmark(
                     trace=True,
                     with_satellites=True,
                     spans_per_second=sps,
-                    runtime=5)
+                    runtime=20)
+
+                print(result)
 
                 memory_list.append(int(result.memory / 2**10)) # bytes --> kb
                 dropped_list.append(result.dropped_spans / result.spans_sent)

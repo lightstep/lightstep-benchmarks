@@ -8,6 +8,7 @@ from satellite.controller import MockSatelliteGroup
 import time
 import os
 import numpy as np
+import logging
 
 LONGEST_TEST = 30
 CONTROLLER_PORT = 8023
@@ -73,7 +74,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         next_command = self.server.next_command()
 
         if not next_command:
-            print("Client requested a command, but no more commands were available.")
+            logging.error("Client requested a command, but no more commands were available.")
             return
 
         self.send_response(200)
@@ -98,7 +99,7 @@ class Command:
             trace=True,
             with_satellites=True,
             sleep=100,
-            sleep_interval=10**7,
+            sleep_interval=10**8,
             work=1000,
             repeat=1000,
             exit=False,
@@ -208,7 +209,7 @@ class Controller:
 
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
-        print("Started controller server.")
+        logging.info("Started controller server.")
 
         # server timeout is twice the longest test length
         self.server.timeout = LONGEST_TEST * 2
@@ -216,12 +217,12 @@ class Controller:
         # calibrate the amount of work the controller does so that when we are using
         # a noop tracer the CPU usage is around 70%
         self._sleep_per_work = self._estimate_sleep_per_work(target_cpu_usage)
-        print(f'Estimated that we need {self._sleep_per_work}ns of sleep per work to achieve {target_cpu_usage*100}% CPU usage.')
+        logging.info(f'Estimated that we need {self._sleep_per_work}ns of sleep per work to achieve {target_cpu_usage*100}% CPU usage.')
 
         # calculate work per second, which we can use to estimate spans per second
         self._work_per_second = self._estimate_work_per_second()
-        print(f'Calculated that this client completes {self._work_per_second} units of work / second.')
-        print("Controller has initialized.")
+        logging.info(f'Calculated that this client completes {self._work_per_second} units of work / second.')
+        logging.info("Controller has initialized.")
 
     def __enter__(self):
         return self
@@ -232,7 +233,7 @@ class Controller:
 
     def _ensure_satellite_running(self):
         if not getattr(self, 'satellites', None):
-            print("Starting up satellites.")
+            logging.info("Starting up satellites.")
             self.satellites = MockSatelliteGroup(self._satellite_ports, self.satellite_mode)
             time.sleep(1) # wait for satellite to startup
 
@@ -242,7 +243,7 @@ class Controller:
 
     def _ensure_satellite_shutdown(self):
         if getattr(self, 'satellites', None): # if there is a satellite running
-            print("Shutting down satellites.")
+            logging.info("Shutting down satellites.")
             self.satellites.terminate()
             self.satellites = None
 
@@ -250,7 +251,7 @@ class Controller:
         print("Controller shutdown called")
         self._ensure_satellite_shutdown() # stop satellites
         self.server.server_close() # unbind controller server from socket
-        print("Controller shutdown complete")
+        logging.info("Controller shutdown complete")
 
     """ Estimate how much work per second the client does. Although in practice
     this is slightly dependent on work and repeat values, it is mostly dependent on
@@ -303,6 +304,7 @@ class Controller:
             no_flush=False, # we typically want flush included with our measurements
             with_satellites=True,
             spans_per_second=100,
+            sleep_interval=10**7,
             runtime=10):
 
         if spans_per_second == 0:
@@ -321,6 +323,7 @@ class Controller:
             trace=True,
             no_flush=no_flush,
             with_satellites=True,
+            sleep_interval=sleep_interval,
             sleep=int(work * self._sleep_per_work),
             work=int(work),
             repeat=int(repeat)))
@@ -341,19 +344,19 @@ class Controller:
 
         # startup test process
         with open(f'logs/{self.client_name}.log', 'w+') as logfile:
-            print("Starting client...")
+            logging.info("Starting client...")
             client_handle = subprocess.Popen(self.client_startup_args, stdout=logfile, stderr=logfile)
-            print("Client started.")
+            logging.info("Client started.")
 
             while self.server.length_results() < number_commands:
                 self.server.handle_request()
 
             # at this point, we have sent the exit command and received a response
             # wait for the client program to shutdown
-            print("Waiting for client to shutdown...")
+            logging.info("Waiting for client to shutdown...")
             while client_handle.poll() == None:
                 pass
-            print("Client shutdown.")
+            logging.info("Client shutdown.")
 
         spans_received = self.satellites.get_spans_received() if command.with_satellites else 0
 
