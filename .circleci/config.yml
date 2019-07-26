@@ -77,29 +77,29 @@ jobs:
           path: logs
           destination: cpp_test_logs
 
-      - run:
-          name: run tests
-          command: |
-            . venv/bin/activate
-            ./sidecar/bazel-bin/sidecar &
-            pytest test.py
+      # - run:
+      #     name: run tests
+      #     command: |
+      #       . venv/bin/activate
+      #       ./sidecar/bazel-bin/sidecar &
+      #       pytest test.py
+      #
+      # - store_artifacts:
+      #     path: logs
+      #     destination: test_logs
 
-      - store_artifacts:
-          path: logs
-          destination: test_logs
-
-      - run:
-          name: make graphs
-          command: |
-            . venv/bin/activate
-            mkdir graphs
-            ./sidecar/bazel-bin/sidecar &
-            python make_graphs.py graphs
-
-      - store_artifacts:
-          path: logs
-          destination: graph_logs
-
-      - store_artifacts:
-          path: graphs
-          destination: graphs
+      # - run:
+      #     name: make graphs
+      #     command: |
+      #       . venv/bin/activate
+      #       mkdir graphs
+      #       ./sidecar/bazel-bin/sidecar &
+      #       python make_graphs.py graphs
+      #
+      # - store_artifacts:
+      #     path: logs
+      #     destination: graph_logs
+      #
+      # - store_artifacts:
+      #     path: graphs
+      #     destination: graphs

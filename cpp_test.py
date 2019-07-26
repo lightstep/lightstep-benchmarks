@@ -15,13 +15,13 @@ if __name__ == '__main__':
         dropped_list = []
         memory_list = []
 
-        for sps in [1000, 5000, 100000]:
+        for sps, flush in [(5000, False), (100000, False), (5000, True), (100000, True)]:
             result = controller.benchmark(
                 trace=True,
                 with_satellites=True,
                 spans_per_second=sps,
                 runtime=100,
-                no_flush=False,
+                no_flush=flush,
             )
 
             print(result)

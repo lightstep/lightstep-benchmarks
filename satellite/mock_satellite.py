@@ -7,6 +7,9 @@ import argparse
 import sys
 import random
 import time
+import logging
+
+logging.basicConfig(format='%(asctime)s: %(message)s', level=logging.DEBUG, datefmt='%I:%M:%S')
 
 # this
 spans_received = 0
@@ -46,6 +49,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             # don't need to worry about locking here since we're not going to
             # modify
             global spans_received
+            logging.info(f'responded to get span request with {spans_received} spans received')
             self._send_response(200, body_string=str(spans_received))
             return
         else:
@@ -56,7 +60,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
         if self.path == "/api/v2/reports":
             global mode
 
-            print("starting")
+            logging.info("starting to process report request")
 
             if mode == 'typical':
                 time.sleep(typical_hist.sample() * 10**-6)
@@ -85,7 +89,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             with global_lock:
                 spans_received += spans_in_report
 
-            print("read", spans_in_report, "spans, total", spans_received)
+            logging.debug(f'read {spans_in_report} spans, total {spans_received}')
 
             self._send_response(200)
         else:
@@ -101,7 +105,7 @@ if __name__ == "__main__":
 
     mode = args.mode
 
-    print(f'Running satellite on port {args.port} in {args.mode} mode')
+    logging.info(f'Running satellite on port {args.port} in {args.mode} mode')
 
     # although this can't use "real" threading because of GIL, it can switch to
     # execute something else when we are waiting on a synchronous syscall

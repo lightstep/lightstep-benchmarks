@@ -1,5 +1,6 @@
 import random
 from http.server import BaseHTTPRequestHandler
+import logging
 
 class Histogram:
     def __init__(self, dict):
@@ -97,7 +98,7 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
         bytes_read = self.rfile.read(len(delimiter))
 
         if bytes_read != delimiter:
-            raise Exception()
+            raise Exception("something was malformatted because we were not able to read delimiter")
 
     def _read_chunk_length(self, delimiter=b'\r\n', max_bytes=16):
         buf = bytearray()
@@ -112,7 +113,6 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
 
                 try:
                     l = int(bytes(buf[:-delim_len]), 16)
-                    # print("read", len(buf), "bytes:", l)
                     return l
                 except ValueError:
                     return -1
