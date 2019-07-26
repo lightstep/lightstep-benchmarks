@@ -76,7 +76,7 @@ jobs:
 
       - store_artifacts:
           path: logs
-          destination: test
+          destination: test_logs
 
       - run:
           name: make graphs
@@ -88,7 +88,8 @@ jobs:
 
       - store_artifacts:
           path: logs
-          destination: graphs
+          destination: graph_logs
 
       - store_artifacts:
           path: graphs
+          destination: graphs

@@ -144,7 +144,7 @@ class Result:
         self.spans_received = spans_received
 
     def __str__(self):
-        ret = "controller.Results object:\n"
+        ret = 'controller.Results object:\n'
         ret += f'\t{self.spans_per_second:.1f} spans / sec\n'
         ret += f'\t{self.cpu_usage * 100:.2f}% CPU usage\n'
         ret += f'\t{self.memory} bytes of virtual memory used\n'
@@ -343,7 +343,7 @@ class Controller:
             self._ensure_satellite_shutdown()
 
         # startup test process
-        with open(f'logs/{self.client_name}.log', 'w+') as logfile:
+        with open(f'logs/{self.client_name}.log', 'a+') as logfile:
             logging.info("Starting client...")
             client_handle = subprocess.Popen(self.client_startup_args, stdout=logfile, stderr=logfile)
             logging.info("Client started.")

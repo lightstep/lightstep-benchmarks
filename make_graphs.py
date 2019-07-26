@@ -24,14 +24,16 @@ if __name__ == '__main__':
             dropped_list = []
             memory_list = []
 
-            sps_values = list(range(100, 1600, 100)) + [2000, 3000, 4000, 8000, 16000, 32000, 64000] if name=='cpp' else []
+            sps_values = list(range(100, 1600, 100)) + ([2000, 3000, 4000, 8000, 16000, 32000, 64000] if name=='cpp' else [])
 
             for sps in sps_values:
                 result = controller.benchmark(
                     trace=True,
                     with_satellites=True,
                     spans_per_second=sps,
-                    runtime=20)
+                    runtime=30,
+                    no_flush=True,
+                )
 
                 print(result)
 
@@ -42,6 +44,7 @@ if __name__ == '__main__':
 
             fig, ax = plt.subplots()
             ax.plot(sps_list, dropped_list)
+            plt.title("Spans Dropped No Flush")
             ax.set(xlabel="Spans Per Second", ylabel="Percent Spans Dropped")
             fig.savefig(path.join(args.dir, f'{fname}_sps_vs_dropped.png'))
 

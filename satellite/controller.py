@@ -86,7 +86,10 @@ class MockSatelliteGroup:
 
     """ Shutdown all satellites and save their logs into a single file """
     def terminate(self):
-        with open(path.join(PROJECT_DIR, 'logs/mock_satellites.log'), 'w+') as logfile:
+        with open(path.join(PROJECT_DIR, 'logs/mock_satellites.log'), 'a+') as logfile:
+            logfile.write('**********\n')
             for s in self._satellites:
                 logs = s.terminate()
+                logfile.write(f'*** logs from satellite {s.port} ***\n')
                 logfile.write(logs)
+            logfile.write('\n')
