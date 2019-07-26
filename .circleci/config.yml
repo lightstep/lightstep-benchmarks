@@ -88,7 +88,8 @@ jobs:
           command: |
             . venv/bin/activate
             mkdir graphs
-            python cpp_memory_graph.py graphs
+            python memory_graphs.py graphs
+            python basic_graphs.py graphs
 
       - store_artifacts:
           path: logs

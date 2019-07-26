@@ -20,7 +20,10 @@ This function take dictionaries of that format and makes them normal. """
 def _format_query_json(query_dict):
     normal_dict = {}
     for key in query_dict:
-        normal_dict[key] = query_dict[key][0]
+        if len(query_dict[key]) == 1:
+            normal_dict[key] = query_dict[key][0]
+        else:
+            normal_dict[key] = query_dict[key]
 
     return normal_dict
 
@@ -136,18 +139,19 @@ class Command:
 
 ''' allows us to set spans_received even after initializing ...'''
 class Result:
-    def __init__(self, spans_sent, program_time, clock_time, memory, spans_received=0):
+    def __init__(self, spans_sent, program_time, clock_time, memory, memory_list=[], spans_received=0):
         self._spans_sent = spans_sent
         self._program_time = program_time
         self._clock_time = clock_time
         self._memory = memory
+        self._memory_list = memory_list
         self.spans_received = spans_received
 
     def __str__(self):
         ret = 'controller.Results object:\n'
         ret += f'\t{self.spans_per_second:.1f} spans / sec\n'
         ret += f'\t{self.cpu_usage * 100:.2f}% CPU usage\n'
-        ret += f'\t{self.memory} bytes of virtual memory used\n'
+        ret += f'\t{self.memory} bytes of virtual memory used at finish\n'
         if self.spans_sent > 0:
             ret += f'\t{self.dropped_spans / self.spans_sent * 100:.1f}% spans dropped (out of {self.spans_sent} sent)\n'
         ret += f'\ttook {self.clock_time:.1f}s'
@@ -160,12 +164,19 @@ class Result:
         program_time = result_dict.get('ProgramTime', 0)
         clock_time = result_dict.get('ClockTime', 0)
         memory = result_dict.get('Memory', 0)
+        memory_list = result_dict.get('MemoryList', [])
 
-        return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), spans_received=int(spans_received))
+        return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), memory_list=memory_list, spans_received=int(spans_received))
 
+    """ Memory measurement taken at the end of the test, before flush """
     @property
     def memory(self):
         return self._memory
+
+    """  List of memory measurements, taken every 1s """
+    @property
+    def memory_list(self):
+        return self._memory_list
 
     @property
     def spans_per_second(self):

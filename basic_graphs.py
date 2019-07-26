@@ -51,8 +51,3 @@ if __name__ == '__main__':
             ax.plot(sps_list, cpu_list)
             ax.set(xlabel="Spans Per Second", ylabel="Percent CPU Utilization")
             fig.savefig(path.join(args.dir, f'{fname}_sps_vs_cpu.png'))
-
-            fig, ax = plt.subplots()
-            ax.plot(sps_list, memory_list)
-            ax.set(xlabel="Spans Per Second", ylabel="Kilobytes Memory")
-            fig.savefig(path.join(args.dir, f'{fname}_sps_vs_memory.png'))

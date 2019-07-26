@@ -8,6 +8,7 @@ import requests
 import argparse
 import time
 
+MEMORY_PERIOD = 1 # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
 NUM_SATELLITES = 8
 
@@ -77,6 +78,10 @@ def perform_work(command, tracer_name, port):
     sleep_debt = 0
     start_time = time.time()
     spans_sent = 0
+
+    last_memory_save = time.time()
+    memory_list = []
+
     timer = Stopwatch()
     timer.start()
 
@@ -91,6 +96,10 @@ def perform_work(command, tracer_name, port):
             sleep_debt -= command['SleepInterval']
             time.sleep(command['SleepInterval'] * 10**-9) # because there are 10^-9 nanoseconds / second
 
+        if time.time() > last_memory_save + MEMORY_PERIOD:
+            memory_list.append(timer.get_memory())
+            last_memory_save = time.time()
+
     memory = timer.get_memory()
 
     # don't include flush in time measurement
@@ -103,6 +112,7 @@ def perform_work(command, tracer_name, port):
         'ClockTime': clock_time,
         'SpansSent': spans_sent,
         'Memory': memory,
+        'MemoryList': memory_list,
     })
 
 
