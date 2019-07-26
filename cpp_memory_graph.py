@@ -14,7 +14,7 @@ if __name__ == '__main__':
             target_cpu_usage=.7,
             num_satellites=8) as controller:
 
-        for sps in range[500, 1000, 2000, 5000, 10000]:
+        for sps in [500, 1000, 2000, 5000, 10000]:
             runtime_list = []
             memory_list = []
 
@@ -36,6 +36,6 @@ if __name__ == '__main__':
 
     plt.xlabel("runtime (s)")
     plt.ylabel("max memory usage (MB)")
-    plt.title("Tracer Memory Use @ 5000 Spans / Sec")
+    plt.title("Runtime vs Memory Usage")
     plt.legend()
     plt.savefig(path.join(args.dir, f'cpp_runtime_vs_memory.png'))
