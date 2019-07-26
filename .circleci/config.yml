@@ -78,7 +78,9 @@ jobs:
       # - store_artifacts:
       #     path: logs
       #     destination: test_logs
-                  #
+
+      # ./sidecar/bazel-bin/sidecar &
+      # python basic_graphs.py graphs
 
 
       - run:
@@ -87,8 +89,6 @@ jobs:
             . venv/bin/activate
             mkdir graphs
             python cpp_memory_graph.py graphs
-            ./sidecar/bazel-bin/sidecar &
-            python basic_graphs.py graphs
 
       - store_artifacts:
           path: logs
