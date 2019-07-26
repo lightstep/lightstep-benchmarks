@@ -14,22 +14,28 @@ if __name__ == '__main__':
             target_cpu_usage=.7,
             num_satellites=8) as controller:
 
-        runtime_list = []
-        memory_list = []
+        for sps in range[500, 1000, 2000, 5000, 10000]:
+            runtime_list = []
+            memory_list = []
 
-        for runtime in range(10, 100, 10):
-            result = controller.benchmark(
-                trace=True,
-                with_satellites=True,
-                spans_per_second=5000,
-                runtime=runtime,
-            )
+            for runtime in range(10, 100, 10):
+                result = controller.benchmark(
+                    trace=True,
+                    with_satellites=True,
+                    spans_per_second=sps,
+                    runtime=runtime,
+                )
 
-            runtime_list.append(result.clock_time)
-            memory_list.append(result.memory * 10**-6)
+                print(result)
 
-    plt.plot(runtime_list, memory_list)
+                runtime_list.append(result.clock_time)
+                memory_list.append(result.memory * 10**-6)
+
+            plt.plot(runtime_list, memory_list, label=f'{sps} sps')
+
+
     plt.xlabel("runtime (s)")
     plt.ylabel("max memory usage (MB)")
     plt.title("Tracer Memory Use @ 5000 Spans / Sec")
+    plt.legend()
     plt.savefig(path.join(args.dir, f'cpp_runtime_vs_memory.png'))
