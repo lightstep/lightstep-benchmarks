@@ -164,7 +164,7 @@ class Result:
         program_time = result_dict.get('ProgramTime', 0)
         clock_time = result_dict.get('ClockTime', 0)
         memory = result_dict.get('Memory', 0)
-        memory_list = result_dict.get('MemoryList', [])
+        memory_list = [int(m) for m in result_dict.get('MemoryList', [])]
 
         return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), memory_list=memory_list, spans_received=int(spans_received))
 
