@@ -26,8 +26,8 @@ if __name__ == '__main__':
             )
 
             runtime_list.append(result.clock_time)
-            runtime_list.append(result.memory * 10**-6)
-    
+            memory_list.append(result.memory * 10**-6)
+
     plt.plot(runtime_list, memory_list)
     plt.xlabel("runtime (s)")
     plt.ylabel("max memory usage (MB)")
