@@ -24,7 +24,9 @@ if __name__ == '__main__':
             dropped_list = []
             memory_list = []
 
-            for sps in list(range(100, 1600, 100)) + [2000, 3000, 4000, 8000, 16000]:
+            sps_values = list(range(100, 1600, 100)) + [2000, 3000, 4000, 8000, 16000, 32000, 64000] if name=='cpp' else []
+
+            for sps in sps_values:
                 result = controller.benchmark(
                     trace=True,
                     with_satellites=True,
