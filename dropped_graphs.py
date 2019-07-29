@@ -14,7 +14,7 @@ if __name__ == '__main__':
         client_type = 'cpp' if name == 'cpp' else 'vanilla'
 
         with Controller(['python3', 'clients/python_client.py', port, client_type],
-                client_name=f'{fname}_client',
+                client_name=f'{name}_client',
                 target_cpu_usage=.7,
                 num_satellites=8) as controller:
 
@@ -41,4 +41,4 @@ if __name__ == '__main__':
             ax.plot(sps_list, dropped_list)
             plt.title("Spans Dropped")
             ax.set(xlabel="spans / s", ylabel="percent spans dropped")
-            fig.savefig(path.join(args.dir, f'{fname}_sps_vs_dropped.png'))
+            fig.savefig(path.join(args.dir, f'{name}_sps_vs_dropped.png'))
