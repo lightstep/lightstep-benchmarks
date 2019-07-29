@@ -38,6 +38,11 @@ class Stopwatch:
         user, system, _, _ = self.process.cpu_times()
         self.start_cpu_time = user + system
         self.start_clock_time = time.time()
+        self.split()
+
+    def split(self):
+        """ Gets CPU %, calculated since last call to split. """
+        return self.process.cpu_percent(interval=None)
 
     def stop(self):
         user, system, _, _ = self.process.cpu_times()
@@ -81,6 +86,7 @@ def perform_work(command, tracer_name, port):
 
     last_memory_save = time.time()
     memory_list = []
+    cpu_list = []
 
     timer = Stopwatch()
     timer.start()
@@ -98,6 +104,8 @@ def perform_work(command, tracer_name, port):
 
         if time.time() > last_memory_save + MEMORY_PERIOD:
             memory_list.append(timer.get_memory())
+            # saves CPU percentage as fraction since last call
+            cpu_list.append(timer.split() / 100)
             last_memory_save = time.time()
 
     memory = timer.get_memory()
@@ -113,6 +121,7 @@ def perform_work(command, tracer_name, port):
         'SpansSent': spans_sent,
         'Memory': memory,
         'MemoryList': memory_list,
+        'CPUList': cpu_list,
     })
 
 

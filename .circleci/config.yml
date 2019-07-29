@@ -88,9 +88,7 @@ jobs:
           command: |
             . venv/bin/activate
             mkdir graphs
-            ./sidecar/bazel-bin/sidecar &
-            python memory_graphs.py graphs
-            python dropped_graphs.py graphs
+            python satellite_disconnect_graphs.py cpp
 
       - store_artifacts:
           path: logs

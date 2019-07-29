@@ -7,6 +7,7 @@ from os import path
 # top level directory
 SATELLITE_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(SATELLITE_DIR, "..")
+DEFAULT_PORTS = list(range(8360, 8368))
 
 class MockSatelliteHandler:
     def __init__(self, port, mode):
@@ -29,10 +30,6 @@ class MockSatelliteHandler:
         return self._handler.poll() == None
 
     def get_spans_received(self):
-        # before trying to communicate with the mock, check if its running
-        if not self.is_running():
-            raise Exception("Mock satellite not running.")
-
         host = "http://localhost:" + str(self.port)
         res = requests.get(host + "/spans_received")
 
@@ -65,13 +62,18 @@ class MockSatelliteHandler:
 
 
 class MockSatelliteGroup:
-    def __init__(self, ports, mode):
+    def __init__(self, mode, ports=DEFAULT_PORTS):
         os.makedirs(path.join(PROJECT_DIR, "logs"), exist_ok=True)
 
+        self._ports = ports
         self._satellites = \
             [MockSatelliteHandler(port, mode) for port in ports]
 
     def get_spans_received(self):
+        # before trying to communicate with the mock, check if its running
+        if not self.all_running():
+            raise Exception("Mock satellite not running.")
+
         return sum([s.get_spans_received() for s in self._satellites])
 
     def all_running(self):
@@ -84,8 +86,17 @@ class MockSatelliteGroup:
         for s in self._satellites:
             s.reset_spans_received()
 
+    def start(self, mode, ports=DEFAULT_PORTS):
+        if not self._satellites:
+            self.__init__(mode, ports=ports)
+        else:
+            raise Exception("Can't call startup since satellites are running.")
+
     """ Shutdown all satellites and save their logs into a single file """
-    def terminate(self):
+    def shutdown(self):
+        if not self._satellites:
+            raise Exception("Can't call terminate since there are no satellites running")
+
         with open(path.join(PROJECT_DIR, 'logs/mock_satellites.log'), 'a+') as logfile:
             logfile.write('**********\n')
             for s in self._satellites:
@@ -93,3 +104,5 @@ class MockSatelliteGroup:
                 logfile.write(f'*** logs from satellite {s.port} ***\n')
                 logfile.write(logs)
             logfile.write('\n')
+
+        self._satellites = None

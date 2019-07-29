@@ -9,11 +9,9 @@ import time
 import os
 import numpy as np
 import logging
+import argparse
 
-LONGEST_TEST = 100
 CONTROLLER_PORT = 8023
-SATELLITE_PORT = 8360
-
 
 """ Dictionaries created by urllib.parse.parse_qs looks like {key: [value], ...}
 This function take dictionaries of that format and makes them normal. """
@@ -139,12 +137,13 @@ class Command:
 
 ''' allows us to set spans_received even after initializing ...'''
 class Result:
-    def __init__(self, spans_sent, program_time, clock_time, memory, memory_list=[], spans_received=0):
+    def __init__(self, spans_sent, program_time, clock_time, memory, memory_list, cpu_list, spans_received=0):
         self._spans_sent = spans_sent
         self._program_time = program_time
         self._clock_time = clock_time
         self._memory = memory
         self._memory_list = memory_list
+        self._cpu_list = cpu_list
         self.spans_received = spans_received
 
     def __str__(self):
@@ -165,8 +164,9 @@ class Result:
         clock_time = result_dict.get('ClockTime', 0)
         memory = result_dict.get('Memory', 0)
         memory_list = [int(m) for m in result_dict.get('MemoryList', [])]
+        cpu_list = [float(m) for m in result_dict.get('CPUList', [])]
 
-        return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), memory_list=memory_list, spans_received=int(spans_received))
+        return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), memory_list, cpu_list, spans_received=int(spans_received))
 
     """ Memory measurement taken at the end of the test, before flush """
     @property
@@ -177,6 +177,10 @@ class Result:
     @property
     def memory_list(self):
         return self._memory_list
+
+    @property
+    def cpu_list(self):
+        return self._cpu_list
 
     @property
     def spans_per_second(self):
@@ -205,15 +209,30 @@ class Result:
         return self.program_time / self.clock_time
 
 
+def controller_from_name(name):
+    if name == 'python':
+        return Controller(['python3', 'clients/python_client.py', '8360', 'vanilla'],
+                client_name='python_client',
+                target_cpu_usage=.7)
+
+    if name == 'python-cpp':
+        return Controller(['python3', 'clients/python_client.py', '8360', 'cpp'],
+                client_name='python_cpp_client',
+                target_cpu_usage=.7)
+
+    if name == 'python-sidecar':
+        return Controller(['python3', 'clients/python_client.py', '8024', 'vanilla'],
+                client_name='python_sidecar_client',
+                target_cpu_usage=.7)
+
+    raise Exception("Invalid client name.")
+
+
 
 class Controller:
-    def __init__(self, client_startup_args, client_name='client', target_cpu_usage=.7, num_satellites=1):
+    def __init__(self, client_startup_args, client_name='client', target_cpu_usage=.7):
         self.client_startup_args = client_startup_args
         self.client_name = client_name
-
-        # can be 'typical', 'slow', 'no_response'
-        self._satellite_mode = 'typical'
-        self._satellite_ports = list(range(SATELLITE_PORT, SATELLITE_PORT + num_satellites))
 
         # makes sure that the logs dir exists
         os.makedirs("logs", exist_ok=True)
@@ -221,9 +240,6 @@ class Controller:
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
         logging.info("Started controller server.")
-
-        # server timeout is twice the longest test length
-        self.server.timeout = LONGEST_TEST * 2
 
         # calibrate the amount of work the controller does so that when we are using
         # a noop tracer the CPU usage is around 70%
@@ -233,7 +249,6 @@ class Controller:
         # calculate work per second, which we can use to estimate spans per second
         self._work_per_second = self._estimate_work_per_second()
         logging.info(f'Calculated that this client completes {self._work_per_second} units of work / second.')
-        logging.info("Controller has initialized.")
 
     def __enter__(self):
         return self
@@ -242,25 +257,8 @@ class Controller:
         self.shutdown()
         return False
 
-    def _ensure_satellite_running(self):
-        if not getattr(self, 'satellites', None):
-            logging.info("Starting up satellites.")
-            self.satellites = MockSatelliteGroup(self._satellite_ports, self.satellite_mode)
-            time.sleep(1) # wait for satellite to startup
-
-        if not self.satellites.all_running():
-            raise Exception("One or more satellites failed to start.")
-
-
-    def _ensure_satellite_shutdown(self):
-        if getattr(self, 'satellites', None): # if there is a satellite running
-            logging.info("Shutting down satellites.")
-            self.satellites.terminate()
-            self.satellites = None
-
     def shutdown(self):
         print("Controller shutdown called")
-        self._ensure_satellite_shutdown() # stop satellites
         self.server.server_close() # unbind controller server from socket
         logging.info("Controller shutdown complete")
 
@@ -271,7 +269,6 @@ class Controller:
         work = 1000
         result = self.raw_benchmark(Command(
             trace=False,
-            with_satellites=False,
             sleep=work * self._sleep_per_work,
             work=work,
             repeat=10000))
@@ -287,7 +284,6 @@ class Controller:
         for i in range(0, 20):
             result = self.raw_benchmark(Command(
                 trace=False,
-                with_satellites=False,
                 sleep=sleep_per_work * work,
                 work=work,
                 repeat=5000))
@@ -300,20 +296,10 @@ class Controller:
 
         return sleep_per_work
 
-
-    def set_satellite_mode(self, mode):
-        self._satellite_mode = mode
-        self._ensure_satellite_shutdown()
-        self._ensure_satellite_running()
-
-    @property
-    def satellite_mode(self):
-        return self._satellite_mode
-
     def benchmark(self,
+            satellites=None,
             trace=True,
             no_flush=False, # we typically want flush included with our measurements
-            with_satellites=True,
             spans_per_second=100,
             sleep_interval=10**7,
             runtime=10):
@@ -324,20 +310,27 @@ class Controller:
         if runtime < 1:
             raise Exception("Runtime needs to be longer than 1s.")
 
-        if runtime > LONGEST_TEST:
-            raise Exception("Runtime cannot be longer than 30s.")
-
         work = self._work_per_second / spans_per_second
         repeat = self._work_per_second * runtime / work
 
-        return self.raw_benchmark(Command(
+        # set command server timeout relative to runtime
+        self.server.timeout = runtime * 2
+
+        if satellites:
+            satellites.reset_spans_received()
+
+        result = self.raw_benchmark(Command(
             trace=True,
             no_flush=no_flush,
-            with_satellites=True,
             sleep_interval=sleep_interval,
             sleep=int(work * self._sleep_per_work),
             work=int(work),
             repeat=int(repeat)))
+
+        if satellites:
+            result.spans_received = satellites.get_spans_received()
+
+        return result
 
 
     def raw_benchmark(self, command):
@@ -346,12 +339,6 @@ class Controller:
         self.server.add_command(Command.exit())
 
         number_commands = 2
-
-        if command.with_satellites:
-            self._ensure_satellite_running()
-            self.satellites.reset_spans_received()
-        else:
-            self._ensure_satellite_shutdown()
 
         # startup test process
         with open(f'logs/{self.client_name}.log', 'a+') as logfile:
@@ -369,11 +356,6 @@ class Controller:
                 pass
             logging.info("Client shutdown.")
 
-        spans_received = self.satellites.get_spans_received() if command.with_satellites else 0
-
         # removes results from queue
         # don't include that last result because it's from the exit command
-        result = self.server.pop_results()[0]
-        result.spans_received = spans_received
-
-        return result
+        return self.server.pop_results()[0]
