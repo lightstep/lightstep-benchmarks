@@ -9,21 +9,18 @@ if __name__ == '__main__':
     parser.add_argument('dir', help='Directory to save graphs to.')
     args = parser.parse_args()
 
-    for port, name, fname in [
-            ('8360', 'vanilla', 'vanilla'),
-            ('8024', 'vanilla', 'sidecar'),
-            ('8360', 'cpp', 'cpp')]:
+    for name in ['vanilla', 'sidecar', 'cpp']:
+        port = '8024' if name == 'sidecar' else '8360'
+        client_type = 'cpp' if name == 'cpp' else 'vanilla'
 
-        with Controller(['python3', 'clients/python_client.py', port, name],
+        with Controller(['python3', 'clients/python_client.py', port, client_type],
                 client_name=f'{fname}_client',
                 target_cpu_usage=.7,
-                num_satellites=8 if name=='cpp' else 1) as controller:
+                num_satellites=8) as controller:
 
             sps_list = []
             cpu_list = []
             dropped_list = []
-            memory_list = []
-
 
             for sps in list(range(100, 1600, 100)) + [3000, 5000]:
                 result = controller.benchmark(
@@ -36,7 +33,6 @@ if __name__ == '__main__':
 
                 print(result)
 
-                memory_list.append(int(result.memory / 2**10)) # bytes --> kb
                 dropped_list.append(result.dropped_spans / result.spans_sent)
                 cpu_list.append(result.cpu_usage)
                 sps_list.append(result.spans_per_second)
@@ -44,10 +40,5 @@ if __name__ == '__main__':
             fig, ax = plt.subplots()
             ax.plot(sps_list, dropped_list)
             plt.title("Spans Dropped")
-            ax.set(xlabel="Spans Per Second", ylabel="Percent Spans Dropped")
+            ax.set(xlabel="spans / s", ylabel="percent spans dropped")
             fig.savefig(path.join(args.dir, f'{fname}_sps_vs_dropped.png'))
-
-            fig, ax = plt.subplots()
-            ax.plot(sps_list, cpu_list)
-            ax.set(xlabel="Spans Per Second", ylabel="Percent CPU Utilization")
-            fig.savefig(path.join(args.dir, f'{fname}_sps_vs_cpu.png'))

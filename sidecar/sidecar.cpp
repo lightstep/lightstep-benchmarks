@@ -197,8 +197,6 @@ public:
 
   void start()
   {
-    std::cout << "tcp_connection::start()" << std::endl;
-
     // read handler will write data into the read buffer
     auto read_handler = boost::bind(
       &tcp_connection::handle_read,
@@ -283,16 +281,12 @@ public:
       // connect on every adddress on this machine
       acceptor_(io_context, tcp::endpoint(tcp::v4(), SERVER_PORT))
   {
-    std::cout << "tcp_server::tcp_server()" << std::endl;
-
     start_accept();
   }
 
 private:
   void start_accept()
   {
-    std::cout << "tcp_server::start_accept()" << std::endl;
-
     // create a new socket that we can connect on
     tcp_connection::pointer new_connection =  tcp_connection::create(io_context_);
 
@@ -304,8 +298,6 @@ private:
 
   void handle_accept(tcp_connection::pointer new_connection, const boost::system::error_code& error)
   {
-    std::cout << "tcp_server::handle_accept()" << std::endl;
-
     if (!error) {
       new_connection->start();
     }

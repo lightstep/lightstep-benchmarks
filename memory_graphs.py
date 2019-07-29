@@ -10,7 +10,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     for name in ['cpp', 'vanilla', 'sidecar']:
-        with Controller(['python3', 'clients/python_client.py', '8360', 'cpp' if name == 'cpp' else 'vanilla'],
+        port = '8024' if name == 'sidecar' else '8360'
+        client_type_arg = 'cpp' if name == 'cpp' else 'vanilla'
+
+        fig, ax = plt.subplots()
+
+        with Controller(['python3', 'clients/python_client.py', port, client_type],
                 client_name=f'{name}_client',
                 target_cpu_usage=.7,
                 num_satellites=8) as controller:
@@ -26,12 +31,12 @@ if __name__ == '__main__':
                 print(result)
 
                 runtime_list = list(range(1, len(result.memory_list) + 1))
-                memory_list = [m * 10**-6 for m in result.memory_list]
+                memory_list = [m * 2**-20 for m in result.memory_list]
 
-                plt.plot(runtime_list, memory_list, label=f'{sps} spans / sec')
+                ax.plot(runtime_list, memory_list, label=f'{sps} spans / sec')
 
-        plt.xlabel("runtime (s)")
-        plt.ylabel("max memory usage (MB)")
-        plt.title("Memory Usage Over Time")
-        plt.legend()
-        plt.savefig(path.join(args.dir, f'{name}_runtime_vs_memory.png'))
+
+        ax.set(xlabel="runtime (s)", ylabel="memory use (MB)")
+        ax.set_title(f'{name} Memory Use Over Time')
+        ax.legend()
+        fig.savefig(path.join(args.dir, f'{name}_runtime_vs_memory.png'))
