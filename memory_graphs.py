@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     for name in ['cpp', 'vanilla', 'sidecar']:
         port = '8024' if name == 'sidecar' else '8360'
-        client_type_arg = 'cpp' if name == 'cpp' else 'vanilla'
+        client_type = 'cpp' if name == 'cpp' else 'vanilla'
 
         fig, ax = plt.subplots()
 
