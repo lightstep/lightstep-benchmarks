@@ -10,6 +10,7 @@ import os
 import numpy as np
 import logging
 import argparse
+from clients import clients
 
 CONTROLLER_PORT = 8023
 
@@ -208,26 +209,11 @@ class Result:
     def cpu_usage(self):
         return self.program_time / self.clock_time
 
-
 def controller_from_name(name):
-    if name == 'python':
-        return Controller(['python3', 'clients/python_client.py', '8360', 'vanilla'],
-                client_name='python_client',
-                target_cpu_usage=.7)
-
-    if name == 'python-cpp':
-        return Controller(['python3', 'clients/python_client.py', '8360', 'cpp'],
-                client_name='python_cpp_client',
-                target_cpu_usage=.7)
-
-    if name == 'python-sidecar':
-        return Controller(['python3', 'clients/python_client.py', '8024', 'vanilla'],
-                client_name='python_sidecar_client',
-                target_cpu_usage=.7)
-
-    raise Exception("Invalid client name.")
-
-
+    try:
+        return Controller(clients.args[name], client_name=f'{name}_client')
+    except KeyError:
+        raise Exception("Invalid client name.")
 
 class Controller:
     def __init__(self, client_startup_args, client_name='client', target_cpu_usage=.7):
