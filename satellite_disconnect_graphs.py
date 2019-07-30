@@ -71,6 +71,8 @@ if __name__ == '__main__':
                     spans_per_second=5000,
                     runtime=TRIAL_LENGTH,
                 )
+                
+                print(reuslt)
 
                 logging.info("benchmark completed")
 
