@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from controller import Controller, controller_from_name
+from controller import Controller
 import numpy as np
 import argparse
 from os import path
@@ -9,17 +9,19 @@ import logging
 import time
 
 TRIALS = 3
+TRIAL_LENGTH = 100
+DISCONNECT_TIME = 30
+RECONNECT_TIME = 60
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Produce graphs of what happens when satellites disconnect / reconnect.')
     parser.add_argument('client', help='Name of the client to use in these tests.')
     args = parser.parse_args()
 
-    with controller_from_name(args.client) as controller:
-
+    with Controller(args.client) as controller:
         # two stacked plots in one figure
-        fig, (mem_ax, cpu_ax) = plt.subplots(2, 4, sharex='col', sharey='row')
-        fig.suptitle("Satellite Disconnect Test")
+        fig, (mem_ax, cpu_ax) = plt.subplots(2, 4, sharex='col', sharey='row', figsize=(20, 8), dpi=100)
+        fig.suptitle(f'{controller.client_name.title()} Satellite Disconnect')
 
         mem_ax[0].set_title("Untraced")
         mem_ax[0].set_ylabel("Memory (MB)")
@@ -44,7 +46,8 @@ if __name__ == '__main__':
                     (2, True, 'disconnect'),
                     (3, True, 'reconnect')]:
 
-
+                # Don't initialize using a with statement because we are going
+                # to shut this down manually.
                 satellites = SatelliteGroup('typical')
                 logging.info("trial {} traced {} type {}".format(index, trace, action))
 
@@ -55,18 +58,18 @@ if __name__ == '__main__':
                     if action == 'reconnect':
                         logging.info("shutting down")
                         satellites.shutdown()
-                        time.sleep(10)
+                        time.sleep(RECONNECT_TIME - DISCONNECT_TIME)
                         satellites.start('typical')
                         logging.info("reconnected")
 
                 # satellites shutdown in the middle of the test
-                shutdown_timer = Timer(10.0, satellite_action)
+                shutdown_timer = Timer(DISCONNECT_TIME, satellite_action)
                 shutdown_timer.start()
 
                 result = controller.benchmark(
                     trace=trace,
                     spans_per_second=5000,
-                    runtime=30,
+                    runtime=TRIAL_LENGTH,
                 )
 
                 logging.info("benchmark completed")
@@ -74,9 +77,9 @@ if __name__ == '__main__':
                 if action != 'disconnect':
                     satellites.shutdown()
 
-                time = list(range(1, len(result.cpu_list) + 1))
+                sample_time = list(range(1, len(result.cpu_list) + 1))
 
-                cpu_ax[index].plot(time, result.cpu_list)
-                mem_ax[index].plot(time, [m * 2**-20 for m in result.memory_list])
+                cpu_ax[index].plot(sample_time, result.cpu_list)
+                mem_ax[index].plot(sample_time, [m * 2**-20 for m in result.memory_list])
 
         fig.savefig(f'graphs/{controller.client_name}_satellite_disconnect.png')

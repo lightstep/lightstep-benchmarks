@@ -10,9 +10,17 @@ import os
 import numpy as np
 import logging
 import argparse
-from clients import clients
 
 CONTROLLER_PORT = 8023
+
+# information about how to startup the different clients
+# needs to be updates as new clients are added
+client_args = {
+    'python': ['python3', 'clients/python_client.py', '8360', 'vanilla'],
+    'python-cpp': ['python3', 'clients/python_client.py', '8360', 'cpp'],
+    'python-sidecar': ['python3', 'clients/python_client.py', '8024', 'vanilla']
+}
+
 
 """ Dictionaries created by urllib.parse.parse_qs looks like {key: [value], ...}
 This function take dictionaries of that format and makes them normal. """
@@ -209,15 +217,13 @@ class Result:
     def cpu_usage(self):
         return self.program_time / self.clock_time
 
-def controller_from_name(name):
-    try:
-        return Controller(clients.args[name], client_name=f'{name}_client')
-    except KeyError:
-        raise Exception("Invalid client name.")
 
 class Controller:
-    def __init__(self, client_startup_args, client_name='client', target_cpu_usage=.7):
-        self.client_startup_args = client_startup_args
+    def __init__(self, client_name, target_cpu_usage=.7):
+        if client_name not in client_args:
+            raise Exception("Invalid client name. Did you forget to register your client?")
+        
+        self.client_startup_args = client_args[client_name]
         self.client_name = client_name
 
         # makes sure that the logs dir exists
@@ -244,7 +250,7 @@ class Controller:
         return False
 
     def shutdown(self):
-        print("Controller shutdown called")
+        logging.info("Controller shutdown called")
         self.server.server_close() # unbind controller server from socket
         logging.info("Controller shutdown complete")
 

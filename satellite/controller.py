@@ -69,6 +69,13 @@ class MockSatelliteGroup:
         self._satellites = \
             [MockSatelliteHandler(port, mode) for port in ports]
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.shutdown()
+        return False
+
     def get_spans_received(self):
         # before trying to communicate with the mock, check if its running
         if not self.all_running():
