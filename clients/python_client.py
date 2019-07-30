@@ -129,7 +129,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Start a client to test a LightStep tracer.')
     parser.add_argument('port', type=int, help='Which port to connect to the satellite on.')
     parser.add_argument('tracer', type=str, choices=["vanilla", "cpp"], help='Which LightStep tracer to use.')
-
     args = parser.parse_args()
 
     while True:
