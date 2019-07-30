@@ -7,10 +7,35 @@ import sys
 import requests
 import argparse
 import time
+import gc
 
 MEMORY_PERIOD = 1 # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
 NUM_SATELLITES = 8
+
+
+class FakeTracer:
+    def __enter__(self, *args, **kwargs):
+        pass
+
+    def __exit__(self, *args, **kwargs):
+        pass
+
+    def start_active_span(self, name):
+        return self
+
+# def make_gc_callback():
+#     collections = 0
+#
+#     def gc_callback(phase, info):
+#         nonlocal collections
+#         if phase == 'stop':
+#             collections += 1
+#             print('garbage collected', collections, 'times')
+#
+#     return gc_callback
+#
+# gc.callbacks.append(make_gc_callback())
 
 def work(units):
     i = 1.12563
@@ -26,21 +51,21 @@ process' system calls.
 Records 2 * 10^-5 seconds when we immediately run start() then stop(), so tests should be
 at ms scale to dwarf this contribution.
 """
-class Stopwatch:
+class Monitor:
     def __init__(self):
         self.process = psutil.Process()
 
-    """ Returns the size of process virtual memory """
     def get_memory(self):
+        """ Returns the size of process virtual memory """
         return self.process.memory_info()[0]
 
     def start(self):
         user, system, _, _ = self.process.cpu_times()
         self.start_cpu_time = user + system
         self.start_clock_time = time.time()
-        self.split()
+        self.get_cpu()
 
-    def split(self):
+    def get_cpu(self):
         """ Gets CPU %, calculated since last call to split. """
         return self.process.cpu_percent(interval=None)
 
@@ -48,18 +73,10 @@ class Stopwatch:
         user, system, _, _ = self.process.cpu_times()
         return (user + system - self.start_cpu_time, time.time() - self.start_clock_time)
 
-""" Mode is either vanilla or cpp_bindings. """
-def perform_work(command, tracer_name, port):
-    print("performing work:", command)
-
-    # if exit is set to true, end the program
-    if command['Exit']:
-        send_result({})
-        sys.exit()
-
+def build_tracer(command, tracer_name, port):
     if command['Trace'] and tracer_name == "vanilla":
         import lightstep
-        tracer = lightstep.Tracer(
+        return lightstep.Tracer(
             component_name='isaac_service',
             collector_port=port,
             collector_host='localhost',
@@ -69,16 +86,27 @@ def perform_work(command, tracer_name, port):
         )
     elif command['Trace'] and tracer_name == "cpp":
         import lightstep_native
-        tracer = lightstep_native.Tracer(
+        return lightstep_native.Tracer(
             component_name='isaac_service',
             access_token='developer',
             use_stream_recorder=True,
             collector_plaintext=True,
             satellite_endpoints=[{'host':'localhost', 'port':p} for p in range(port, port + NUM_SATELLITES)],
         )
-    else:
-        tracer = opentracing.Tracer()
 
+    return FakeTracer()
+    # return opentracing.Tracer()
+
+
+def perform_work(command, tracer_name, port):
+    print("performing work:", command)
+
+    tracer = build_tracer(command, tracer_name)
+
+    # if exit is set to true, end the program
+    if command['Exit']:
+        send_result({})
+        sys.exit()
 
     sleep_debt = 0
     start_time = time.time()
@@ -88,8 +116,8 @@ def perform_work(command, tracer_name, port):
     memory_list = []
     cpu_list = []
 
-    timer = Stopwatch()
-    timer.start()
+    monitor = Monitor()
+    monitor.start()
 
     for i in range(command['Repeat']): # time.time() < start_time + command['TestTime']:
         with tracer.start_active_span('TestSpan') as scope:
@@ -103,18 +131,19 @@ def perform_work(command, tracer_name, port):
             time.sleep(command['SleepInterval'] * 10**-9) # because there are 10^-9 nanoseconds / second
 
         if time.time() > last_memory_save + MEMORY_PERIOD:
-            memory_list.append(timer.get_memory())
+            memory_list.append(monitor.get_memory())
             # saves CPU percentage as fraction since last call
-            cpu_list.append(timer.split() / 100)
+            cpu_list.append(monitor.get_cpu() / 100)
             last_memory_save = time.time()
 
-    memory = timer.get_memory()
+    memory = monitor.get_memory()
 
     # don't include flush in time measurement
     if command['Trace'] and not command['NoFlush']:
         tracer.flush()
 
-    cpu_time, clock_time = timer.stop()
+    cpu_time, clock_time = monitor.stop()
+
     send_result({
         'ProgramTime': cpu_time,
         'ClockTime': clock_time,

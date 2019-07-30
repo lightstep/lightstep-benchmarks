@@ -69,6 +69,11 @@ class MockSatelliteGroup:
         self._satellites = \
             [MockSatelliteHandler(port, mode) for port in ports]
 
+        time.sleep(1)
+
+        if not self.all_running():
+            raise Exception("Couldn't start all satellites.")
+
     def __enter__(self):
         return self
 
