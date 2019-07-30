@@ -8,8 +8,8 @@ from threading import Timer
 import logging
 import time
 
-TRIALS = 3
-TRIAL_LENGTH = 100
+TRIALS = 1
+TRIAL_LENGTH = 90
 DISCONNECT_TIME = 30
 RECONNECT_TIME = 60
 
@@ -20,24 +20,26 @@ if __name__ == '__main__':
 
     with Controller(args.client) as controller:
         # two stacked plots in one figure
-        fig, (mem_ax, cpu_ax) = plt.subplots(2, 4, sharex='col', sharey='row', figsize=(20, 8), dpi=100)
+        fig, ax = plt.subplots(1, 4, sharex='col', sharey='row', figsize=(20, 8), dpi=100)
         fig.suptitle(f'{controller.client_name.title()} Satellite Disconnect')
 
-        mem_ax[0].set_title("Untraced")
-        mem_ax[0].set_ylabel("Memory (MB)")
-        cpu_ax[0].set(xlabel="Time (s)", ylabel="CPU %")
+        ax[0].set_title("Untraced")
+        ax[0].set(xlabel="Time (s)", ylabel="Memory (MB)")
 
         # setup satellite disconnect column
-        mem_ax[1].set_title("Connected")
-        cpu_ax[1].set_xlabel("Time (s)")
+        ax[1].set_title("Traced")
+        ax[1].set_xlabel("Time (s)")
 
         # setup nominal column
-        mem_ax[2].set_title("Disconnect (after 10s)")
-        cpu_ax[2].set_xlabel("Time (s)")
+        ax[2].set_title("Satellite Disconnect")
+        ax[2].set_xlabel("Time (s)")
+        ax[2].axvline(x=DISCONNECT_TIME, alpha=.2, color='red')
 
         # setup restart column
-        mem_ax[3].set_title("Reconnect (after 10s)")
-        cpu_ax[3].set_xlabel("Time (s)")
+        ax[3].set_title("Satellite Reconnect")
+        ax[3].set_xlabel("Time (s)")
+        ax[3].axvline(x=DISCONNECT_TIME, alpha=.2, color='red')
+        ax[3].axvline(x=RECONNECT_TIME, alpha=.2, color='green')
 
         for i in range(TRIALS):
             for index, trace, action in [
@@ -68,7 +70,7 @@ if __name__ == '__main__':
 
                 result = controller.benchmark(
                     trace=trace,
-                    spans_per_second=5000,
+                    spans_per_second=50,
                     runtime=TRIAL_LENGTH,
                 )
 
@@ -80,8 +82,6 @@ if __name__ == '__main__':
                     satellites.shutdown()
 
                 sample_time = list(range(1, len(result.cpu_list) + 1))
-
-                cpu_ax[index].plot(sample_time, result.cpu_list)
-                mem_ax[index].plot(sample_time, [m * 2**-20 for m in result.memory_list])
+                ax[index].plot(sample_time, [m * 2**-20 for m in result.memory_list])
 
         fig.savefig(f'graphs/{controller.client_name}_satellite_disconnect.png')

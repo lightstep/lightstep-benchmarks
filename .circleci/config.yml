@@ -82,21 +82,23 @@ jobs:
       # ./sidecar/bazel-bin/sidecar &
       # python basic_graphs.py graphs
 
+            # ./sidecar/bazel-bin/sidecar &
+
+            # python satellite_disconnect_graphs.py python-cpp
+            # python dropped_graphs.py python
+            # python dropped_graphs.py python-cpp
+            # python dropped_graphs.py python-sidecar
+            # python memory_graphs.py python
+            # python memory_graphs.py python-cpp
+            # python memory_graphs.py python-sidecar
 
       - run:
           name: make graphs
           command: |
             . venv/bin/activate
             mkdir graphs
-            ./sidecar/bazel-bin/sidecar &
             python satellite_disconnect_graphs.py python
-            python satellite_disconnect_graphs.py python-cpp
-            python dropped_graphs.py python
-            python dropped_graphs.py python-cpp
-            python dropped_graphs.py python-sidecar
-            python memory_graphs.py python
-            python memory_graphs.py python-cpp
-            python memory_graphs.py python-sidecar
+
 
       - store_artifacts:
           path: logs

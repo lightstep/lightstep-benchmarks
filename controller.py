@@ -222,7 +222,7 @@ class Controller:
     def __init__(self, client_name, target_cpu_usage=.7):
         if client_name not in client_args:
             raise Exception("Invalid client name. Did you forget to register your client?")
-        
+
         self.client_startup_args = client_args[client_name]
         self.client_name = client_name
 
@@ -312,7 +312,7 @@ class Controller:
             satellites.reset_spans_received()
 
         result = self.raw_benchmark(Command(
-            trace=True,
+            trace=trace,
             no_flush=no_flush,
             sleep_interval=sleep_interval,
             sleep=int(work * self._sleep_per_work),

@@ -14,15 +14,15 @@ CONTROLLER_PORT = 8023
 NUM_SATELLITES = 8
 
 
-class FakeTracer:
-    def __enter__(self, *args, **kwargs):
-        pass
-
-    def __exit__(self, *args, **kwargs):
-        pass
-
-    def start_active_span(self, name):
-        return self
+# class FakeTracer:
+#     def __enter__(self, *args, **kwargs):
+#         pass
+#
+#     def __exit__(self, *args, **kwargs):
+#         pass
+#
+#     def start_active_span(self, name):
+#         return self
 
 # def make_gc_callback():
 #     collections = 0
@@ -75,6 +75,7 @@ class Monitor:
 
 def build_tracer(command, tracer_name, port):
     if command['Trace'] and tracer_name == "vanilla":
+        print("We're using the python tracer.")
         import lightstep
         return lightstep.Tracer(
             component_name='isaac_service',
@@ -85,6 +86,7 @@ def build_tracer(command, tracer_name, port):
             access_token='developer'
         )
     elif command['Trace'] and tracer_name == "cpp":
+        print("We're using the python-cpp tracer.")
         import lightstep_native
         return lightstep_native.Tracer(
             component_name='isaac_service',
@@ -94,14 +96,14 @@ def build_tracer(command, tracer_name, port):
             satellite_endpoints=[{'host':'localhost', 'port':p} for p in range(port, port + NUM_SATELLITES)],
         )
 
-    return FakeTracer()
-    # return opentracing.Tracer()
+    print("We're using a NoOp tracer.")
+    return opentracing.Tracer()
 
 
 def perform_work(command, tracer_name, port):
     print("performing work:", command)
 
-    tracer = build_tracer(command, tracer_name)
+    tracer = build_tracer(command, tracer_name, port)
 
     # if exit is set to true, end the program
     if command['Exit']:
