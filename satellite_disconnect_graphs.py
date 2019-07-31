@@ -8,7 +8,7 @@ from threading import Timer
 import logging
 import time
 
-TRIALS = 1
+TRIALS = 2
 TRIAL_LENGTH = 90
 DISCONNECT_TIME = 30
 RECONNECT_TIME = 60

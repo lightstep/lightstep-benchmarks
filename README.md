@@ -60,6 +60,10 @@ for i in range(c['Repeat']):
 http_get('localhost:8024/result', params=[spans sent, cpu use during test, test time, etc...])
 ```
 
+## Garbage Collection
+
+We have observed that in a 200 second test where 200 spans / second were sent, python runs garbage collection 49 times. The test is sufficiently long the cost of garbage collection is going to remain roughly constant across tests. 
+
 ## Wire Format
 
 

@@ -1,2 +1,2 @@
  * 10ms sleep interval
- * 10ms test duration
+ * 10s test duration

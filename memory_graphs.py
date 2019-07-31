@@ -15,11 +15,11 @@ if __name__ == '__main__':
     with SatelliteGroup('typical') as satellites:
         with Controller(args.client) as controller:
 
-            for sps in [500, 1000, 2000, 5000, 10000]:
+            for sps in [100, 500, 1000, 2000]:
                 result = controller.benchmark(
                     trace=True,
                     spans_per_second=sps,
-                    runtime=10,
+                    runtime=50,
                 )
 
                 print(result)

@@ -25,7 +25,7 @@ if __name__ == '__main__':
                     spans_per_second=sps,
                     runtime=10,
                 )
-                
+
                 print(result)
 
                 dropped_list.append(result.dropped_spans / result.spans_sent)
