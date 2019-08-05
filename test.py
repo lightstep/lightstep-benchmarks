@@ -1,7 +1,13 @@
 from controller import Controller, Command, Result
+from satellite import SatelliteGroup
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+
+@pytest.fixture(scope='module')
+def satellites():
+    with SatelliteGroup('typical') as satellites:
+        yield satellites
 
 
 ## VANILLA TESTS ##
@@ -9,60 +15,66 @@ import pytest
 class TestVanilla:
     @pytest.fixture(scope='class')
     def client(self):
-        with Controller(['python3', 'clients/python_client.py', '8360', 'vanilla'],
-                client_name='vanilla_python_client') as c:
-            yield c
+        with Controller('python') as controller:
+            yield controller
 
-    def test_send_spans(self, client):
-        result = client.benchmark(
+    def test_memory(self, client, satellites):
+        """ Tracers should not have memory leaks """
+
+        result_100s = client.benchmark(
             trace=True,
-            with_satellites=True,
-            spans_per_second=100,
-            runtime=5)
+            spans_per_second=500,
+            runtime=100,
+            satellites=satellites)
 
-        assert isinstance(result, Result)
-        assert result.spans_sent > 0
-        assert result.dropped_spans == 0
-
-
-## CPP TESTS ##
-
-class TestCPP:
-    @pytest.fixture(scope='class')
-    def client(self):
-        with Controller(['python3', 'clients/python_client.py', '8360', 'cpp'],
-                client_name='cpp_python_client',
-                num_satellites=8) as c:
-            yield c
-
-    def test_send_spans(self, client):
-        result = client.benchmark(
+        result_5s = client.benchmark(
             trace=True,
-            with_satellites=True,
-            spans_per_second=100,
-            runtime=5)
+            spans_per_second=500,
+            runtime=5,
+            satellites=satellites)
 
-        assert isinstance(result, Result)
-        assert result.spans_sent > 0
-        assert result.dropped_spans == 0
+        assert(result_100s.memory > result_5s.memory)
+        # 100s memory < 1.5x 5s memory
+        assert(result_100s.memory / result_5s.memory < 1.5)
 
+    def test_dropped_spans(self, client, satellites):
+        """ No tracer should drop spans if we're only sending 300 / s. """
 
-## VANILLA TESTS WITH SIDECAR ##
-
-class TestSidecar:
-    @pytest.fixture(scope='class')
-    def client(self):
-        with Controller(['python3', 'clients/python_client.py', '8024', 'vanilla'],
-                client_name='sidecar_python_client') as c:
-            yield c
-
-    def test_send_spans(self, client):
-        result = client.benchmark(
+        sps_100 = client.benchmark(
             trace=True,
-            with_satellites=True,
             spans_per_second=100,
-            runtime=5)
+            runtime=10,
+            satellites=satellites)
 
-        assert isinstance(result, Result)
-        assert result.spans_sent > 0
-        assert result.dropped_spans == 0
+        sps_300 = client.benchmark(
+            trace=True,
+            spans_per_second=300,
+            runtime=10,
+            satellites=satellites)
+
+        assert(sps_100.dropped_spans == 0)
+        assert(sps_300.dropped_spans == 0)
+
+    def test_cpu(self, client, satellites):
+        """ Traced ciode shouldn't consume significatly more CPU than untraced
+        code """
+
+        TRIALS = 5
+        cpu_traced = []
+        cpu_untraced = []
+
+        for i in range(TRIALS):
+            result_untraced = client.benchmark(
+                trace=False,
+                spans_per_second=False,
+                runtime=10)
+            cpu_traced.append(result_traced.cpu_usage * 100)
+
+            result_traced = client.benchmark(
+                trace=True,
+                spans_per_second=500,
+                runtime=10,
+                satellites=satellites)
+            cpu_untraced.append(result_traced.cpu_usage * 100)
+
+        assert(abs(np.mean(cpu_traced) - np.mean(cpu_untraced)) < 10)
