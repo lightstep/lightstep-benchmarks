@@ -5,8 +5,8 @@ import numpy as np
 import argparse
 from os import path
 
-TRIALS = 1
-RUNTIME = 5
+TRIALS = 20
+RUNTIME = 10
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

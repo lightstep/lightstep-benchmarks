@@ -66,15 +66,15 @@ class TestVanilla:
         for i in range(TRIALS):
             result_untraced = client.benchmark(
                 trace=False,
-                spans_per_second=False,
+                spans_per_second=500,
                 runtime=10)
-            cpu_traced.append(result_traced.cpu_usage * 100)
+            cpu_untraced.append(result_untraced.cpu_usage * 100)
 
             result_traced = client.benchmark(
                 trace=True,
                 spans_per_second=500,
                 runtime=10,
                 satellites=satellites)
-            cpu_untraced.append(result_traced.cpu_usage * 100)
+            cpu_traced.append(result_traced.cpu_usage * 100)
 
         assert(abs(np.mean(cpu_traced) - np.mean(cpu_untraced)) < 10)
