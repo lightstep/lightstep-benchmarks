@@ -32,8 +32,7 @@ class TestVanilla:
             spans_per_second=500,
             runtime=5,
             satellites=satellites)
-
-        assert(result_100s.memory > result_5s.memory)
+        
         # 100s memory < 1.5x 5s memory
         assert(result_100s.memory / result_5s.memory < 1.5)
 

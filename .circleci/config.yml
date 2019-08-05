@@ -209,9 +209,6 @@ workflows:
   build_graphs:
     jobs:
       - build
-      - test:
-          requires:
-            - build
       - make_memory_graphs:
           requires:
             - build
