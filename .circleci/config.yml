@@ -219,7 +219,9 @@ workflows:
           cron: "0 5 31 2 *" # runs feb 31st (AKA NEVER)
           filters:
             branches:
-              - master
+              only:
+                - master
+
     jobs:
       - build_python_cpp
       - build:
