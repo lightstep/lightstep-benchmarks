@@ -1,14 +1,16 @@
-version: 2.1
+version: 2
 
-executors:
-  python-executor:
-    docker:
-      - image: circleci/python:3.7.4
-    working_directory: ~/repo
+# executors:
+#   python-executor:
+#     docker:
+#       - image: circleci/python:3.7.4
+#     working_directory: ~/repo
 
 jobs:
   build:
-    executor: python-executor
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
 
     steps:
       # checkout project code into working directory (~/repo)
@@ -29,62 +31,46 @@ jobs:
             pip install --upgrade pip==19.1.* setuptools==41.0.*
             pip install -r requirements.txt
 
+      - run: ./scripts/install-protobuf.sh
+      - run: ./scripts/compile-proto.sh
+      - run: sudo ./scripts/install-bazel.sh
+
+      - run:
+          name: checkout & install tracers
+          command: |
+            source venv/bin/activate
+            source ./scripts/install-python-tracer.sh
+            source ./scripts/install-python-cpp-tracer.sh
+
+      # now that we have installed
       - save_cache:
           paths:
             - ./venv
           key: v1-dependencies-{{ checksum "requirements.txt" }}
-
-      ## COMPILE PROTOBUF ##
-
-      - run:
-          name: install protobuf
-          command: |
-            curl -OL https://github.com/google/protobuf/releases/download/v3.2.0/protoc-3.2.0-linux-x86_64.zip
-            unzip protoc-3.2.0-linux-x86_64.zip -d protoc3
-            sudo mv protoc3/bin/* /usr/local/bin/
-            sudo mv protoc3/include/* /usr/local/include/
-
-      - run:
-          name: compile protobuf
-          command: ./satellite/compile-proto.sh
-
-      ## BUILD SIDECAR ##
-
-      # https://docs.bazel.build/versions/master/install-ubuntu.html#install-with-installer-ubuntu
-      - run:
-          name: install bazel
-          command: |
-            echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
-            curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
-            sudo apt-get update && sudo apt-get install bazel
 
       # cache the sidecar build because this is fairly time-consuming
       - restore_cache:
           keys:
             - sidecar-build
 
-      - run:
-          name: build sidecar
-          command: |
-            cd sidecar
-            bazel build //:sidecar
+      - run: cd sidecar; bazel build //:sidecar
 
       - save_cache:
           paths:
             - ./sidecar/bazel-temp
           key: sidecar-build
 
-      - run:
-          name: make graphs directory
-          command: mkdir graphs
+      - run: mkdir graphs
 
       - persist_to_workspace:
-          root: ~/
+          root: ~/repo
           paths:
-            - repo
+            - "*"
 
   test:
-    executor: python-executor
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
 
     steps:
       - attach_workspace:
@@ -101,7 +87,9 @@ jobs:
           destination: logs
 
   make_memory_graphs:
-    executor: python-executor
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
 
     steps:
       - attach_workspace:
@@ -125,7 +113,9 @@ jobs:
           destination: graphs
 
   make_dropped_graphs:
-    executor: python-executor
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
 
     steps:
       - attach_workspace:
@@ -149,7 +139,9 @@ jobs:
           destination: graphs
 
   make_satellite_disconnect_graphs:
-    executor: python-executor
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
 
     steps:
       - attach_workspace:
@@ -171,7 +163,9 @@ jobs:
           destination: graphs
 
   make_cpu_graphs:
-    executor: python-executor
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
 
     steps:
       - attach_workspace:
