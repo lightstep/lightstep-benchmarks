@@ -39,8 +39,8 @@ jobs:
           name: checkout & install tracers
           command: |
             source venv/bin/activate
-            source ./scripts/install-python-tracer.sh
             source ./scripts/install-python-cpp-tracer.sh
+            source ./scripts/install-python-tracer.sh
 
       # now that we have installed
       - save_cache:
@@ -201,6 +201,10 @@ workflows:
 
   # build, then simultaneously test and generate all graphs
   build_graphs:
+    triggers: #use the triggers key to indicate a scheduled build
+      - schedule:
+          cron: "0 5 31 2 *" # runs feb 31st (AKA NEVER)
+
     jobs:
       - build
       - make_memory_graphs:

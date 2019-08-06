@@ -1,21 +1,18 @@
 # install by cloning & building
 
-# git clone https://github.com/lightstep/lightstep-tracer-cpp.git
-# cd lightstep-tracer-cpp
-#
-# sudo apt-get install cmake
-#
-# # bazel .24 required for this, but we are using a newer version
-# bazel build //bridge/python:wheel.tgz \
-#   --verbose_failures \
-#   --incompatible_require_ctx_in_configure_features=false \
-#   --incompatible_string_join_requires_strings=false \
-#   --incompatible_use_python_toolchains=false
-#
-# cp bazel-genfiles/bridge/python/wheel.tgz .
-# tar zxf wheel.tgz
-# cp wheel/* lightstep_plugin/
-# pip install /lightstep_plugin/*.whl
+git clone https://github.com/lightstep/lightstep-tracer-cpp.git
+cd lightstep-tracer-cpp
 
-# install with pip (cheating, for now)
-pip install lightstep-native
+BAZEL_OPTIONS="
+startup --output_user_root=~/bazel-temp
+build --incompatible_require_ctx_in_configure_features=false
+build --incompatible_string_join_requires_strings=false
+build --incompatible_use_python_toolchains=false"
+
+echo "$BAZEL_OPTIONS" >> .bazelrc
+
+sudo apt-get install cmake
+
+sudo ./ci/do_ci.sh plugin
+
+pip install /plugin/*.whl
