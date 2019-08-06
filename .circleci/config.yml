@@ -7,6 +7,35 @@ version: 2
 #     working_directory: ~/repo
 
 jobs:
+  # this job is copied from here:
+  # https://github.com/lightstep/lightstep-tracer-cpp/blob/master/.circleci/config.yml#L109
+  build_python_cpp:
+    docker:
+      - image: ubuntu:18.04
+    working_directory: ~/
+    steps:
+      - restore_cache:
+          keys: bazel-cache
+
+      - run:
+          name: test
+          command: |
+            apt-get -qq update; apt-get -y install git ssh
+            git clone https://github.com/lightstep/lightstep-tracer-cpp.git
+            cd lightstep-tracer-cpp
+            ./ci/setup_build_environment.sh
+            ./ci/install_bazel.sh
+            ./ci/do_ci.sh plugin
+
+      - save_cache:
+          paths:
+            - ~/.cache/bazel
+          key: bazel-cache
+
+      - persist_to_workspace:
+          root: /plugin
+          paths:
+            - "*"
   build:
     docker:
       - image: circleci/python:3.7.4
@@ -15,6 +44,9 @@ jobs:
     steps:
       # checkout project code into working directory (~/repo)
       - checkout
+
+      - attach_workspace:
+          at: /plugin
 
       # Download and cache dependencies
       - restore_cache:
@@ -34,31 +66,21 @@ jobs:
       - run: ./scripts/install-protobuf.sh
       - run: ./scripts/compile-proto.sh
       - run: sudo ./scripts/install-bazel.sh
+      - run: cd sidecar; bazel build //:sidecar
 
       - run:
           name: checkout & install tracers
           command: |
             source venv/bin/activate
-            source ./scripts/install-python-cpp-tracer.sh
-            source ./scripts/install-python-tracer.sh
+            git clone https://github.com/lightstep/lightstep-tracer-python.git --branch 4.2.1
+            pip install -e lightstep-tracer-python
+            pip install /plugin/*.whl
 
       # now that we have installed
       - save_cache:
           paths:
             - ./venv
           key: v1-dependencies-{{ checksum "requirements.txt" }}
-
-      # cache the sidecar build because this is fairly time-consuming
-      - restore_cache:
-          keys:
-            - sidecar-build
-
-      - run: cd sidecar; bazel build //:sidecar
-
-      - save_cache:
-          paths:
-            - ./sidecar/bazel-temp
-          key: sidecar-build
 
       - run: mkdir graphs
 
@@ -74,7 +96,7 @@ jobs:
 
     steps:
       - attach_workspace:
-          at: ~/
+          at: ~/repo
 
       - run:
           name: run tests
@@ -93,7 +115,7 @@ jobs:
 
     steps:
       - attach_workspace:
-          at: ~/
+          at: ~/repo
 
       - run:
           name: make graphs
@@ -119,7 +141,7 @@ jobs:
 
     steps:
       - attach_workspace:
-          at: ~/
+          at: ~/repo
 
       - run:
           name: make graphs
@@ -145,7 +167,7 @@ jobs:
 
     steps:
       - attach_workspace:
-          at: ~/
+          at: ~/repo
 
       - run:
           name: make graphs
@@ -169,7 +191,7 @@ jobs:
 
     steps:
       - attach_workspace:
-          at: ~/
+          at: ~/repo
 
       - run:
           name: make graphs
@@ -194,7 +216,10 @@ workflows:
   # build, then run regression tests whenever there is a commit
   build_test:
     jobs:
-      - build
+      - build_python_cpp
+      - build:
+          requires:
+            - build_python_cpp
       - test:
           requires:
             - build
