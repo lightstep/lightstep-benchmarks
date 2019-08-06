@@ -213,17 +213,12 @@ workflows:
             - build
 
   # build, then simultaneously test and generate all graphs
+  # only runs on master branch
   build_graphs:
-    triggers: #use the triggers key to indicate a scheduled build
-      - schedule:
-          cron: "0 5 31 2 *" # runs feb 31st (AKA NEVER)
-          filters:
-            branches:
-              only:
-                - master
-
     jobs:
-      - build_python_cpp
+      - build_python_cpp:
+          type: approval # wait for manual approval
+
       - build:
           requires:
             - build_python_cpp
