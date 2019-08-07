@@ -1,5 +1,7 @@
 #!/bin/bash
 
-./install_proto.sh
-./generate_proto.sh
-./pip_install.sh
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+source "${SCRIPT_DIR}/install_proto.sh"
+source "${SCRIPT_DIR}/generate_proto.sh"
+source "${SCRIPT_DIR}/pip_install.sh"
