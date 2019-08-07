@@ -64,13 +64,13 @@ class TestMockSatelliteGroup:
 
             assert exception_info.type == Exception
 
-    def _make_report_request(self, spans):
+    def _make_report_request(self, number_spans):
         """ make a very simple 50 span report """
 
         report_request = collector.ReportRequest()
         span = collector.Span()
         span.operation_name = "isaac_op"
-        for i in range(SPANS_IN_REPORT_REQUEST):
+        for i in range(number_spans):
             report_request.spans.append(span)
         return report_request.SerializeToString()
 
@@ -93,7 +93,7 @@ class TestMockSatelliteGroup:
                 spans_sent += SPANS_IN_REPORT_REQUEST
 
             test_time = time() - start_time
-            spans_received = mock_satellite.get_spans_received()
+            spans_received = satellites.get_spans_received()
 
             spans_dropped = spans_sent - spans_received
             spans_per_second = spans_sent / test_time

@@ -14,6 +14,9 @@ RUNTIME = 10
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('client', help='Name of the client to use in these tests.')
+    parser.add_argument('--trials', nargs=1, type=int, help='Number of trials to run at each span rate.')
+    parser.add_argument('--runtime', nargs=1, type=int, help='Length of each trial.')
+
     args = parser.parse_args()
 
     cpu_traced = []
@@ -31,11 +34,11 @@ if __name__ == '__main__':
                 temp_sps_traced = []
                 temp_sps_untraced = []
 
-                for i in range(TRIALS):
+                for i in range(args.trials):
                     result = controller.benchmark(
                         trace=True,
                         spans_per_second=sps,
-                        runtime=RUNTIME,
+                        runtime=args.runtime,
                     )
                     print(result)
                     temp_cpu_traced.append(result.cpu_usage * 100)
@@ -44,7 +47,7 @@ if __name__ == '__main__':
                     result = controller.benchmark(
                         trace=False,
                         spans_per_second=sps,
-                        runtime=RUNTIME,
+                        runtime=args.runtime,
                     )
                     print(result)
                     temp_cpu_untraced.append(result.cpu_usage * 100)
