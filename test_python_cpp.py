@@ -10,7 +10,7 @@ def satellites():
         yield satellites
 
 # list of clients to run all tests on
-clients = ['python']
+clients = ['python-cpp']
 
 @pytest.mark.parametrize("client", clients)
 def test_memory(client, satellites):
