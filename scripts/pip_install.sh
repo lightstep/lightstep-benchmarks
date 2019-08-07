@@ -5,5 +5,5 @@ PROJECT_DIR="${SCRIPT_DIR}/.."
 
 cd ${PROJECT_DIR}
 
-pip install --upgrade --user pip==19.1.* setuptools==41.0.*
-pip install --user -r requirements.txt
+sudo pip install --upgrade pip==19.1.* setuptools==41.0.*
+sudo pip install -r requirements.txt
