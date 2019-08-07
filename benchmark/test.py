@@ -3,7 +3,6 @@ from .satellite import MockSatelliteGroup as SatelliteGroup
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-import time
 from .generated import collector_pb2 as collector
 import requests
 from time import time, sleep
