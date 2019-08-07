@@ -84,17 +84,24 @@ class MockSatelliteGroup:
     def get_spans_received(self):
         # before trying to communicate with the mock, check if its running
         if not self.all_running():
-            raise Exception("Mock satellite not running.")
+            raise Exception("Can't get spans received since not all satellites are running.")
 
         return sum([s.get_spans_received() for s in self._satellites])
 
     def all_running(self):
+        # if the satellites are shutdown, they aren't running
+        if not self._satellites:
+            return False
+
         for s in self._satellites:
             if not s.is_running():
                 return False
         return True
 
     def reset_spans_received(self):
+        if not self._satellites:
+            raise Exception("Can't reset spans received since no satellites are running.")
+
         for s in self._satellites:
             s.reset_spans_received()
 

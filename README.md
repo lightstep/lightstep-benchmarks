@@ -1,6 +1,7 @@
 # Testing Methodology
 
 # Parts of the System
+
 The test suite is made up of three distinct parts. The **mock satellites** simulate real LightStep satellites under different conditions, the **clients** test LightStep's tracers and are implemented in various languages, and the **controller** orchestrates the tests.
 
 # API
@@ -26,12 +27,14 @@ with Controller('[controller name]') as c:
 
 When a controller is first initialized, it will:
 
- 1. Start a server which listens on port 8024. This server will communicate with clients and assign them work to do.
- 2. Start a client which will immediately make a GET request to localhost:8024/control asking for work.
- 3. Determine the behavior of the client when tracing is turned off. We will try and find:
-   - The nanoseconds to sleep per unit of work which leads to 70% CPU use. The controller will vary sleep per work using P control until the CPU use is within 1/2 percent of 70%.
-   - The units of work the client completes per second (which should be mostly independent of how many spans per second we are sending).
- 4. Start up 8 mock satellites listening on ports 8360 - 8367. Mock satellites can be started with different flags, but will usually be started in 'typical' mode where their response times are typically about 1ms.
+1.  Start a server which listens on port 8024. This server will communicate with clients and assign them work to do.
+2.  Start a client which will immediately make a GET request to localhost:8024/control asking for work.
+3.  Determine the behavior of the client when tracing is turned off. We will try and find:
+
+- The nanoseconds to sleep per unit of work which leads to 70% CPU use. The controller will vary sleep per work using P control until the CPU use is within 1/2 percent of 70%.
+- The units of work the client completes per second (which should be mostly independent of how many spans per second we are sending).
+
+4.  Start up 8 mock satellites listening on ports 8360 - 8367. Mock satellites can be started with different flags, but will usually be started in 'typical' mode where their response times are typically about 1ms.
 
 # Client
 
@@ -62,10 +65,9 @@ http_get('localhost:8024/result', params=[spans sent, cpu use during test, test 
 
 ## Garbage Collection
 
-We have observed that in a 200 second test where 200 spans / second were sent, python runs garbage collection 49 times. The test is sufficiently long the cost of garbage collection is going to remain roughly constant across tests. 
+We have observed that in a 200 second test where 200 spans / second were sent, python runs garbage collection 49 times. The test is sufficiently long the cost of garbage collection is going to remain roughly constant across tests.
 
 ## Wire Format
-
 
 ```python
 {
@@ -90,13 +92,11 @@ They will need to pass `ProgramTime`, `ClockTime`, and `SpansSent` key-value pai
 Don't include flush time in the measurement of CPU usage.
 
 # Ports
+
 8023 will be the standard port for the controller to run on.
 8012 - 8020 will be the standard ports for mock satellites to run on. Satellites will prefer earlier numbers, so tracers which can target only one satellite should target 8012.
 
+# Testing
 
-
-# Using the Testing Framework -- When to Stop
-
-So you have a nice testing framework setup and you are ready to measure how spans per second influenced tracer CPU usage! But CPU usage data is riddled with random error because an OS is a complicated beast and it has lots more to do than just run a single Python program. To filter out random error, we run the same test many times -- around 50. We have observed that when the number of tests run n > 50 the CPU usage data are normally distributed. This analysis is located in a Jupyter notebook located in the analysis folder.  
-
-The data we are collecting is CPU usage data over a time interval of 2 seconds. These data are means, since we are averaging over time. By the [Central Limit Theorem]() ...
+Regression test for the clients: `pytest --client_name [client name] test_client.py`
+Tests for the benchmarking framework itself: `pytest test_framework.py`

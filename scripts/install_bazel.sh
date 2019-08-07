@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # NEED TO RUN THIS SCRIPT WITH SUDO
 
 # this version is compatible with lightstep-cpp-tracer

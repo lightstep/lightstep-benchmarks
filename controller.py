@@ -39,34 +39,40 @@ class CommandServer(HTTPServer):
         super().__init__(*args, **kwargs)
 
         self._commands = []
-        self._results = []
+        self._result = None
 
     def handle_timeout(self):
         raise Exception("Client waited too long to make a request.")
 
-    """ Queues a command to be executed. """
-    def add_command(self, command):
+
+    def execute_command(self, command):
+        """ Queues a command to be executed. """
+
         assert isinstance(command, Command)
         self._commands.append(command)
 
-    """ Pops the next command from the queue. """
+        while self._result == None:
+            self.handle_request()
+
+        result = copy.copy(self._result)
+        self._result = None
+        return result
+
+
     def next_command(self):
+        """ Pops the next command from the queue. """
+
         if len(self._commands) == 0:
+            logging.error("Client requested a command, but no more commands were available.")
             return None
 
         return self._commands.pop(0)
 
-    def length_results(self):
-        return len(self._results)
-
-    def pop_results(self):
-        results = copy.deepcopy(self._results)
-        self._results = []
-        return results
-
-    def add_result(self, result):
+    def save_result(self, result):
         assert isinstance(result, Result)
-        self._results.append(result)
+        assert self._result == None
+
+        self._result = result
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -83,10 +89,6 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _handle_control(self):
         next_command = self.server.next_command()
 
-        if not next_command:
-            logging.error("Client requested a command, but no more commands were available.")
-            return
-
         self.send_response(200)
         body_string = json.dumps(next_command.to_dict())
         self.send_header("Content-Length", len(body_string))
@@ -98,7 +100,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         result = Result.from_dict(self.query_json)
-        self.server.add_result(result)
+        self.server.save_result(result)
 
     def log_message(self, format, *args):
         return
@@ -147,12 +149,12 @@ class Command:
 ''' allows us to set spans_received even after initializing ...'''
 class Result:
     def __init__(self, spans_sent, program_time, clock_time, memory, memory_list, cpu_list, spans_received=0):
-        self._spans_sent = spans_sent
-        self._program_time = program_time
-        self._clock_time = clock_time
-        self._memory = memory
-        self._memory_list = memory_list
-        self._cpu_list = cpu_list
+        self.spans_sent = spans_sent
+        self.program_time = program_time
+        self.clock_time = clock_time
+        self.memory = memory
+        self.memory_list = memory_list
+        self.cpu_list = cpu_list
         self.spans_received = spans_received
 
     def __str__(self):
@@ -177,37 +179,11 @@ class Result:
 
         return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), memory_list, cpu_list, spans_received=int(spans_received))
 
-    """ Memory measurement taken at the end of the test, before flush """
-    @property
-    def memory(self):
-        return self._memory
-
-    """  List of memory measurements, taken every 1s """
-    @property
-    def memory_list(self):
-        return self._memory_list
-
-    @property
-    def cpu_list(self):
-        return self._cpu_list
-
     @property
     def spans_per_second(self):
         if self.spans_sent == 0:
             return 0
         return self.spans_sent / self.clock_time
-
-    @property
-    def program_time(self):
-        return self._program_time
-
-    @property
-    def clock_time(self):
-        return self._clock_time
-
-    @property
-    def spans_sent(self):
-        return self._spans_sent
 
     @property
     def dropped_spans(self):
@@ -326,20 +302,14 @@ class Controller:
 
 
     def raw_benchmark(self, command):
-        # save commands to server, where they will be used to control stuff
-        self.server.add_command(command)
-        self.server.add_command(Command.exit())
-
-        number_commands = 2
-
         # startup test process
         with open(f'logs/{self.client_name}.log', 'a+') as logfile:
             logging.info("Starting client...")
             client_handle = subprocess.Popen(self.client_startup_args, stdout=logfile, stderr=logfile)
             logging.info("Client started.")
 
-            while self.server.length_results() < number_commands:
-                self.server.handle_request()
+            result = self.server.execute_command(command)
+            self.server.execute_command(Command.exit())
 
             # at this point, we have sent the exit command and received a response
             # wait for the client program to shutdown
@@ -350,4 +320,4 @@ class Controller:
 
         # removes results from queue
         # don't include that last result because it's from the exit command
-        return self.server.pop_results()[0]
+        return result
