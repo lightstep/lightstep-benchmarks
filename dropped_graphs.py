@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
-from controller import Controller
-from satellite import SatelliteGroup
+from benckmark.controller import Controller
+from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
 import numpy as np
 import argparse
 from os import path

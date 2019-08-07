@@ -1,10 +1,9 @@
-from controller import Controller, Command, Result
-from satellite import SatelliteGroup
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from benchmark.controller import Controller, Command, Result
+from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
 
-# pytest -s --client_name python test_client.py
 
 @pytest.fixture(scope='module')
 def satellites():

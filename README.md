@@ -100,3 +100,7 @@ Don't include flush time in the measurement of CPU usage.
 
 Regression test for the clients: `pytest --client_name [client name] test_client.py`
 Tests for the benchmarking framework itself: `pytest test_framework.py`
+
+```
+kill `ps aux | grep mock_satellite.py | tr -s ' ' | cut -d " " -f 2 | tr '\n' ' '`
+```

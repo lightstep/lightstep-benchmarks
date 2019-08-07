@@ -1,6 +1,10 @@
 import random
 from http.server import BaseHTTPRequestHandler
 import logging
+from os import path
+
+BENCHMARK_DIR = path.dirname(path.realpath(__file__))
+PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
 
 class Histogram:
     def __init__(self, dict):

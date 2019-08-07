@@ -1,12 +1,14 @@
-from controller import Controller, Command, Result
-from satellite import SatelliteGroup
+from .controller import Controller, Command, Result
+from .satellite import MockSatelliteGroup as SatelliteGroup
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 import time
+from .generated import collector_pb2 as collector
+import requests
+from time import time, sleep
 
-
-class TestSatelliteGroup:
+class TestMockSatelliteGroup:
     def test_all_running(self):
         satellites = SatelliteGroup('typical')
         assert satellites.all_running() == True
@@ -63,9 +65,39 @@ class TestSatelliteGroup:
 
             assert exception_info.type == Exception
 
-    # TODO: write satelite mode tests
-    def test_modes(self):
-        pass
+    def _make_report_request(self, spans):
+        """ make a very simple 50 span report """
 
-class TestController:
-    def test_
+        report_request = collector.ReportRequest()
+        span = collector.Span()
+        span.operation_name = "isaac_op"
+        for i in range(SPANS_IN_REPORT_REQUEST):
+            report_request.spans.append(span)
+        return report_request.SerializeToString()
+
+    def test_satellite_throughput(self):
+        """ Make sure that a single satellite can ingest spans at a rate of
+        at least 2000 / second without dropping any. """
+
+        SPANS_IN_REPORT_REQUEST = 100
+        TEST_LENGTH = 10
+
+        report_request = self._make_report_request(SPANS_IN_REPORT_REQUEST)
+
+        with SatelliteGroup('typical') as satellites:
+            start_time = time()
+            spans_sent = 0
+            while time() < start_time + TEST_LENGTH:
+                res = requests.post(url='http://localhost:8360/api/v2/reports',
+                                    data=report_request,
+                                    headers={'Content-Type': 'application/octet-stream'})
+                spans_sent += SPANS_IN_REPORT_REQUEST
+
+            test_time = time() - start_time
+            spans_received = mock_satellite.get_spans_received()
+
+            spans_dropped = spans_sent - spans_received
+            spans_per_second = spans_sent / test_time
+
+            assert spans_dropped == 0
+            assert spans_per_second > 2000

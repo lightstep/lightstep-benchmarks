@@ -3,10 +3,10 @@ import time
 import requests
 import os
 from os import path
+from .utils import PROJECT_DIR, BENCHMARK_DIR
 
 # top level directory
-SATELLITE_DIR = path.dirname(path.realpath(__file__))
-PROJECT_DIR = path.join(SATELLITE_DIR, "..")
+
 DEFAULT_PORTS = list(range(8360, 8368))
 
 class MockSatelliteHandler:
@@ -20,7 +20,7 @@ class MockSatelliteHandler:
         # with satellites
         self._spans_received_baseline = 0
 
-        mock_satellite_path = path.join(SATELLITE_DIR, 'mock_satellite.py')
+        mock_satellite_path = path.join(BENCHMARK_DIR, 'mock_satellite.py')
 
         self._handler = subprocess.Popen(
             ["python3", mock_satellite_path, str(port), mode],

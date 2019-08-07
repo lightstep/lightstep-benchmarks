@@ -4,12 +4,14 @@ import threading
 import json
 import copy
 from urllib.parse import urlparse, parse_qs
-from satellite.controller import MockSatelliteGroup
 import time
 import os
+from os import path
 import numpy as np
 import logging
-import argparse
+
+from .satellite import MockSatelliteGroup
+from .utils import PROJECT_DIR
 
 CONTROLLER_PORT = 8023
 
@@ -203,7 +205,7 @@ class Controller:
         self.client_name = client_name
 
         # makes sure that the logs dir exists
-        os.makedirs("logs", exist_ok=True)
+        os.makedirs(path.join(PROJECT_DIR, "logs"), exist_ok=True)
 
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
@@ -302,8 +304,10 @@ class Controller:
 
 
     def raw_benchmark(self, command):
+        log_filepath = path.join(PROJECT_DIR, f'logs/{self.client_name}.log')
+
         # startup test process
-        with open(f'logs/{self.client_name}.log', 'a+') as logfile:
+        with open(log_filepath, 'a+') as logfile:
             logging.info("Starting client...")
             client_handle = subprocess.Popen(self.client_startup_args, stdout=logfile, stderr=logfile)
             logging.info("Client started.")

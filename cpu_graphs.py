@@ -1,9 +1,12 @@
 import matplotlib.pyplot as plt
-from controller import Controller
-from satellite import SatelliteGroup
+from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
+from benchmark.controller import Controller
+
 import numpy as np
 import argparse
 from os import path
+
+
 
 TRIALS = 20
 RUNTIME = 10
