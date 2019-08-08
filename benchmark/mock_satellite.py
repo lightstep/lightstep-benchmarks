@@ -11,6 +11,8 @@ import logging
 
 logging.basicConfig(format='%(asctime)s: %(message)s', level=logging.DEBUG, datefmt='%I:%M:%S')
 
+SUCCESS_RESPONSE = """{"commands":[{}],"receiveTimestamp":"2019-08-08T22:17:42.872212Z","transmitTimestamp":"2019-08-08T22:17:42.872313Z"}"""
+
 # this
 spans_received = 0
 global_lock = threading.Lock()
@@ -91,7 +93,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
 
             logging.debug(f'read {spans_in_report} spans, total {spans_received}')
 
-            self._send_response(200)
+            self._send_response(200, body_string=SUCCESS_RESPONSE)
         else:
             self._send_response(400)
 
