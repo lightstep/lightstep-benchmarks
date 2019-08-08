@@ -3,7 +3,7 @@ from benchmark.controller import Controller
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
 import numpy as np
 import argparse
-from os import path
+from os import path, makedirs
 from threading import Timer
 import logging
 import time
@@ -18,6 +18,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Produce graphs of what happens when satellites disconnect / reconnect.')
     parser.add_argument('client', help='Name of the client to use in these tests.')
     args = parser.parse_args()
+
+    makedirs(path.join(PROJECT_DIR, "graphs"), exist_ok=True)
 
     with Controller(args.client) as controller:
         # two stacked plots in one figure

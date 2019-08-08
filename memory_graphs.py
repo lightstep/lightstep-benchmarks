@@ -3,7 +3,7 @@ from benchmark.controller import Controller
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
 import numpy as np
 import argparse
-from os import path
+from os import path, makedirs
 from benchmark.utils import PROJECT_DIR
 
 if __name__ == '__main__':
@@ -12,6 +12,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     fig, ax = plt.subplots()
+
+    makedirs(path.join(PROJECT_DIR, "graphs"), exist_ok=True)
 
     with SatelliteGroup('typical') as satellites:
         with Controller(args.client) as controller:

@@ -4,7 +4,7 @@ from benchmark.controller import Controller
 from benchmark.utils import PROJECT_DIR
 import numpy as np
 import argparse
-from os import path
+from os import path, makedirs
 
 
 
@@ -18,6 +18,8 @@ if __name__ == '__main__':
     parser.add_argument('--runtime', nargs='?', type=int, help='Length of each trial.')
 
     args = parser.parse_args()
+
+    makedirs(path.join(PROJECT_DIR, "graphs"), exist_ok=True)
 
     cpu_traced = []
     cpu_untraced = []
