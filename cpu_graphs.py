@@ -14,8 +14,8 @@ RUNTIME = 10
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('client', help='Name of the client to use in these tests.')
-    parser.add_argument('--trials', nargs=1, type=int, help='Number of trials to run at each span rate.')
-    parser.add_argument('--runtime', nargs=1, type=int, help='Length of each trial.')
+    parser.add_argument('--trials', nargs='?', type=int, help='Number of trials to run at each span rate.')
+    parser.add_argument('--runtime', nargs='?', type=int, help='Length of each trial.')
 
     args = parser.parse_args()
 
