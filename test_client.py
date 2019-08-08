@@ -3,7 +3,9 @@ import numpy as np
 import pytest
 from benchmark.controller import Controller, Command, Result
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
+import logging
 
+logging.basicConfig(level=logging.INFO)
 
 @pytest.fixture(scope='module')
 def satellites():

@@ -25,9 +25,9 @@ CALIBRATION_REPEAT = 10000
 # information about how to startup the different clients
 # needs to be updates as new clients are added
 client_args = {
-    'python': ['python3', 'clients/python_client.py', '8360', 'vanilla'],
-    'python-cpp': ['python3', 'clients/python_client.py', '8360', 'cpp'],
-    'python-sidecar': ['python3', 'clients/python_client.py', '8024', 'vanilla']
+    'python': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8360', 'vanilla'],
+    'python-cpp': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8360', 'cpp'],
+    'python-sidecar': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8024', 'vanilla']
 }
 
 
@@ -219,14 +219,24 @@ class Controller:
 
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
+        self.server.timeout = 30 #  timeout used during client calibration
         logging.info("Started controller server.")
+        
+        self._calibrate(target_cpu_usage)
 
-        # calibrate the amount of work the controller does so that when we are using
-        # a noop tracer the CPU usage is around 70%
-        self._sleep_per_work = self._estimate_sleep_per_work(target_cpu_usage)
+    def _calibrate(self, target_cpu_usage):
+        try:
+            # calibrate the amount of work the controller does so that when we are using
+            # a noop tracer the CPU usage is around 70%
+            self._sleep_per_work = self._estimate_sleep_per_work(target_cpu_usage)
 
-        # calculate work per second, which we can use to estimate spans per second
-        self._work_per_second = self._estimate_work_per_second()
+            # calculate work per second, which we can use to estimate spans per second
+            self._work_per_second = self._estimate_work_per_second()
+
+        # if for some reason calibration fails, we still want to shutdown gracefully
+        except:
+            self.shutdown()
+            raise
 
     def __enter__(self):
         return self
@@ -309,7 +319,7 @@ class Controller:
         work = self._work_per_second / spans_per_second
         repeat = self._work_per_second * runtime / work
 
-        # set command server timeout relative to runtime
+        # set command server timeout relative to target runtime
         self.server.timeout = runtime * 2
 
         if satellites:
