@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
 from benchmark.controller import Controller
-
+from benchmark.utils import PROJECT_DIR
 import numpy as np
 import argparse
 from os import path
@@ -73,11 +73,11 @@ if __name__ == '__main__':
     ax.set(xlabel="spans / second", ylabel="CPU Usage")
     ax.set_title(f'{controller.client_name.title()} Traced and Untraced CPU Use')
     ax.legend()
-    fig.savefig(f'graphs/{controller.client_name}_sps_vs_cpu_comparison.png')
+    fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_sps_vs_cpu_comparison.png'))
 
     # draw difference ploit
     fig, ax = plt.subplots()
     ax.errorbar(sps_untraced, cpu_difference, yerr=cpu_difference_std)
     ax.set(xlabel="spans / second", ylabel="Tracer CPU Usage")
     ax.set_title(f'{controller.client_name.title()} CPU Cost of Tracer')
-    fig.savefig(f'graphs/{controller.client_name}_sps_vs_cpu.png')
+    fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_sps_vs_cpu.png'))

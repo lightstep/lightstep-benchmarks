@@ -4,6 +4,7 @@ from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
 import numpy as np
 import argparse
 from os import path
+from benchmark.utils import PROJECT_DIR
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -32,4 +33,4 @@ if __name__ == '__main__':
     ax.set(xlabel="runtime (s)", ylabel="memory use (MB)")
     ax.set_title(f'{controller.client_name.title()} Memory Use Over Time')
     ax.legend()
-    fig.savefig(f'graphs/{controller.client_name}_runtime_vs_memory.png')
+    fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_runtime_vs_memory.png'))
