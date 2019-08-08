@@ -1,6 +1,6 @@
 version: 2
 jobs:
-  cmake_no_grpc:
+  build:
     docker:
       - image: circleci/python:3.7.4
     working_directory: ~/repo
