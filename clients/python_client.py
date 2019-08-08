@@ -87,7 +87,10 @@ def generate_spans(tracer, work_list, scope=None):
     if not work_list:
         return
 
-    with tracer.start_span(operation_name='make_some_request', child_of=scope) as client_span:
+    # since python-cpp tracer doesn't allow child_of=None
+    child_of_kwargs = {'child_of': scope} if scope else {}
+
+    with tracer.start_span(operation_name='make_some_request', **child_of_kwargs) as client_span:
         tracer.scope_manager.activate(client_span, True)
         client_span.set_tag('http.url', 'http://somerequesturl.com')
         client_span.set_tag('http.method', "POST")
