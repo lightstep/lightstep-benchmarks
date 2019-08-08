@@ -3,7 +3,7 @@ import time
 import requests
 import os
 from os import path
-from utils import PROJECT_DIR, BENCHMARK_DIR
+from .utils import PROJECT_DIR, BENCHMARK_DIR
 
 # top level directory
 
