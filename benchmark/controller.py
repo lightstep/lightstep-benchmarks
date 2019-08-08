@@ -40,7 +40,7 @@ class CommandServer(HTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._commands = []
+        self._command = None
         self._result = None
 
     def handle_timeout(self):
@@ -51,7 +51,9 @@ class CommandServer(HTTPServer):
         """ Queues a command to be executed. """
 
         assert isinstance(command, Command)
-        self._commands.append(command)
+        assert self._command == None
+
+        self._command = command
 
         while self._result == None:
             self.handle_request()
@@ -62,13 +64,11 @@ class CommandServer(HTTPServer):
 
 
     def next_command(self):
-        """ Pops the next command from the queue. """
+        assert self._command != None
 
-        if len(self._commands) == 0:
-            logging.error("Client requested a command, but no more commands were available.")
-            return None
-
-        return self._commands.pop(0)
+        command = copy.copy(self._command)
+        self._command = None
+        return command
 
     def save_result(self, result):
         assert isinstance(result, Result)
@@ -130,7 +130,7 @@ class Command:
 
     @staticmethod
     def exit():
-        return Command(0, exit=True)
+        return Command(exit=True)
 
     @property
     def with_satellites(self):
@@ -172,12 +172,15 @@ class Result:
 
     @staticmethod
     def from_dict(result_dict, spans_received=0):
+        def to_list(val):
+            return val if isinstance(val, list) else [val]
+
         spans_sent = result_dict.get('SpansSent', 0)
         program_time = result_dict.get('ProgramTime', 0)
         clock_time = result_dict.get('ClockTime', 0)
         memory = result_dict.get('Memory', 0)
-        memory_list = [int(m) for m in result_dict.get('MemoryList', [])]
-        cpu_list = [float(m) for m in result_dict.get('CPUList', [])]
+        memory_list = [int(m) for m in to_list(result_dict.get('MemoryList', []))]
+        cpu_list = [float(m) for m in to_list(result_dict.get('CPUList', []))]
 
         return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), memory_list, cpu_list, spans_received=int(spans_received))
 
@@ -258,11 +261,15 @@ class Controller:
                 work=work,
                 repeat=5000))
 
+            logging.info(f'${sleep_per_work:.1f}ns sleep / work --> ${result.cpu_usage * 100:.1f}% CPU usage')
+
             if abs(result.cpu_usage - target_cpu_usage) < .005: # within 1/2 a percent
                 return sleep_per_work
 
             # make sure sleep per work is in range [1, 1000]
             sleep_per_work = np.clip(sleep_per_work + (result.cpu_usage - target_cpu_usage) * p_constant, 1, 1000)
+
+        logging.warn(f'we ran a bunch of trials and could get CPU usage set to ${target_cpu_usage * 100}%')
 
         return sleep_per_work
 
@@ -284,7 +291,7 @@ class Controller:
         repeat = self._work_per_second * runtime / work
 
         # set command server timeout relative to runtime
-        self.server.timeout = runtime * 2
+        self.server.timeout = runtime * 10
 
         if satellites:
             satellites.reset_spans_received()

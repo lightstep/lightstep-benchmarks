@@ -8,34 +8,11 @@ import requests
 import argparse
 import time
 import gc
+import math
 
 MEMORY_PERIOD = 1 # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
 NUM_SATELLITES = 8
-
-
-# class FakeTracer:
-#     def __enter__(self, *args, **kwargs):
-#         pass
-#
-#     def __exit__(self, *args, **kwargs):
-#         pass
-#
-#     def start_active_span(self, name):
-#         return self
-
-# def make_gc_callback():
-#     collections = 0
-#
-#     def gc_callback(phase, info):
-#         nonlocal collections
-#         if phase == 'stop':
-#             collections += 1
-#             print('garbage collected', collections, 'times')
-#
-#     return gc_callback
-#
-# gc.callbacks.append(make_gc_callback())
 
 def work(units):
     i = 1.12563
@@ -99,15 +76,50 @@ def build_tracer(command, tracer_name, port):
     print("We're using a NoOp tracer.")
     return opentracing.Tracer()
 
+SPANS_PER_JUMP = 3
+JUMPS = 2
+SPANS_PER_REPEAT = SPANS_PER_JUMP * JUMPS
+
+def generate_spans(tracer, jumps, amount_work, scope=None):
+    if jumps == 0:
+        return
+
+    with tracer.start_span(operation_name='make_some_request', child_of=scope) as client_span:
+        tracer.scope_manager.activate(client_span, True)
+        client_span.set_tag('http.url', 'http://somerequesturl.com')
+        client_span.set_tag('http.method', "POST")
+        client_span.set_tag('span.kind', 'client')
+
+        with tracer.start_span(operation_name='handle_some_request', child_of=client_span) as server_span:
+            tracer.scope_manager.activate(server_span, True)
+            server_span.set_tag('http.url', 'http://somerequesturl.com')
+            server_span.set_tag('span.kind', 'server')
+
+            server_span.log_kv({'event': 'cache_miss', 'message': 'some cache hit and so we didn\'t have to do extra work'})
+
+            with tracer.start_span(operation_name='database_write', child_of=server_span) as db_span:
+                tracer.scope_manager.activate(db_span, True)
+                db_span.set_tag('db.user', 'test_user')
+                db_span.set_tag('db.type', 'sql')
+                db_span.set_tag('db_statement', 'UPDATE ls_employees SET email = \'isaac@lightstep.com\' WHERE employeeNumber = 27;')
+
+                # pretend that an error happened
+                db_span.set_tag('error', True)
+                db_span.log_kv({'event': 'error', 'stack': "File \"example.py\", line 7, in \<module\>\ncaller()\nFile \"example.py\", line 5, in caller\ncallee()\nFile \"example.py\", line 2, in callee\nraise Exception(\"Yikes\")\n"})
+
+            work(amount_work)
+            generate_spans(tracer, jumps-1, amount_work, scope=server_span)
 
 def perform_work(command, tracer_name, port):
-    print("performing work:", command)
+    print("**********")
+    print("performing work:", command, tracer_name, port)
 
     tracer = build_tracer(command, tracer_name, port)
 
     # if exit is set to true, end the program
     if command['Exit']:
         send_result({})
+        print("sent exit response, now exiting...")
         sys.exit()
 
     sleep_debt = 0
@@ -121,12 +133,13 @@ def perform_work(command, tracer_name, port):
     monitor = Monitor()
     monitor.start()
 
-    for i in range(command['Repeat']): # time.time() < start_time + command['TestTime']:
-        with tracer.start_active_span('TestSpan') as scope:
-            work(command['Work'])
-            spans_sent += 1
 
-        sleep_debt += command['Sleep']
+    for i in range(int(command['Repeat'] / SPANS_PER_REPEAT)):
+        # each hop genereates 3 spans and we do 2 hops
+        generate_spans(tracer, JUMPS, command['Work'])
+        spans_sent += SPANS_PER_REPEAT
+
+        sleep_debt += command['Sleep'] * SPANS_PER_REPEAT
 
         if sleep_debt > command['SleepInterval']:
             sleep_debt -= command['SleepInterval']
@@ -142,10 +155,12 @@ def perform_work(command, tracer_name, port):
 
     # don't include flush in time measurement
     if command['Trace'] and not command['NoFlush']:
+        print("flushing")
         tracer.flush()
 
     cpu_time, clock_time = monitor.stop()
 
+    print("sending result")
     send_result({
         'ProgramTime': cpu_time,
         'ClockTime': clock_time,

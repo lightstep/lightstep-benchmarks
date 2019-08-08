@@ -7,6 +7,20 @@ from .generated import collector_pb2 as collector
 import requests
 from time import time, sleep
 
+class TestController:
+
+
+    def test_benchmark_calibration(self):
+        """ Tests the controller's CPU usage calibration -- make sure that it is
+        accurate to 5%. """
+
+        with Controller('python', target_cpu_usage=.7) as controller:
+            result = controller.benchmark(trace=False, runtime=10)
+            assert abs(result.cpu_usage - .7) < .05
+
+
+
+
 class TestMockSatelliteGroup:
     def test_all_running(self):
         satellites = SatelliteGroup('typical')
