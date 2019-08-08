@@ -14,6 +14,7 @@ from .satellite import MockSatelliteGroup
 from .utils import PROJECT_DIR
 
 CONTROLLER_PORT = 8023
+DEFAULT_SLEEP_INTERVAL = 10**8 # ns
 
 # information about how to startup the different clients
 # needs to be updates as new clients are added
@@ -113,7 +114,7 @@ class Command:
             trace=True,
             with_satellites=True,
             sleep=100,
-            sleep_interval=10**8,
+            sleep_interval=DEFAULT_SLEEP_INTERVAL,
             work=1000,
             repeat=1000,
             exit=False,
@@ -217,11 +218,9 @@ class Controller:
         # calibrate the amount of work the controller does so that when we are using
         # a noop tracer the CPU usage is around 70%
         self._sleep_per_work = self._estimate_sleep_per_work(target_cpu_usage)
-        logging.info(f'Estimated that we need {self._sleep_per_work}ns of sleep per work to achieve {target_cpu_usage*100}% CPU usage.')
 
         # calculate work per second, which we can use to estimate spans per second
         self._work_per_second = self._estimate_work_per_second()
-        logging.info(f'Calculated that this client completes {self._work_per_second} units of work / second.')
 
     def __enter__(self):
         return self
@@ -235,41 +234,60 @@ class Controller:
         self.server.server_close() # unbind controller server from socket
         logging.info("Controller shutdown complete")
 
-    """ Estimate how much work per second the client does. Although in practice
-    this is slightly dependent on work and repeat values, it is mostly dependent on
-    the sleep value. """
+
     def _estimate_work_per_second(self):
-        work = 1000
+        """ Estimate how much work per second the client does. Although in practice
+        this is slightly dependent on work and repeat values, it is mostly dependent on
+        the sleep value.
+
+        This varies quite a bit with spans / second, which makes it a bit tricy to get
+        exactly right. Fortunately, we just have to get in the ballpark.
+        """
+
+        WORK = 50000
         result = self.raw_benchmark(Command(
             trace=False,
-            sleep=work * self._sleep_per_work,
-            work=work,
-            repeat=10000))
+            sleep=WORK * self._sleep_per_work,
+            work=WORK,
+            repeat=1000))
 
-        return work * result.spans_per_second
+        logging.info(f'Calculated that this client completes {WORK * result.spans_per_second} units of work / second.')
 
-    """ Finds sleep per work which leads to target CPU usage. """
-    def _estimate_sleep_per_work(self, target_cpu_usage):
-        sleep_per_work = 25
-        p_constant = 10
-        work = 1000
+        return WORK * result.spans_per_second
 
-        for i in range(0, 20):
+
+    def _estimate_sleep_per_work(self, target_cpu_usage, trials=2):
+        """ Finds sleep per work in ns which leads to target CPU usage. """
+
+        # sleep per work is almost completely independepdent of these values
+        # so long as the test time is fairly long
+        WORK = 50000
+        REPEAT = 10000
+
+        sleep_per_work = 0
+
+        for i in range(trials):
+            # first, lets check the CPU usage without no sleeping
             result = self.raw_benchmark(Command(
                 trace=False,
-                sleep=sleep_per_work * work,
-                work=work,
-                repeat=5000))
+                sleep=sleep_per_work * WORK,
+                work=WORK,
+                repeat=REPEAT))
 
-            logging.info(f'${sleep_per_work:.1f}ns sleep / work --> ${result.cpu_usage * 100:.1f}% CPU usage')
+            # make sure that client doesn't run too fast, we want a stable measurement
+            assert result.clock_time > 2
 
-            if abs(result.cpu_usage - target_cpu_usage) < .005: # within 1/2 a percent
-                return sleep_per_work
+            logging.info(f'clock time: {result.clock_time}, program time: {result.program_time}')
 
-            # make sure sleep per work is in range [1, 1000]
-            sleep_per_work = np.clip(sleep_per_work + (result.cpu_usage - target_cpu_usage) * p_constant, 1, 1000)
+            # **assuming** that the program performs the same with added sleep commands
+            # calculate the additional sleep needed throughout the program to hit the
+            # target CPU usage
+            additional_sleep = (result.program_time / target_cpu_usage) - result.clock_time
+            sleep_per_work += (additional_sleep / (WORK * REPEAT)) * 10**9
 
-        logging.warn(f'we ran a bunch of trials and could get CPU usage set to ${target_cpu_usage * 100}%')
+            logging.info(f'sleep per work is now {sleep_per_work}ns')
+
+        logging.info(f'sleep per work {sleep_per_work} yielded {result.cpu_usage * 100}% CPU usage')
 
         return sleep_per_work
 
@@ -278,7 +296,7 @@ class Controller:
             trace=True,
             no_flush=False, # we typically want flush included with our measurements
             spans_per_second=100,
-            sleep_interval=10**7,
+            sleep_interval=DEFAULT_SLEEP_INTERVAL,
             runtime=10):
 
         if spans_per_second == 0:
@@ -291,7 +309,7 @@ class Controller:
         repeat = self._work_per_second * runtime / work
 
         # set command server timeout relative to runtime
-        self.server.timeout = runtime * 10
+        self.server.timeout = runtime * 2
 
         if satellites:
             satellites.reset_spans_received()

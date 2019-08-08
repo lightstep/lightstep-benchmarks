@@ -80,8 +80,11 @@ SPANS_PER_JUMP = 3
 JUMPS = 2
 SPANS_PER_REPEAT = SPANS_PER_JUMP * JUMPS
 
-def generate_spans(tracer, jumps, amount_work, scope=None):
-    if jumps == 0:
+def generate_spans(tracer, work_list, scope=None):
+    """
+    :work_list: the amount of work to do at each hop
+    """
+    if not work_list:
         return
 
     with tracer.start_span(operation_name='make_some_request', child_of=scope) as client_span:
@@ -107,8 +110,8 @@ def generate_spans(tracer, jumps, amount_work, scope=None):
                 db_span.set_tag('error', True)
                 db_span.log_kv({'event': 'error', 'stack': "File \"example.py\", line 7, in \<module\>\ncaller()\nFile \"example.py\", line 5, in caller\ncallee()\nFile \"example.py\", line 2, in callee\nraise Exception(\"Yikes\")\n"})
 
-            work(amount_work)
-            generate_spans(tracer, jumps-1, amount_work, scope=server_span)
+            work(work_list[0])
+            generate_spans(tracer, work_list[:-1], scope=server_span)
 
 def perform_work(command, tracer_name, port):
     print("**********")
@@ -136,9 +139,8 @@ def perform_work(command, tracer_name, port):
 
     for i in range(int(command['Repeat'] / SPANS_PER_REPEAT)):
         # each hop genereates 3 spans and we do 2 hops
-        generate_spans(tracer, JUMPS, command['Work'])
+        generate_spans(tracer, [command['Work'], command['Work']])
         spans_sent += SPANS_PER_REPEAT
-
         sleep_debt += command['Sleep'] * SPANS_PER_REPEAT
 
         if sleep_debt > command['SleepInterval']:
