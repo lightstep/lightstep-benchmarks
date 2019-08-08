@@ -16,6 +16,12 @@ from .utils import PROJECT_DIR
 CONTROLLER_PORT = 8023
 DEFAULT_SLEEP_INTERVAL = 10**8 # ns
 
+# These values of work and repeat are starting points which should yield a
+# normal number of spans / second, say 100. If you are having problems with your
+# controller, change these.
+CALIBRATION_WORK = 50000
+CALIBRATION_REPEAT = 10000
+
 # information about how to startup the different clients
 # needs to be updates as new clients are added
 client_args = {
@@ -244,35 +250,30 @@ class Controller:
         exactly right. Fortunately, we just have to get in the ballpark.
         """
 
-        WORK = 50000
         result = self.raw_benchmark(Command(
             trace=False,
-            sleep=WORK * self._sleep_per_work,
-            work=WORK,
-            repeat=1000))
+            sleep=CALIBRATION_WORK * self._sleep_per_work,
+            work=CALIBRATION_WORK,
+            repeat=CALIBRATION_REPEAT))
 
-        logging.info(f'Calculated that this client completes {WORK * result.spans_per_second} units of work / second.')
+        assert result.clock_time > 2
 
-        return WORK * result.spans_per_second
+        logging.info(f'Calculated that this client completes {CALIBRATION_WORK * result.spans_per_second} units of work / second.')
+
+        return CALIBRATION_WORK * result.spans_per_second
 
 
     def _estimate_sleep_per_work(self, target_cpu_usage, trials=2):
         """ Finds sleep per work in ns which leads to target CPU usage. """
-
-        # sleep per work is almost completely independepdent of these values
-        # so long as the test time is fairly long
-        WORK = 50000
-        REPEAT = 10000
-
         sleep_per_work = 0
 
         for i in range(trials):
             # first, lets check the CPU usage without no sleeping
             result = self.raw_benchmark(Command(
                 trace=False,
-                sleep=sleep_per_work * WORK,
-                work=WORK,
-                repeat=REPEAT))
+                sleep=sleep_per_work * CALIBRATION_WORK,
+                work=CALIBRATION_WORK,
+                repeat=CALIBRATION_REPEAT))
 
             # make sure that client doesn't run too fast, we want a stable measurement
             assert result.clock_time > 2
@@ -283,7 +284,7 @@ class Controller:
             # calculate the additional sleep needed throughout the program to hit the
             # target CPU usage
             additional_sleep = (result.program_time / target_cpu_usage) - result.clock_time
-            sleep_per_work += (additional_sleep / (WORK * REPEAT)) * 10**9
+            sleep_per_work += (additional_sleep / (CALIBRATION_WORK * CALIBRATION_REPEAT)) * 10**9
 
             logging.info(f'sleep per work is now {sleep_per_work}ns')
 

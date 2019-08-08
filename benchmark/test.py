@@ -8,17 +8,30 @@ import requests
 from time import time, sleep
 
 class TestController:
-
-
-    def test_benchmark_calibration(self):
-        """ Tests the controller's CPU usage calibration -- make sure that it is
-        accurate to 5%. """
+    def test_cpu_calibration(self):
+        """ Tests that the controller's CPU usage calibration is accurate to 2%. """
 
         with Controller('python', target_cpu_usage=.7) as controller:
             result = controller.benchmark(trace=False, runtime=10)
-            assert abs(result.cpu_usage - .7) < .05
+            assert abs(result.cpu_usage - .7) < .02
 
+        with Controller('python', target_cpu_usage=.8) as controller:
+            result = controller.benchmark(trace=False, runtime=10)
+            assert abs(result.cpu_usage - .8) < .02
 
+    def test_runtime_calibration(self):
+        """ Tests that the controller's runtime calibration is accurate to 20%. """
+        RUNTIME = 10
+
+        with Controller('python') as controller:
+            result = controller.benchmark(trace=False, runtime=RUNTIME)
+            runtime_error = abs((result.clock_time - RUNTIME) / RUNTIME)
+
+            assert runtime_error < .2
+
+    def test_satellite_integration(self):
+        """ Test to make sure that we read dropped spans from the satellite and
+        update accordingly. """
 
 
 class TestMockSatelliteGroup:

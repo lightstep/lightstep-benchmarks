@@ -1,0 +1,15 @@
+version: 2
+jobs:
+  cmake_no_grpc:
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
+
+    steps:
+      - checkout
+      - run: ./scripts/ci_setup.sh
+
+      # not installed by ci_setup.sh because this script is shared across
+      # many CI pipelines which all test different tracers
+      - run: sudo pip install lightstep
+      - run: pytest benchmark/test.py
