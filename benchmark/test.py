@@ -35,7 +35,7 @@ class TestController:
 
             assert runtime_error < .2
 
-    def test_satellite_integration(self):
+    def test_benchmark_with_satellite(self):
         """ Test to make sure that we read dropped spans from the satellite and
         update accordingly. """
         with Controller('python') as controller:
@@ -43,7 +43,8 @@ class TestController:
                 result = controller.benchmark(
                     trace=True,
                     spans_per_second=100,
-                    satellites=satellites
+                    satellites=satellites,
+                    runtime=5
                 )
 
                 # make sure that controller calls get_spans_received on satellite
@@ -54,8 +55,51 @@ class TestController:
                 # read from the satellites
                 assert satellites.get_spans_received() == 0
 
-    # def test_benchmark(self):
-    #     with Controller('python' as controller:
+    def test_benchmark_no_satellite(self):
+        with Controller('python') as controller:
+            result = controller.benchmark(
+                trace=False,
+                spans_per_second=100,
+                runtime=5)
+
+            assert result.spans_received == 0
+            assert result.dropped_spans == result.spans_sent
+
+            # check result.cpu_usage
+            assert isinstance(result.cpu_usage, float)
+            assert result.cpu_usage >= 0 and result.cpu_usage <= 1
+
+            # check result.cpu_list
+            assert isinstance(result.cpu_list, list)
+            for item in result.cpu_list:
+                assert isinstance(item, float)
+                assert item >= 0 and item <= 1
+
+            # check result.memory_list and result.memory
+            assert isinstance(result.memory, int)
+            assert isinstance(result.memory_list, list)
+            for item in result.memory_list:
+                assert isinstance(item, int)
+
+            # check result.program_time and result.clock_time
+            assert isinstance(result.clock_time, float)
+            assert isinstance(result.program_time, float)
+            assert result.clock_time > result.program_time
+
+            # check result.spans_per_second
+            assert result.spans_per_second > 0
+
+    # def test_raw_benchmark(self):
+    #     with Controller('python') as controller:
+    #         with SatelliteGroup('typical') as satellites:
+    #             result = controller.raw_benchmark({
+    #                 'Trace': False,
+    #                 'Sleep': 25,
+    #                 'SleepInterval': 10**8,
+    #                 'Work': 10000,
+    #                 'Repeat': 1000,
+    #                 'NoFlush': False
+    #             })
 
 
 class TestMockSatelliteGroup:

@@ -62,7 +62,11 @@ def build_tracer(command, tracer_name, port):
             collector_host='localhost',
             collector_encryption='none',
             use_http=True,
-            access_token='developer'
+            access_token='developer',
+            # these are much more aggressive than the defaults
+            # but are common in production
+            periodic_flush_seconds=.1,
+            max_span_records=10000,
         )
     elif command['Trace'] and tracer_name == "cpp":
         print("We're using the python-cpp tracer.")
