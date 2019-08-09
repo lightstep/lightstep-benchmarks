@@ -81,7 +81,6 @@ class CommandServer(HTTPServer):
         return command
 
     def save_result(self, result):
-        print("save result")
         assert isinstance(result, Result)
 
         with self._lock:
