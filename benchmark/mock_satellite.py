@@ -17,8 +17,12 @@ spans_received = 0
 global_lock = threading.Lock()
 
 # fine to have these global w/o locks because they are not mutable
-mode = None
+MODE = None
 
+# assuming we're within the same datacenter
+ROUNDTRIP_LATENCY = 500 # in microseconds
+
+# histogram values are in microseconds
 typical_hist = Histogram({
     (100, 300): 500000,
     (300, 1000): 100000,
@@ -59,16 +63,16 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
 
     def POST(self):
         if self.path == "/api/v2/reports":
-            global mode
+            global MODE
 
             logging.info("starting to process report request")
 
-            if mode == 'typical':
-                time.sleep(typical_hist.sample() * 10**-6)
-            if mode == 'slow_succeed':
-                time.sleep(slow_hist.sample() * 10**-6)
-            if mode == 'slow_fail':
-                time.sleep(slow_hist.sample() * 10**-6)
+            if MODE == 'typical':
+                time.sleep((typical_hist.sample() + ROUNDTRIP_LATENCY) * 10**-6)
+            if MODE == 'slow_succeed':
+                time.sleep((slow_hist.sample() + ROUNDTRIP_LATENCY) * 10**-6)
+            if MODE == 'slow_fail':
+                time.sleep((slow_hist.sample() + ROUNDTRIP_LATENCY) * 10**-6)
                 self._send_response(400)
                 return
 
@@ -107,7 +111,7 @@ if __name__ == "__main__":
     parser.add_argument('mode', type=str, choices=["typical", "slow_succeed", "slow_fail"], help='how the satellites will respond to requests')
     args = parser.parse_args()
 
-    mode = args.mode
+    MODE = args.mode
 
     logging.info(f'Running satellite on port {args.port} in {args.mode} mode')
 
