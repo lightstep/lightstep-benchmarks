@@ -23,7 +23,7 @@ if __name__ == '__main__':
 
     with Controller(args.client) as controller:
         # two stacked plots in one figure
-        fig, ax = plt.subplots(1, 4, sharex='col', sharey='row', figsize=(20, 8), dpi=100)
+        fig, ax = plt.subplots(1, 4, sharex='col', sharey='row', figsize=(20, 5), dpi=100)
         fig.suptitle(f'{controller.client_name.title()} Satellite Disconnect')
 
         ax[0].set_title("Untraced")

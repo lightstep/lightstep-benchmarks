@@ -16,6 +16,9 @@ MEMORY_PERIOD = 1 # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
 NUM_SATELLITES = 8
 
+MAX_BUFFERED_SPANS = 10000
+REPORTING_PERIOD = 200 # ms
+
 def work(units):
     i = 1.12563
     for i in range(0, units):
@@ -65,8 +68,8 @@ def build_tracer(command, tracer_name, port):
             access_token='developer',
             # these are much more aggressive than the defaults
             # but are common in production
-            periodic_flush_seconds=.1,
-            max_span_records=10000,
+            periodic_flush_seconds=REPORTING_PERIOD / 1000,
+            max_span_records=MAX_BUFFERED_SPANS,
         )
     elif command['Trace'] and tracer_name == "cpp":
         print("We're using the python-cpp tracer.")
@@ -77,6 +80,8 @@ def build_tracer(command, tracer_name, port):
             use_stream_recorder=True,
             collector_plaintext=True,
             satellite_endpoints=[{'host':'localhost', 'port':p} for p in range(port, port + NUM_SATELLITES)],
+            max_buffered_spans=MAX_BUFFERED_SPANS,
+            reporting_period=REPORTING_PERIOD,
         )
 
     print("We're using a NoOp tracer.")
