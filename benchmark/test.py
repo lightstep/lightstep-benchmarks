@@ -3,10 +3,13 @@ from .satellite import MockSatelliteGroup as SatelliteGroup
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from .generated import collector_pb2 as collector
 import requests
 from time import time, sleep
 import logging
+
+import lightstep
+# we have to do this because the locally compiled proto will conflict
+from lightstep import collector_pb2 as collector
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,6 +54,9 @@ class TestController:
                 # read from the satellites
                 assert satellites.get_spans_received() == 0
 
+    # def test_benchmark(self):
+    #     with Controller('python' as controller:
+
 
 class TestMockSatelliteGroup:
     def test_all_running(self):
@@ -82,19 +88,23 @@ class TestMockSatelliteGroup:
 
 
     def test_spans_received(self):
-        with Controller('python') as controller:
-            with SatelliteGroup('typical') as satellites:
-                assert satellites.get_spans_received() == 0
+        with SatelliteGroup('typical') as satellites:
+            assert satellites.get_spans_received() == 0
 
-                # TODO: replace this with a simple tracer that doesn't
-                # depend on this whole controller class working
-                result = controller.benchmark(
-                    trace=True,
-                    spans_per_second=100,
-                    runtime=5
-                )
+            # send 1 span
+            tracer = lightstep.Tracer(
+                component_name='isaac_service',
+                collector_port=8360,
+                collector_host='localhost',
+                collector_encryption='none',
+                use_http=True,
+                access_token='test'
+            )
+            with tracer.start_active_span('TestSpan') as scope:
+                pass
+            tracer.flush()
 
-                assert result.spans_sent == satellites.get_spans_received()
+            assert satellites.get_spans_received() == 1
 
     def test_startup_fail(self):
         """ Satellites should raise an exception if we try to start two
