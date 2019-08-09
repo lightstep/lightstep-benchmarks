@@ -51,16 +51,6 @@ class TestController:
                 # read from the satellites
                 assert satellites.get_spans_received() == 0
 
-    def test_simultaneous(self):
-        """ Two controllers can't be run at once, make sure doing so raises an
-        Exception """
-
-        with Controller('python') as controller1:
-            with pytest.raises(Exception) as exception_info:
-                controller2 = Controller('python')
-
-            assert exception_info.type == Exception
-
 
 class TestMockSatelliteGroup:
     def test_all_running(self):

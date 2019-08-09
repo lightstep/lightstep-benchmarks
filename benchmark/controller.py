@@ -244,7 +244,7 @@ class Controller:
         return CALIBRATION_WORK * result.spans_per_second
 
 
-    def _estimate_sleep_per_work(self, target_cpu_usage, trials=2):
+    def _estimate_sleep_per_work(self, target_cpu_usage, trials=3):
         """ Finds sleep per work in ns which leads to target CPU usage. """
         sleep_per_work = 0
 
