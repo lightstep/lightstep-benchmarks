@@ -1,4 +1,4 @@
-from .controller import Controller, Command, Result
+from .controller import Controller, Result
 from .satellite import MockSatelliteGroup as SatelliteGroup
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,6 +6,9 @@ import pytest
 from .generated import collector_pb2 as collector
 import requests
 from time import time, sleep
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 class TestController:
     def test_cpu_calibration(self):
@@ -32,6 +35,31 @@ class TestController:
     def test_satellite_integration(self):
         """ Test to make sure that we read dropped spans from the satellite and
         update accordingly. """
+        with Controller('python') as controller:
+            with SatelliteGroup('typical') as satellites:
+                result = controller.benchmark(
+                    trace=True,
+                    spans_per_second=100,
+                    satellites=satellites
+                )
+
+                # make sure that controller calls get_spans_received on satellite
+                # and updates spans_received field
+                assert result.spans_received == result.spans_sent
+
+                # make sure that controller resets spans_received after it has
+                # read from the satellites
+                assert satellites.get_spans_received() == 0
+
+    def test_simultaneous(self):
+        """ Two controllers can't be run at once, make sure doing so raises an
+        Exception """
+
+        with Controller('python') as controller1:
+            with pytest.raises(Exception) as exception_info:
+                controller2 = Controller('python')
+
+            assert exception_info.type == Exception
 
 
 class TestMockSatelliteGroup:
@@ -72,14 +100,11 @@ class TestMockSatelliteGroup:
                 # depend on this whole controller class working
                 result = controller.benchmark(
                     trace=True,
-                    satellites=satellites,
                     spans_per_second=100,
                     runtime=5
                 )
-                assert result.spans_sent == satellites.get_spans_received()
 
-                satellites.reset_spans_received()
-                assert satellites.get_spans_received() == 0
+                assert result.spans_sent == satellites.get_spans_received()
 
     def test_startup_fail(self):
         """ Satellites should raise an exception if we try to start two

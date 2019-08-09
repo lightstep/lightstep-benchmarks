@@ -4,6 +4,8 @@ import requests
 import os
 from os import path
 from .utils import PROJECT_DIR, BENCHMARK_DIR
+import logging
+
 
 # top level directory
 
@@ -37,11 +39,14 @@ class MockSatelliteHandler:
             raise Exception("Bad status code -- not able to GET /spans_received from " + host)
 
         try:
-            return int(res.text) - self._spans_received_baseline
+            spans_received = int(res.text) - self._spans_received_baseline
+            logging.info(f'{self.port}: reported {spans_received} spans')
+            return spans_received
         except ValueError:
             raise Exception("Bad response -- expected an integer from " + host)
 
     def reset_spans_received(self):
+        logging.info(f'{self.port}: reset spans received')
         self._spans_received_baseline += self.get_spans_received()
 
     """ Shutdown this satellite and return its logs in string format. """

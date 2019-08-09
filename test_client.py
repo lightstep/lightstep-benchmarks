@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from benchmark.controller import Controller, Command, Result
+from benchmark.controller import Controller, Result
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
 
 @pytest.fixture(scope='module')

@@ -9,6 +9,8 @@ import argparse
 import time
 import gc
 import math
+import logging
+
 
 MEMORY_PERIOD = 1 # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
@@ -120,13 +122,13 @@ def perform_work(command, tracer_name, port):
     print("**********")
     print("performing work:", command, tracer_name, port)
 
-    tracer = build_tracer(command, tracer_name, port)
-
     # if exit is set to true, end the program
     if command['Exit']:
         send_result({})
         print("sent exit response, now exiting...")
         sys.exit()
+
+    tracer = build_tracer(command, tracer_name, port)
 
     sleep_debt = 0
     start_time = time.time()

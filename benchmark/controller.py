@@ -47,6 +47,7 @@ class CommandServer(HTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self._lock = threading.Lock()
         self._command = None
         self._result = None
 
@@ -57,31 +58,35 @@ class CommandServer(HTTPServer):
     def execute_command(self, command):
         """ Queues a command to be executed. """
 
-        assert isinstance(command, Command)
-        assert self._command == None
+        with self._lock:
+            assert self._command == None
+            self._command = command
 
-        self._command = command
-
-        while self._result == None:
+        while True:
             self.handle_request()
 
-        result = copy.copy(self._result)
-        self._result = None
-        return result
+            with self._lock:
+                if self._result != None:
+                    result = copy.copy(self._result)
+                    self._result = None
+                    return result
 
 
     def next_command(self):
-        assert self._command != None
+        with self._lock:
+            assert self._command != None
+            command = copy.copy(self._command)
+            self._command = None
 
-        command = copy.copy(self._command)
-        self._command = None
         return command
 
     def save_result(self, result):
+        print("save result")
         assert isinstance(result, Result)
-        assert self._result == None
 
-        self._result = result
+        with self._lock:
+            assert self._result == None
+            self._result = result
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -99,7 +104,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         next_command = self.server.next_command()
 
         self.send_response(200)
-        body_string = json.dumps(next_command.to_dict())
+        body_string = json.dumps(next_command)
         self.send_header("Content-Length", len(body_string))
         self.end_headers()
         self.wfile.write(body_string.encode('utf-8'))
@@ -108,51 +113,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+        logging.info(self.query_json)
         result = Result.from_dict(self.query_json)
         self.server.save_result(result)
 
     def log_message(self, format, *args):
         return
-
-class Command:
-    def __init__(
-            self,
-            trace=True,
-            with_satellites=True,
-            sleep=100,
-            sleep_interval=DEFAULT_SLEEP_INTERVAL,
-            work=1000,
-            repeat=1000,
-            exit=False,
-            no_flush=False):
-
-        self._trace = trace
-        self._sleep = sleep
-        self._sleep_interval = sleep_interval # 1ms
-        self._with_satellites = with_satellites
-        self._exit = exit
-        self._work = work
-        self._repeat = repeat
-        self._no_flush = no_flush
-
-    @staticmethod
-    def exit():
-        return Command(exit=True)
-
-    @property
-    def with_satellites(self):
-        return self._with_satellites
-
-    def to_dict(self):
-        return {
-            'Trace': self._trace,
-            'Sleep': self._sleep,
-            'SleepInterval': self._sleep_interval,
-            'Exit': self._exit,
-            'Work': self._work,
-            'Repeat': self._repeat,
-            'NoFlush': self._no_flush
-        }
 
 
 ''' allows us to set spans_received even after initializing ...'''
@@ -221,7 +187,7 @@ class Controller:
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
         self.server.timeout = 30 #  timeout used during client calibration
         logging.info("Started controller server.")
-        
+
         self._calibrate(target_cpu_usage)
 
     def _calibrate(self, target_cpu_usage):
@@ -260,11 +226,16 @@ class Controller:
         exactly right. Fortunately, we just have to get in the ballpark.
         """
 
-        result = self.raw_benchmark(Command(
-            trace=False,
-            sleep=CALIBRATION_WORK * self._sleep_per_work,
-            work=CALIBRATION_WORK,
-            repeat=CALIBRATION_REPEAT))
+        result = self.raw_benchmark({
+            'Trace': False,
+            'Sleep': CALIBRATION_WORK * self._sleep_per_work,
+            'SleepInterval': DEFAULT_SLEEP_INTERVAL,
+            'Exit': False,
+            'Work': CALIBRATION_WORK,
+            'Repeat': CALIBRATION_REPEAT,
+            'NoFlush': False
+        })
+
 
         assert result.clock_time > 2
 
@@ -279,11 +250,15 @@ class Controller:
 
         for i in range(trials):
             # first, lets check the CPU usage without no sleeping
-            result = self.raw_benchmark(Command(
-                trace=False,
-                sleep=sleep_per_work * CALIBRATION_WORK,
-                work=CALIBRATION_WORK,
-                repeat=CALIBRATION_REPEAT))
+            result = self.raw_benchmark({
+                'Trace': False,
+                'Sleep': sleep_per_work * CALIBRATION_WORK,
+                'SleepInterval': DEFAULT_SLEEP_INTERVAL,
+                'Exit': False,
+                'Work': CALIBRATION_WORK,
+                'Repeat': CALIBRATION_REPEAT,
+                'NoFlush': False
+            })
 
             # make sure that client doesn't run too fast, we want a stable measurement
             assert result.clock_time > 2
@@ -322,19 +297,25 @@ class Controller:
         # set command server timeout relative to target runtime
         self.server.timeout = runtime * 2
 
+        # make sure that satellite span counters are all zeroed
         if satellites:
             satellites.reset_spans_received()
 
-        result = self.raw_benchmark(Command(
-            trace=trace,
-            no_flush=no_flush,
-            sleep_interval=sleep_interval,
-            sleep=int(work * self._sleep_per_work),
-            work=int(work),
-            repeat=int(repeat)))
+        result = self.raw_benchmark({
+            'Trace': trace,
+            'Sleep': int(work * self._sleep_per_work),
+            'SleepInterval': sleep_interval,
+            'Exit': False,
+            'Work': int(work),
+            'Repeat': int(repeat),
+            'NoFlush': no_flush
+        })
 
+        # give the satellites 1s to handle the spans
         if satellites:
+            time.sleep(1)
             result.spans_received = satellites.get_spans_received()
+            satellites.reset_spans_received()
 
         return result
 
@@ -349,7 +330,7 @@ class Controller:
             logging.info("Client started.")
 
             result = self.server.execute_command(command)
-            self.server.execute_command(Command.exit())
+            self.server.execute_command({'Exit': True})
 
             # at this point, we have sent the exit command and received a response
             # wait for the client program to shutdown
