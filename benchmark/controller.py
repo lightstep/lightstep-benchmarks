@@ -286,7 +286,8 @@ class Controller:
             no_flush=False, # we typically want flush included with our measurements
             spans_per_second=100,
             sleep_interval=DEFAULT_SLEEP_INTERVAL,
-            runtime=10):
+            runtime=10,
+            no_timeout=False):
 
         if spans_per_second == 0:
             raise Exception("Cannot target 0 spans per second.")
@@ -298,7 +299,10 @@ class Controller:
         repeat = self._work_per_second * runtime / work
 
         # set command server timeout relative to target runtime
-        self.server.timeout = runtime * 2
+        if not no_timeout:
+            self.server.timeout = runtime * 2
+        else:
+            self.server.timeout = None
 
         # make sure that satellite span counters are all zeroed
         if satellites:
