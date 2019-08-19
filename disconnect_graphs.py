@@ -22,25 +22,25 @@ if __name__ == '__main__':
     makedirs(path.join(PROJECT_DIR, "graphs"), exist_ok=True)
 
     with Controller(args.client) as controller:
-        # two stacked plots in one figure
+        # four plots laid out side by side
         fig, ax = plt.subplots(1, 4, sharex='col', sharey='row', figsize=(20, 5), dpi=100)
-        fig.suptitle(f'{controller.client_name.title()} Satellite Disconnect')
+        fig.suptitle(f'{controller.client_name.title()} Unreliable Satellite Behavior')
 
-        ax[0].set_title("Untraced")
-        ax[0].set(xlabel="Time (s)", ylabel="Memory (MB)")
+        ax[0].set_title("NoOp Tracer")
+        ax[0].set(xlabel="Seconds", ylabel="Program memory footprint (MB)")
 
         # setup satellite disconnect column
-        ax[1].set_title("Traced")
-        ax[1].set_xlabel("Time (s)")
+        ax[1].set_title("LightStep Tracer")
+        ax[1].set_xlabel("Seconds")
 
         # setup nominal column
         ax[2].set_title("Satellite Disconnect")
-        ax[2].set_xlabel("Time (s)")
+        ax[2].set_xlabel("Seconds")
         ax[2].axvline(x=DISCONNECT_TIME, alpha=.2, color='red')
 
         # setup restart column
         ax[3].set_title("Satellite Reconnect")
-        ax[3].set_xlabel("Time (s)")
+        ax[3].set_xlabel("Seconds")
         ax[3].axvline(x=DISCONNECT_TIME, alpha=.2, color='red')
         ax[3].axvline(x=RECONNECT_TIME, alpha=.2, color='green')
 

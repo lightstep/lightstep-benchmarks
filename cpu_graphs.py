@@ -6,8 +6,6 @@ import numpy as np
 import argparse
 from os import path, makedirs
 
-
-
 TRIALS = 20
 RUNTIME = 10
 
@@ -72,14 +70,14 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.errorbar(sps_traced, cpu_traced, yerr=cpu_traced_std, label='traced')
     ax.errorbar(sps_untraced, cpu_untraced, yerr=cpu_untraced_std, label='untraced')
-    ax.set(xlabel="spans / second", ylabel="CPU Usage")
-    ax.set_title(f'{controller.client_name.title()} Traced and Untraced CPU Use')
+    ax.set(xlabel="Spans per second", ylabel="Total program CPU usage")
+    ax.set_title(f'{controller.client_name.title()} Traced vs Untraced CPU Use')
     ax.legend()
     fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_sps_vs_cpu_comparison.png'))
 
     # draw difference ploit
     fig, ax = plt.subplots()
     ax.errorbar(sps_untraced, cpu_difference, yerr=cpu_difference_std)
-    ax.set(xlabel="spans / second", ylabel="Tracer CPU Usage")
-    ax.set_title(f'{controller.client_name.title()} CPU Cost of Tracer')
+    ax.set(xlabel="Spans per second", ylabel="Tracer library CPU usage")
+    ax.set_title(f'{controller.client_name.title()} CPU Use of LightStep Tracer')
     fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_sps_vs_cpu.png'))

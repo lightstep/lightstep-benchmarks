@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
                 ax.plot(runtime_list, memory_list, label=f'{sps} spans / sec')
 
-    ax.set(xlabel="runtime (s)", ylabel="memory use (MB)")
+    ax.set(xlabel="Seconds program runtime", ylabel="Program memory footprint (MB)")
     ax.set_title(f'{controller.client_name.title()} Memory Use Over Time')
     ax.legend()
     fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_runtime_vs_memory.png'))
