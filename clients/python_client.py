@@ -101,31 +101,27 @@ def generate_spans(tracer, work_list, scope=None):
     # since python-cpp tracer doesn't allow child_of=None
     child_of_kwargs = {'child_of': scope} if scope else {}
 
-    with tracer.start_span(operation_name='make_some_request', **child_of_kwargs) as client_span:
-        tracer.scope_manager.activate(client_span, True)
-        client_span.set_tag('http.url', 'http://somerequesturl.com')
-        client_span.set_tag('http.method', "POST")
-        client_span.set_tag('span.kind', 'client')
+    with tracer.start_active_span(operation_name='make_some_request', **child_of_kwargs) as client_scope:
+        client_scope.span.set_tag('http.url', 'http://somerequesturl.com')
+        client_scope.span.set_tag('http.method', "POST")
+        client_scope.span.set_tag('span.kind', 'client')
 
-        with tracer.start_span(operation_name='handle_some_request', child_of=client_span) as server_span:
-            tracer.scope_manager.activate(server_span, True)
-            server_span.set_tag('http.url', 'http://somerequesturl.com')
-            server_span.set_tag('span.kind', 'server')
+        with tracer.start_active_span(operation_name='handle_some_request', child_of=client_scope) as server_scope:
+            server_scope.span.set_tag('http.url', 'http://somerequesturl.com')
+            server_scope.span.set_tag('span.kind', 'server')
+            server_scope.span.log_kv({'event': 'cache_miss', 'message': 'some cache hit and so we didn\'t have to do extra work'})
 
-            server_span.log_kv({'event': 'cache_miss', 'message': 'some cache hit and so we didn\'t have to do extra work'})
-
-            with tracer.start_span(operation_name='database_write', child_of=server_span) as db_span:
-                tracer.scope_manager.activate(db_span, True)
-                db_span.set_tag('db.user', 'test_user')
-                db_span.set_tag('db.type', 'sql')
-                db_span.set_tag('db_statement', 'UPDATE ls_employees SET email = \'isaac@lightstep.com\' WHERE employeeNumber = 27;')
+            with tracer.start_active_span(operation_name='database_write', child_of=server_scope) as db_scope:
+                db_scope.span.set_tag('db.user', 'test_user')
+                db_scope.span.set_tag('db.type', 'sql')
+                db_scope.span.set_tag('db_statement', 'UPDATE ls_employees SET email = \'isaac@lightstep.com\' WHERE employeeNumber = 27;')
 
                 # pretend that an error happened
-                db_span.set_tag('error', True)
-                db_span.log_kv({'event': 'error', 'stack': "File \"example.py\", line 7, in \<module\>\ncaller()\nFile \"example.py\", line 5, in caller\ncallee()\nFile \"example.py\", line 2, in callee\nraise Exception(\"Yikes\")\n"})
+                db_scope.span.set_tag('error', True)
+                db_scope.span.log_kv({'event': 'error', 'stack': "File \"example.py\", line 7, in \<module\>\ncaller()\nFile \"example.py\", line 5, in caller\ncallee()\nFile \"example.py\", line 2, in callee\nraise Exception(\"Yikes\")\n"})
 
             work(work_list[0])
-            generate_spans(tracer, work_list[:-1], scope=server_span)
+            generate_spans(tracer, work_list[:-1], scope=server_scope)
 
 def perform_work(command, tracer_name, port):
     print("**********")
