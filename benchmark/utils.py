@@ -6,59 +6,14 @@ from os import path
 BENCHMARK_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
 
-class Histogram:
-    def __init__(self, dict):
-        random.seed() # uses os generated random as seed
-        self.bins = []
-        self.counts = []
-
-        for bin in dict:
-            self._add_bin(bin, dict[bin])
-
-    def _bins_overlap(self, bin1, bin2):
-        bin1_min, bin1_max = bin1
-        bin2_min, bin2_max = bin2
-
-        bin1_in_2 = (bin1_min >= bin2_min and bin1_min < bin2_max)
-        bin2_in_1 = (bin2_min >= bin1_min and bin2_min < bin1_max)
-
-        return bin1_in_2 or bin2_in_1
-
-    """ min is inclusive, max is exclusive."""
-    def _add_bin(self, new_bin, count):
-        for bin in self.bins:
-            if self._bins_overlap(bin, new_bin):
-                raise Exception(f'tried to add bin {new_bin} which overlaps with existing bin {bin}')
-
-        self.bins.append(new_bin)
-        self.counts.append(count)
-
-    def sample(self):
-        total_rands = sum(self.counts)
-        rand_num = random.randint(0, total_rands - 1) # generates in range [0, total_rands)
-        bin_number = 0
-
-        while True:
-            rand_num -= self.counts[bin_number]
-
-            if rand_num < 0:
-                break
-
-            bin_number += 1
-
-        # return an average of the bin max and min
-        return random.randint(self.bins[bin_number][0], self.bins[bin_number][1])
-
-
-"""
-A class that extends BaseHTTPRequestHandler to support chunked encoding. The
-class will read POST request headers and determine if the request is in
-fixed-length or chunked format. The request body will be parsed and saved
-in @binary_body bytearray.
-
-Derrived classes should use POST and GET instead of do_POST and do_GET.
-"""
 class ChunkedRequestHandler(BaseHTTPRequestHandler):
+    # A class that extends BaseHTTPRequestHandler to support chunked encoding. The
+    # class will read POST request headers and determine if the request is in
+    # fixed-length or chunked format. The request body will be parsed and saved
+    # in @binary_body bytearray.
+    # Derrived classes should use POST and GET instead of do_POST and do_GET.
+
+
     def do_POST(self):
         # if there is a content-length header, we know how much data to read
         if "Content-Length" in self.headers:

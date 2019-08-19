@@ -173,7 +173,7 @@ def perform_work(command, tracer_name, port):
             cpu_list.append(monitor.get_cpu() / 100)
             last_memory_save = time.time()
 
-    memory = monitor.get_memory()
+    memory_list.append(monitor.get_memory())
 
     # don't include flush in time measurement
     if command['Trace'] and not command['NoFlush']:
@@ -187,7 +187,6 @@ def perform_work(command, tracer_name, port):
         'ProgramTime': cpu_time,
         'ClockTime': clock_time,
         'SpansSent': spans_sent,
-        'Memory': memory,
         'MemoryList': memory_list,
         'CPUList': cpu_list,
     })

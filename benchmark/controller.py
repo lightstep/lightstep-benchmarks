@@ -13,19 +13,32 @@ import logging
 from .satellite import MockSatelliteGroup
 from .utils import PROJECT_DIR
 
+"""
+This module is used to benchmark tracers.
+
+Config Variables
+----------------
+calibration_work : int
+    A guideline for how many units of work the client should complete per span
+    during calibration. This amount of work should produce ~100 spans / second
+    when the client program is using a NoOp tracer and not sleeping.
+
+client_args : dict mapping str to list of str
+    Keys are the names of various client programs (eg. 'python'). Values are
+    lists of strings which can be run on the command-line to start the client
+    program.
+"""
+
 CONTROLLER_PORT = 8023
 DEFAULT_SLEEP_INTERVAL = 10**8 # ns
 
-# These values of work and repeat are starting points which should yield a
-# normal number of spans / second, say 100. If you are having problems with your
-# controller, change these.
-CALIBRATION_WORK = 20000
-CALIBRATION_REPEAT = 4000
+# since calibration_work should be set to produce roughly 100 spans / second,
+# this value of CALIBARATION_REPEAT should make the test last 5 seconds.
+CALIBRATION_REPEAT = 500
 CALIBRATION_TIMEOUT = 60
 
 
-# information about how to startup the different clients
-# needs to be updates as new clients are added
+calibration_work = 200000
 client_args = {
     'python': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8360', 'vanilla'],
     'python-cpp': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8360', 'cpp'],
@@ -33,9 +46,10 @@ client_args = {
 }
 
 
-""" Dictionaries created by urllib.parse.parse_qs looks like {key: [value], ...}
-This function take dictionaries of that format and makes them normal. """
 def _format_query_json(query_dict):
+    # Dictionaries created by urllib.parse.parse_qs looks like {key: [value], ...}
+    # This function take dictionaries of that format and makes them normal.
+
     normal_dict = {}
     for key in query_dict:
         if len(query_dict[key]) == 1:
@@ -58,7 +72,7 @@ class CommandServer(HTTPServer):
 
 
     def execute_command(self, command):
-        """ Queues a command to be executed. """
+        # Schedules a test for the client process to run.
 
         with self._lock:
             assert self._command == None
@@ -122,13 +136,40 @@ class RequestHandler(BaseHTTPRequestHandler):
         return
 
 
-''' allows us to set spans_received even after initializing ...'''
+
 class Result:
-    def __init__(self, spans_sent, program_time, clock_time, memory, memory_list, cpu_list, spans_received=0):
+    """
+    Holds results from a test run by the client.
+
+    Attributes
+    ----------
+    spans_sent : int
+        Number of spans generated during test.
+    program_time : float
+        CPU seconds that the test took to complete.
+    clock_time : float
+        Clock time that the test took to complete.
+    memory_list : list of int
+        Test memory use over time, in bytes.
+    cpu_list : list of float
+        Percent CPU use of the test over time, from 0.0 to 1.0.
+    spans_received : int
+        Spans received by mock satellites. If the tests was run without mock
+        satellites, this is set to 0.
+    memory : int
+        Memory use of test just before completion.
+    spans_per_second : float
+        Spans sent per second.
+    dropped_spans : float
+        Fraction of spans which were not received by mock satellites.
+    cpu_usage : float
+        Average CPU usage over the entire length of the test, from 0.0 to 1.0.
+    """
+
+    def __init__(self, spans_sent, program_time, clock_time, memory_list, cpu_list, spans_received=0):
         self.spans_sent = spans_sent
         self.program_time = program_time
         self.clock_time = clock_time
-        self.memory = memory
         self.memory_list = memory_list
         self.cpu_list = cpu_list
         self.spans_received = spans_received
@@ -152,11 +193,14 @@ class Result:
         spans_sent = result_dict.get('SpansSent', 0)
         program_time = result_dict.get('ProgramTime', 0)
         clock_time = result_dict.get('ClockTime', 0)
-        memory = result_dict.get('Memory', 0)
         memory_list = [int(m) for m in to_list(result_dict.get('MemoryList', []))]
         cpu_list = [float(m) for m in to_list(result_dict.get('CPUList', []))]
 
-        return Result(int(spans_sent), float(program_time), float(clock_time), int(memory), memory_list, cpu_list, spans_received=int(spans_received))
+        return Result(int(spans_sent), float(program_time), float(clock_time), memory_list, cpu_list, spans_received=int(spans_received))
+
+    @property
+    def memory(self):
+        return self.memory_list[-1]
 
     @property
     def spans_per_second(self):
@@ -174,7 +218,22 @@ class Result:
 
 
 class Controller:
+    """ Harness used to benchmark tracers. """
+
     def __init__(self, client_name, target_cpu_usage=.7):
+        """
+        Create a new instance of Controller.
+
+        Parameters
+        ---------
+        client_name : str
+            Name of the client which will be used to perform tests (eg. 'python', 'python-cpp').
+            Clients are registered in `client_args` global variable.
+        target_cpu_usage : float
+            Calibrate client program to use `target_cpu_usage` percent CPU when
+            using a NoOp tracer.
+        """
+
         if client_name not in client_args:
             raise Exception("Invalid client name. Did you forget to register your client?")
 
@@ -215,64 +274,67 @@ class Controller:
         return False
 
     def shutdown(self):
+        """ Shutdown the Controller. """
+
         logging.info("Controller shutdown called")
         self.server.server_close() # unbind controller server from socket
         logging.info("Controller shutdown complete")
 
 
     def _estimate_work_per_second(self):
-        """ Estimate how much work per second the client does. Although in practice
-        this is slightly dependent on work and repeat values, it is mostly dependent on
-        the sleep value.
+        # Estimate how much work per second the client does. Although in practice
+        # this is slightly dependent on work and repeat values, it is mostly dependent on
+        # the sleep value.
+        # This varies quite a bit with spans / second, which makes it a bit tricy to get
+        # exactly right. Fortunately, we just have to get in the ballpark.
 
-        This varies quite a bit with spans / second, which makes it a bit tricy to get
-        exactly right. Fortunately, we just have to get in the ballpark.
-        """
-
-        result = self.raw_benchmark({
+        result = self._raw_benchmark({
             'Trace': False,
-            'Sleep': CALIBRATION_WORK * self._sleep_per_work,
+            'Sleep': calibration_work * self._sleep_per_work,
             'SleepInterval': DEFAULT_SLEEP_INTERVAL,
             'Exit': False,
-            'Work': CALIBRATION_WORK,
+            'Work': calibration_work,
             'Repeat': CALIBRATION_REPEAT,
             'NoFlush': False
         })
 
-
+        # make sure that client doesn't run this tests because we want a stable measurement
         assert result.clock_time > 2
 
-        logging.info(f'Calculated that this client completes {CALIBRATION_WORK * result.spans_per_second} units of work / second.')
+        logging.info(f'Calculated that this client completes {calibration_work * result.spans_per_second} units of work / second.')
+        logging.info(result)
 
-        return CALIBRATION_WORK * result.spans_per_second
+        return calibration_work * result.spans_per_second
 
 
     def _estimate_sleep_per_work(self, target_cpu_usage, trials=3):
-        """ Finds sleep per work in ns which leads to target CPU usage. """
+        # Finds sleep per work in ns which leads to target CPU usage.
+
         sleep_per_work = 0
 
         for i in range(trials):
             # first, lets check the CPU usage without no sleeping
-            result = self.raw_benchmark({
+            result = self._raw_benchmark({
                 'Trace': False,
-                'Sleep': sleep_per_work * CALIBRATION_WORK,
+                'Sleep': sleep_per_work * calibration_work,
                 'SleepInterval': DEFAULT_SLEEP_INTERVAL,
                 'Exit': False,
-                'Work': CALIBRATION_WORK,
+                'Work': calibration_work,
                 'Repeat': CALIBRATION_REPEAT,
                 'NoFlush': False
             })
 
-            # make sure that client doesn't run too fast, we want a stable measurement
+            # make sure that client doesn't run this tests because we want a stable measurement
             assert result.clock_time > 2
 
             logging.info(f'clock time: {result.clock_time}, program time: {result.program_time}')
+            logging.info(result)
 
             # **assuming** that the program performs the same with added sleep commands
             # calculate the additional sleep needed throughout the program to hit the
             # target CPU usage
             additional_sleep = (result.program_time / target_cpu_usage) - result.clock_time
-            sleep_per_work += (additional_sleep / (CALIBRATION_WORK * CALIBRATION_REPEAT)) * 10**9
+            sleep_per_work += (additional_sleep / (calibration_work * CALIBRATION_REPEAT)) * 10**9
 
             logging.info(f'sleep per work is now {sleep_per_work}ns')
 
@@ -285,9 +347,36 @@ class Controller:
             trace=True,
             no_flush=False, # we typically want flush included with our measurements
             spans_per_second=100,
-            sleep_interval=DEFAULT_SLEEP_INTERVAL,
             runtime=10,
             no_timeout=False):
+        """
+        Run a test using the client this Controller is bound to.
+
+        Parameters
+        ----------
+        satellites : satellite.MockSatelliteGroup
+            Group of satellites that client program should send data to.
+            If not specified, returned `Result` object won't have accurate
+            `dropped_spans` or `spans_received` attributes.
+        trace : bool
+            False if the client should use a NoOp tracer.
+        no_flush : bool
+            True if the client shouldn't flush buffered spans before ending the
+            test.
+        spans_per_second : int
+            A guideline for the rate at which the client should try to generate
+            spans. Higher rates are harder to achieve.
+        runtime : int
+            Approximately how long the test should run.
+        no_timeout : bool
+            If True, the test has no maximum duration. If False, the tests will
+            be stopped after `runtime` * 2 seconds.
+
+        Returns
+        -------
+        controller.Result
+            The result of the test.
+        """
 
         if spans_per_second == 0:
             raise Exception("Cannot target 0 spans per second.")
@@ -308,10 +397,10 @@ class Controller:
         if satellites:
             satellites.reset_spans_received()
 
-        result = self.raw_benchmark({
+        result = self._raw_benchmark({
             'Trace': trace,
             'Sleep': int(work * self._sleep_per_work),
-            'SleepInterval': sleep_interval,
+            'SleepInterval': DEFAULT_SLEEP_INTERVAL,
             'Exit': False,
             'Work': int(work),
             'Repeat': int(repeat),
@@ -327,7 +416,7 @@ class Controller:
         return result
 
 
-    def raw_benchmark(self, command):
+    def _raw_benchmark(self, command):
         log_filepath = path.join(PROJECT_DIR, f'logs/{self.client_name}.log')
 
         # startup test process

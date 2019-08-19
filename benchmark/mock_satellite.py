@@ -1,7 +1,7 @@
 import generated.collector_pb2 as collector
 import google.protobuf
 from http.server import ThreadingHTTPServer
-from utils import ChunkedRequestHandler, Histogram
+from utils import ChunkedRequestHandler
 import threading
 import argparse
 import sys
@@ -12,28 +12,18 @@ import logging
 logging.basicConfig(format='%(asctime)s: %(message)s', level=logging.DEBUG, datefmt='%I:%M:%S')
 
 
-# this
+# multiple threads may access spans_received so it's protected with a lock
 spans_received = 0
 global_lock = threading.Lock()
 
-# fine to have these global w/o locks because they are not mutable
+# fine to have this global w/o locks its not mutable
 MODE = None
 
-# assuming we're within the same datacenter
-ROUNDTRIP_LATENCY = 500 # in microseconds
-
-# histogram values are in microseconds
-typical_hist = Histogram({
-    (100, 300): 500000,
-    (300, 1000): 100000,
-    (1000, 5000): 2000,
-    (5000, 50000): 500,
-})
-
-slow_hist = Histogram({
-    (5 * 10**6, 10 * 10**6): 1,
-})
-
+# all in microseconds:
+ROUNDTRIP_NETWORK_LATENCY = 500 # assuming we're within the same datacenter, this is standard
+TYPICAL_RESPONSE_TIME = 500
+SLOW_RESPONSE_TIME = 10000
+FAST_RESPONSE_TIME = 100
 
 class SatelliteRequestHandler(ChunkedRequestHandler):
     def _send_response(self, response_code, body_string=None):
@@ -68,11 +58,11 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             logging.info("starting to process report request")
 
             if MODE == 'typical':
-                time.sleep((typical_hist.sample() + ROUNDTRIP_LATENCY) * 10**-6)
+                time.sleep((TYPICAL_RESPONSE_TIME + ROUNDTRIP_NETWORK_LATENCY) * 10**-6)
             if MODE == 'slow_succeed':
-                time.sleep((slow_hist.sample() + ROUNDTRIP_LATENCY) * 10**-6)
+                time.sleep((SLOW_RESPONSE_TIME + ROUNDTRIP_NETWORK_LATENCY) * 10**-6)
             if MODE == 'slow_fail':
-                time.sleep((slow_hist.sample() + ROUNDTRIP_LATENCY) * 10**-6)
+                time.sleep((FAST_RESPONSE_TIME + ROUNDTRIP_NETWORK_LATENCY) * 10**-6)
                 self._send_response(400)
                 return
 

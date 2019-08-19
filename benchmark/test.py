@@ -90,11 +90,10 @@ class TestController:
             assert result.spans_per_second > 0
 
     def test_raw_benchmark(self):
-        """ Make sure that raw_benchmark sends the correct number of spans
-        (Repeat).
-        """
+        """ Make sure that raw_benchmark sends the correct number of spans. """
+        
         with Controller('python') as controller:
-            result = controller.raw_benchmark({
+            result = controller._raw_benchmark({
                 'Trace': False,
                 'Sleep': 25,
                 'SleepInterval': 10**8,
