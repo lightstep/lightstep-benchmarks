@@ -19,8 +19,10 @@ DEFAULT_SLEEP_INTERVAL = 10**8 # ns
 # These values of work and repeat are starting points which should yield a
 # normal number of spans / second, say 100. If you are having problems with your
 # controller, change these.
-CALIBRATION_WORK = 50000
-CALIBRATION_REPEAT = 10000
+CALIBRATION_WORK = 20000
+CALIBRATION_REPEAT = 4000
+CALIBRATION_TIMEOUT = 60
+
 
 # information about how to startup the different clients
 # needs to be updates as new clients are added
@@ -184,12 +186,13 @@ class Controller:
 
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
-        self.server.timeout = 30 #  timeout used during client calibration
         logging.info("Started controller server.")
 
         self._calibrate(target_cpu_usage)
 
     def _calibrate(self, target_cpu_usage):
+        self.server.timeout = CALIBRATION_TIMEOUT #  timeout used during client calibration
+
         try:
             # calibrate the amount of work the controller does so that when we are using
             # a noop tracer the CPU usage is around 70%
@@ -201,6 +204,7 @@ class Controller:
         # if for some reason calibration fails, we still want to shutdown gracefully
         except:
             self.shutdown()
+            logging.error("An exception was raised while calibrating.")
             raise
 
     def __enter__(self):

@@ -11,6 +11,9 @@ import gc
 import math
 import logging
 
+FORMAT = '%(asctime)-15s %(message)s'
+logging.basicConfig(format=FORMAT, level=logging.INFO)
+
 
 MEMORY_PERIOD = 1 # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
@@ -19,11 +22,9 @@ NUM_SATELLITES = 8
 MAX_BUFFERED_SPANS = 10000
 REPORTING_PERIOD = 200 # ms
 
-SPANS_PER_JUMP = 3
-JUMPS = 2
-SPANS_PER_REPEAT = SPANS_PER_JUMP * JUMPS
+SPANS_PER_LOOP = 6
 
-def work(units):
+def do_work(units):
     i = 1.12563
     for i in range(0, units):
         i *= i
@@ -62,7 +63,7 @@ class Monitor:
 
 def build_tracer(command, tracer_name, port):
     if command['Trace'] and tracer_name == "vanilla":
-        print("We're using the python tracer.")
+        logging.info("We're using the python tracer.")
         import lightstep
         return lightstep.Tracer(
             component_name='isaac_service',
@@ -77,7 +78,7 @@ def build_tracer(command, tracer_name, port):
             max_span_records=MAX_BUFFERED_SPANS,
         )
     elif command['Trace'] and tracer_name == "cpp":
-        print("We're using the python-cpp tracer.")
+        logging.info("We're using the python-cpp tracer.")
         import lightstep_native
         return lightstep_native.Tracer(
             component_name='isaac_service',
@@ -89,15 +90,11 @@ def build_tracer(command, tracer_name, port):
             reporting_period=REPORTING_PERIOD,
         )
 
-    print("We're using a NoOp tracer.")
+    logging.info("We're using a NoOp tracer.")
     return opentracing.Tracer()
 
-def generate_spans(tracer, work_list, scope=None):
-    """
-    :work_list: the amount of work to do at each hop
-    """
-    if not work_list:
-        return
+def generate_spans(tracer, units_work, number_spans, scope=None):
+    assert number_spans >= 1
 
     # since python-cpp tracer doesn't allow child_of=None
     child_of_kwargs = {'child_of': scope.span} if scope else {}
@@ -106,11 +103,19 @@ def generate_spans(tracer, work_list, scope=None):
         client_scope.span.set_tag('http.url', 'http://somerequesturl.com')
         client_scope.span.set_tag('http.method', "POST")
         client_scope.span.set_tag('span.kind', 'client')
+        do_work(units_work)
+        number_spans -= 1
+        if number_spans == 0:
+            return
 
         with tracer.start_active_span(operation_name='handle_some_request') as server_scope:
             server_scope.span.set_tag('http.url', 'http://somerequesturl.com')
             server_scope.span.set_tag('span.kind', 'server')
             server_scope.span.log_kv({'event': 'cache_miss', 'message': 'some cache hit and so we didn\'t have to do extra work'})
+            do_work(units_work)
+            number_spans -= 1
+            if number_spans == 0:
+                return
 
             with tracer.start_active_span(operation_name='database_write') as db_scope:
                 db_scope.span.set_tag('db.user', 'test_user')
@@ -121,17 +126,21 @@ def generate_spans(tracer, work_list, scope=None):
                 db_scope.span.set_tag('error', True)
                 db_scope.span.log_kv({'event': 'error', 'stack': "File \"example.py\", line 7, in \<module\>\ncaller()\nFile \"example.py\", line 5, in caller\ncallee()\nFile \"example.py\", line 2, in callee\nraise Exception(\"Yikes\")\n"})
 
-            work(work_list[0])
-            generate_spans(tracer, work_list[:-1], scope=server_scope)
+                do_work(units_work)
+                number_spans -= 1
+                if number_spans == 0:
+                    return
+
+            generate_spans(tracer, units_work, number_spans, scope=server_scope)
 
 def perform_work(command, tracer_name, port):
-    print("**********")
-    print("performing work:", command, tracer_name, port)
+    logging.info("**********")
+    logging.info("performing work: {}, {}, {}".format(command, tracer_name, port))
 
     # if exit is set to true, end the program
     if command['Exit']:
         send_result({})
-        print("sent exit response, now exiting...")
+        logging.info("sent exit response, now exiting...")
         sys.exit()
 
     tracer = build_tracer(command, tracer_name, port)
@@ -148,11 +157,11 @@ def perform_work(command, tracer_name, port):
     monitor.start()
 
 
-    for i in range(int(command['Repeat'] / SPANS_PER_REPEAT)):
-        # each hop genereates 3 spans and we do 2 hops
-        generate_spans(tracer, [command['Work'], command['Work']])
-        spans_sent += SPANS_PER_REPEAT
-        sleep_debt += command['Sleep'] * SPANS_PER_REPEAT
+    while spans_sent < command['Repeat']:
+        spans_to_send = min(command['Repeat'] - spans_sent, SPANS_PER_LOOP)
+        generate_spans(tracer, command['Work'], spans_to_send)
+        spans_sent += spans_to_send
+        sleep_debt += command['Sleep'] * spans_to_send
 
         if sleep_debt > command['SleepInterval']:
             sleep_debt -= command['SleepInterval']
@@ -168,12 +177,12 @@ def perform_work(command, tracer_name, port):
 
     # don't include flush in time measurement
     if command['Trace'] and not command['NoFlush']:
-        print("flushing")
+        logging.info("flushing")
         tracer.flush()
 
     cpu_time, clock_time = monitor.stop()
 
-    print("sending result")
+    logging.info("sending result")
     send_result({
         'ProgramTime': cpu_time,
         'ClockTime': clock_time,
