@@ -19,6 +19,10 @@ NUM_SATELLITES = 8
 MAX_BUFFERED_SPANS = 10000
 REPORTING_PERIOD = 200 # ms
 
+SPANS_PER_JUMP = 3
+JUMPS = 2
+SPANS_PER_REPEAT = SPANS_PER_JUMP * JUMPS
+
 def work(units):
     i = 1.12563
     for i in range(0, units):
@@ -27,13 +31,14 @@ def work(units):
 def send_result(result):
     r = requests.get(f'http://localhost:{CONTROLLER_PORT}/result', params=result)
 
-""" Special timer to measure process time and time spent as a result of this
-process' system calls.
 
-Records 2 * 10^-5 seconds when we immediately run start() then stop(), so tests should be
-at ms scale to dwarf this contribution.
-"""
 class Monitor:
+    """ Special timer to measure process time and time spent as a result of this
+    process' system calls.
+
+    Records 2 * 10^-5 seconds when we immediately run start() then stop(), so tests should be
+    at ms scale to dwarf this contribution.
+    """
     def __init__(self):
         self.process = psutil.Process()
 
@@ -87,10 +92,6 @@ def build_tracer(command, tracer_name, port):
     print("We're using a NoOp tracer.")
     return opentracing.Tracer()
 
-SPANS_PER_JUMP = 3
-JUMPS = 2
-SPANS_PER_REPEAT = SPANS_PER_JUMP * JUMPS
-
 def generate_spans(tracer, work_list, scope=None):
     """
     :work_list: the amount of work to do at each hop
@@ -99,19 +100,19 @@ def generate_spans(tracer, work_list, scope=None):
         return
 
     # since python-cpp tracer doesn't allow child_of=None
-    child_of_kwargs = {'child_of': scope} if scope else {}
+    child_of_kwargs = {'child_of': scope.span} if scope else {}
 
     with tracer.start_active_span(operation_name='make_some_request', **child_of_kwargs) as client_scope:
         client_scope.span.set_tag('http.url', 'http://somerequesturl.com')
         client_scope.span.set_tag('http.method', "POST")
         client_scope.span.set_tag('span.kind', 'client')
 
-        with tracer.start_active_span(operation_name='handle_some_request', child_of=client_scope) as server_scope:
+        with tracer.start_active_span(operation_name='handle_some_request') as server_scope:
             server_scope.span.set_tag('http.url', 'http://somerequesturl.com')
             server_scope.span.set_tag('span.kind', 'server')
             server_scope.span.log_kv({'event': 'cache_miss', 'message': 'some cache hit and so we didn\'t have to do extra work'})
 
-            with tracer.start_active_span(operation_name='database_write', child_of=server_scope) as db_scope:
+            with tracer.start_active_span(operation_name='database_write') as db_scope:
                 db_scope.span.set_tag('db.user', 'test_user')
                 db_scope.span.set_tag('db.type', 'sql')
                 db_scope.span.set_tag('db_statement', 'UPDATE ls_employees SET email = \'isaac@lightstep.com\' WHERE employeeNumber = 27;')
