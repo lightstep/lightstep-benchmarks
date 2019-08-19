@@ -10,7 +10,9 @@ def satellites():
         yield satellites
 
 def test_memory(client_name, satellites):
-    """ Tracers should not have memory leaks """
+    """ Tracers should not have memory leaks. Make sure that running the tracer
+    for 100s doesn't use more than twice as much memory as running it for
+    5s. """
 
     with Controller(client_name) as controller:
         result_100s = controller.benchmark(
@@ -25,7 +27,6 @@ def test_memory(client_name, satellites):
             runtime=5,
             satellites=satellites)
 
-    # 100s memory < 1.5x 5s memory
     assert(result_100s.memory / result_5s.memory < 2)
 
 
@@ -51,7 +52,8 @@ def test_dropped_spans(client_name, satellites):
 
 def test_cpu(client_name, satellites):
     """ Traced ciode shouldn't consume significatly more CPU than untraced
-    code """
+    code. Ensure that traced code sending 500 spans / second doesn't increase
+    CPU usage by more than 10%. """
 
     TRIALS = 5
     cpu_traced = []
@@ -72,3 +74,28 @@ def test_cpu(client_name, satellites):
             cpu_traced.append(result_traced.cpu_usage * 100)
 
     assert(abs(np.mean(cpu_traced) - np.mean(cpu_untraced)) < 10)
+
+def test_max_throughput():
+    """ Ensure that we can send 3000 spans / second before LightStep tracer
+    uses 10% CPU. """
+
+    SPS_INCREMENT = 1000
+
+    with SatelliteGroup('typical') as satellites:
+        with Controller('python') as controller:
+            target_sps = SPS_INCREMENT
+
+            while True:
+                result = controller.benchmark(
+                    trace=True,
+                    spans_per_second=target_sps,
+                    runtime=5,
+                    satellites=satellites)
+
+                if result.cpu_usage > .8:
+                    break
+
+                target_sps += SPS_INCREMENT
+
+            assert result.spans_per_second > 3000
+            assert result.dropped_spans == 0
