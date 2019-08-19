@@ -75,27 +75,26 @@ def test_cpu(client_name, satellites):
 
     assert(abs(np.mean(cpu_traced) - np.mean(cpu_untraced)) < 10)
 
-def test_max_throughput():
+def test_max_throughput(client_name, satellites):
     """ Ensure that we can send 3000 spans / second before LightStep tracer
     uses 10% CPU. """
 
     SPS_INCREMENT = 1000
 
-    with SatelliteGroup('typical') as satellites:
-        with Controller('python') as controller:
-            target_sps = SPS_INCREMENT
+    with Controller(client_name) as controller:
+        target_sps = SPS_INCREMENT
 
-            while True:
-                result = controller.benchmark(
-                    trace=True,
-                    spans_per_second=target_sps,
-                    runtime=5,
-                    satellites=satellites)
+        while True:
+            result = controller.benchmark(
+                trace=True,
+                spans_per_second=target_sps,
+                runtime=5,
+                satellites=satellites)
 
-                if result.cpu_usage > .8:
-                    break
+            if result.cpu_usage > .8:
+                break
 
-                target_sps += SPS_INCREMENT
+            target_sps += SPS_INCREMENT
 
-            assert result.spans_per_second > 3000
-            assert result.dropped_spans == 0
+        assert result.spans_per_second > 3000
+        assert result.dropped_spans == 0
