@@ -89,17 +89,22 @@ class TestController:
             # check result.spans_per_second
             assert result.spans_per_second > 0
 
-    # def test_raw_benchmark(self):
-    #     with Controller('python') as controller:
-    #         with SatelliteGroup('typical') as satellites:
-    #             result = controller.raw_benchmark({
-    #                 'Trace': False,
-    #                 'Sleep': 25,
-    #                 'SleepInterval': 10**8,
-    #                 'Work': 10000,
-    #                 'Repeat': 1000,
-    #                 'NoFlush': False
-    #             })
+    def test_raw_benchmark(self):
+        """ Make sure that raw_benchmark sends the correct number of spans
+        (Repeat).
+        """
+        with Controller('python') as controller:
+            result = controller.raw_benchmark({
+                'Trace': False,
+                'Sleep': 25,
+                'SleepInterval': 10**8,
+                'Work': 100,
+                'Repeat': 100,
+                'NoFlush': False,
+                'Exit': False
+            })
+
+            assert result.spans_sent == 100
 
 
 class TestMockSatelliteGroup:
