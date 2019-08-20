@@ -92,7 +92,7 @@ if __name__ == '__main__':
                 if action != 'disconnect':
                     satellites.shutdown()
 
-                sample_time = list(range(1, len(result.cpu_list) + 1))
+                sample_time = list(range(1, len(result.memory_list) + 1))
                 ax[index].plot(sample_time,
                                [m * 2**-20 for m in result.memory_list])
 

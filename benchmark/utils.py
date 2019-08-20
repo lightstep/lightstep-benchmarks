@@ -52,6 +52,7 @@ def setup_logger(logger, filename):
     print_handler.setFormatter(basic_formatter)
     print_handler.setLevel(logging.WARNING)
 
+    logger.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
     logger.addHandler(print_handler)
 

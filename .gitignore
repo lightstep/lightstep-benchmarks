@@ -5,3 +5,4 @@ generated
 logs
 .ipynb_checkpoints
 .pytest_cache
+*.pyc
