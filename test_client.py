@@ -1,13 +1,14 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from benchmark.controller import Controller, Result
+from benchmark.controller import Controller
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
+
 
 @pytest.fixture(scope='module')
 def satellites():
     with SatelliteGroup('typical') as satellites:
         yield satellites
+
 
 def test_memory(client_name, satellites):
     """ Tracers should not have memory leaks. Make sure that running the tracer
@@ -74,6 +75,7 @@ def test_cpu(client_name, satellites):
             cpu_traced.append(result_traced.cpu_usage * 100)
 
     assert(abs(np.mean(cpu_traced) - np.mean(cpu_untraced)) < 10)
+
 
 def test_max_throughput(client_name, satellites):
     """ Ensure that we can send 3000 spans / second before LightStep tracer

@@ -30,8 +30,8 @@ def send_result(result):
 
 
 class Monitor:
-    """ Special timer to measure process time and time spent as a result of this
-    process' system calls.
+    """ Special timer to measure process time and time spent as a result of
+    this process' system calls.
 
     Records 2 * 10^-5 seconds when we immediately run start() then stop(), so
     tests should be at ms scale to dwarf this contribution.
@@ -83,7 +83,8 @@ def build_tracer(command, tracer_name, port):
             access_token='developer',
             use_stream_recorder=True,
             collector_plaintext=True,
-            satellite_endpoints=[{'host': 'localhost', 'port': p} for p in range(port, port + NUM_SATELLITES)],
+            satellite_endpoints=[{'host': 'localhost', 'port': p}
+                                 for p in range(port, port + NUM_SATELLITES)],
             max_buffered_spans=MAX_BUFFERED_SPANS,
             reporting_period=REPORTING_PERIOD,
         )
@@ -110,12 +111,13 @@ def generate_spans(tracer, units_work, number_spans, scope=None):
         if number_spans == 0:
             return
 
-        with tracer.start_active_span(operation_name='handle_some_request') as server_scope:
+        with tracer.start_active_span(
+                operation_name='handle_some_request') as server_scope:
             server_scope.span.set_tag('http.url', 'http://somerequesturl.com')
             server_scope.span.set_tag('span.kind', 'server')
             server_scope.span.log_kv({
                 'event': 'cache_miss',
-                'message': 'some cache hit and so we didn\'t have to do extra work'
+                'message': 'some cache missed :('
             })
 
             do_work(units_work)
@@ -123,25 +125,33 @@ def generate_spans(tracer, units_work, number_spans, scope=None):
             if number_spans == 0:
                 return
 
-            with tracer.start_active_span(operation_name='database_write') as db_scope:
+            with tracer.start_active_span(
+                    operation_name='database_write') as db_scope:
                 db_scope.span.set_tag('db.user', 'test_user')
                 db_scope.span.set_tag('db.type', 'sql')
                 db_scope.span.set_tag(
                     'db_statement',
-                    'UPDATE ls_employees SET email = \'isaac@lightstep.com\' WHERE employeeNumber = 27;')
+                    "UPDATE ls_employees SET email = 'isaac@lightstep.com' " +
+                    "WHERE employeeNumber = 27;")
 
                 # pretend that an error happened
                 db_scope.span.set_tag('error', True)
                 db_scope.span.log_kv({
                     'event': 'error',
-                    'stack': "File \"example.py\", line 7, in \<module\>\ncaller()\nFile \"example.py\", line 5, in caller\ncallee()\nFile \"example.py\", line 2, in callee\nraise Exception(\"Yikes\")\n"})
+                    'stack': """File \"example.py\", line 7, in <module>
+                                caller()
+                                File \"example.py\", line 5, in caller
+                                callee()
+                                File \"example.py\", line 2, in callee
+                                raise Exception(\"Yikes\")"""})
 
                 do_work(units_work)
                 number_spans -= 1
                 if number_spans == 0:
                     return
 
-            generate_spans(tracer, units_work, number_spans, scope=server_scope)
+            generate_spans(tracer, units_work,
+                           number_spans, scope=server_scope)
 
 
 def perform_work(command, tracer_name, port):
