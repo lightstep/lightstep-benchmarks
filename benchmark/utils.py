@@ -32,7 +32,7 @@ def _log_output(process_handler, logger):
         logger.info(line.decode('ascii')[:-1])  # last char is \n, ignore this
 
 
-def setup_file_logger(logger, filename):
+def setup_logger(logger, filename):
     basic_formatter = logging.Formatter(
         fmt="%(levelname)s %(name)s %(asctime)s: %(message)s",
         datefmt='%H:%M:%S',

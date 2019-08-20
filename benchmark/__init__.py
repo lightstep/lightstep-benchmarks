@@ -1,5 +1,5 @@
-from .utils import setup_file_logger
+from .utils import setup_logger
 import logging
 
 benchmark_logger = logging.getLogger(__name__)
-setup_file_logger(benchmark_logger, 'benchmark.log')
+setup_logger(benchmark_logger, 'benchmark.log')
