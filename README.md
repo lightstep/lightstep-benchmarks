@@ -1,149 +1,162 @@
-# LightStep Client Benchmarks
+# CI
 
-## Experiment Design
+lightstep-benchmarks tests the [python tracer](https://github.com/lightstep/lightstep-tracer-python) and [python cpp tracer](https://github.com/lightstep/lightstep-tracer-cpp) in two ways:
 
-The benchmark suite consists of a small test program in each
-language executed by the test controller.  The LightStep client
-library connects to the controller acting as a LightStep
-Collector (using one of several protocols), and the test program
-connects to the controller using a simple REST API for the
-control interface.  The test program enters a loop in which it
-repeatedly:
+1. Regression tests are run automatically each time code is pushed.
+2. Performance graphs can generated if you manually approve the jobs to run in CircleCI. More info on that [here](https://circleci.com/docs/2.0/workflows/#holding-a-workflow-for-a-manual-approval).
 
-1. Requests a Control struct, defining a traced or untraced operation
-- Executes the defined operation, possibly recording a Span
-- Responds with the client-observed walltime
+## Performance Graphs
 
-In pseudocode, each test program exercises the client library as
-follows:
+Performance graphs are fairly expensive to generate, and don't have a simple pass / fail mechanism. For these reasons they aren't generated each time code is pushed automatically. They are only generated when the job "approve_make_graphs" is manually approved in CircleCI.
 
+TODO: more info on the specific graphs which can be generated here
+
+## Regression Tests
+
+Regression tests are automatically run on the python and python cpp tracers each time code is pushed. The tests check the following:
+
+- Running a tracer for 100s (emitting 500 spans per second) shouldn't use more than twice as much memory as running a tracer for 5s.
+- The tracer shouldn't drop any spans if we're just sending 300 spans per second.
+- A test program which generates 500 spans per second is calibrated to run at 70% CPU using a NoOp tracer. The same program shouldn't exceed 80% cpu usage when a LightStep tracer is used.
+- The LightStep tracer should be able to send 3000 spans per second before the tracer (not the whole program) consumes 10% CPU.
+
+You can also run the regression tests manually from the command-line. First, make sure that you have setup the development environment (see this section). To test the pure python tracer: `pytest --client_name python regression_tests.py`. To test the cpp python tracer: `pytest --client_name python regression_tests.py`.
+
+# Development
+
+Time for a brief overview of the system. The test suite is made up of three distinct parts. The **mock satellites** simulate real LightStep satellites under different conditions, the **clients** test LightStep's tracers and are implemented in various languages, and the **controller** orchestrates the tests.
+
+## Setting up the Environment
+
+[steps to setup the development environment]
+
+## How to Use the Benchmark API
+
+The Benchmark API is best illustrated with this code snippet:
+
+```python
+with Controller('[client name]') as c:
+  with MockSatelliteGroup('[typical|slow_succeed|slow_fail]') as sats:
+    result = c.benchmark(
+      trace=True,
+      satellites=sats,
+      spans_per_second=100,
+      runtime=10)
+
+    # These are available no matter what.
+    print(f'The test had CPU for {result.program_time} seconds')
+    print(f'The test took {result.clock_time} seconds to run')
+    print(f'{result.spans_sent} spans were generated during the test.')
+    print(f'Percent CPU used, sampled each second: {result.cpu_list}')
+    print(f'Bytes memory used, sampled each second: {result.memory_list}')
+    print(f'When the test ended its memory footprint was {result.memory} bytes')
+
+    # These are only available if a MockSatelliteGroup object is passed to
+    # the controller via the satellites keyword.
+    print(f'{result.spans_received} spans were received by the mock satellites.')
+    print(f'{result.dropped_spans} spans were dropped.')
 ```
-C := the control struct
-for i := 0; i < C.Repeat; i++ {
-  span := tracer.startSpan()
-  for j := 0; j < C.Work; j++ {
-    do_some_busy_work
+
+Notice that the `Controller`'s constructor needs to be passed the name of a client. These client names are the keys in the `benchmark.controller.client_args` dictionary. This dictionary holds CLI args which tell the Controller how to start different clients.
+
+A `MockSatelliteGroup` can be started in different modes: 'typical', 'slow_success', and 'slow_fail.' 'typical' Should be used unless you know what you're doing.
+
+# Controller
+
+When a controller is first initialized, it will:
+
+1.  Start a server which listens on port 8024. This server will communicate with clients and assign them work to do.
+2.  Start a client which will immediately make a GET request to localhost:8024/control asking for work.
+3.  Determine the behavior of the client when tracing is turned off. We will try and find:
+
+- The nanoseconds to sleep per unit of work which leads to 70% CPU use. The controller will vary sleep per work using P control until the CPU use is within 1/2 percent of 70%.
+- The units of work the client completes per second (which should be mostly independent of how many spans per second we are sending).
+
+4.  Start up 8 mock satellites listening on ports 8360 - 8367. Mock satellites can be started with different flags, but will usually be started in 'typical' mode where their response times are typically about 1ms.
+
+## Adding a New Client
+
+Check out `benchmark.controller.client_args`, and you'll find that there are two clients which can
+
+```python
+# get instructions from controller
+c = http_get("localhost:8024/control")
+sleep_debt = 0
+
+if c['Traced']:
+  tracer = make_real_tracer()
+else:
+  tracer = make_mock_tracer()
+
+for i in range(c['Repeat']):
+  with tracer.start_active_span('TestSpan') as scope:
+    work(c['Work'])
+
+  # since sleep commands aren't too accurate, we save up our sleep and
+  # do it all at once in a longer chunk for better accuracy
+  sleep_debt += c['Sleep']
+  if sleep_debt > c['SleepInterval']:
+    sleep_debt -= c['SleepInterval']
+    sleep(command['SleepInterval'])
+
+# send the results of the test to the controller
+http_get('localhost:8024/result', params=[spans sent, cpu use during test, test time, etc...])
+```
+
+## Garbage Collection
+
+We have observed that in a 200 second test where 200 spans / second were sent, python runs garbage collection 49 times. The test is sufficiently long the cost of garbage collection is going to remain roughly constant across tests.
+
+## Wire Format
+
+```python
+{
+  'Trace': bool,
+  'Repeat': int, # how many spans to send total
+  'Work': int, # how many units of work to do / span
+  'Sleep': int, # in nanoseconds
+  'SleepInterval': int, # in nanoseconds
+  'Exit': bool,
+  'NoFlush': bool, # whether or not to call flush on tracer
+  'MemoryList': list<int>, # memory footprint in bytes, taken every second
+  'CPUList': list<float>, # cpu usage as decimal, taken every second
   }
-  span.finish()
-  sleep(C.Sleep)
-}
 ```
 
-The Control fields are designed to support several kinds of
-experiment, discussed below.  The Control fields are:
+When clients have completed the work requested in the command, they will respond with a GET to http://localhost:8023/result if the work tool 12.1 seconds to complete.
 
-- `Work` the number of units of work to perform per operation, where each unit
-is an arbitrary but brief, fixed-CPU-cost operation to perform
-- `Trace` is true if the operation is traced by a LightStep tracer (vs a No-Op tracer)
-- `Sleep` a number of nanoseconds to sleep after completing the work
-- `SleepInterval` a number of nanoseconds for amortized sleep
-- `SleepCorrection` an estimated number of nanoseconds the controller expects sleep to exceed by, useful in runtimes without sleep support (i.e., nodejs)
-- `Repeat` the number of times to repeat the operation
-- `NoFlush` is true indicating not to flush the Tracer after the operations (i.e., to exclude flush time from the measurement)
-- `Concurrent` is the number of concurrent threads / routines / tasks performing these `Repeat` operations each
-- `NumLogs` is the number of log statements per Span
-- `BytesPerLog` is the number of bytes per log
-- `Exit` is true indicating to exit the test program immediately
+They will need to pass `ProgramTime`, `ClockTime`, and `SpansSent` key-value pairs in the query string of this get request.
 
-After running the operation, the client responds with a Result structure containing:
+## Nuances
 
-- `Timing` the number of seconds (walltime) the client observed to complete the operations and (maybe) flush the spans
-- `Sleeps` (Optional, for setting `SleepCorrection` in some runtimes) a sum of the observed walltime of sleep operations, in nanoseconds
-- `Answer` (Optional) the result of the operation (to avoid optimization)
+Don't include flush time in the measurement of CPU usage.
 
-### Calibration
+# Ports
 
-The controller process runs the client program through a number
-of preliminary tests to measure testing overhead.  We are
-interested in knowing:
+8023 will be the standard port for the controller to run on.
+8012 - 8020 will be the standard ports for mock satellites to run on. Satellites will prefer earlier numbers, so tracers which can target only one satellite should target 8012.
 
-- The nanoseconds per unit of work
-- The fixed cost of an untraced, no-work operation--this
-  corresponds to the testing overhead of each loop iteration.
-- The fixed cost of an traced, no-work operation--this
-  corresponds to the synchronous cost (i.e., not deferred) of
-  empty span creation
+```
+kill `ps aux | grep mock_satellite.py | tr -s ' ' | cut -d " " -f 2 | tr '\n' ' '`
+```
 
-These constants will be used to correct the observed measurements
-for CPU time lost to the test itself.
+# Notes
 
-#### Sleep Calibration
+up buffer size
+increase reporting frequency
 
-The CPU saturation test described below sets up an experiment in
-which the worker alternatingly performs busy work and then
-sleeps, where the ratio of work to sleep models the system
-utilization factor.  By sleeping, the deferred work of sending
-spans to the collector is interleaved with the test operations.
+100ms reporting frequency
+10000 spans (LS meta, trace assembler)
+50000 spans (for public)
 
-Since very short sleep operations are not reliable on most
-runtimes, sleeps are amortized into larger intervals, on the
-order of 10s of milliseconds (see `Control.SleepInterval`).
-Sleep operations are still not reliable on runtimes with a
-single-threaded event loop (e.g., nodejs), so further correction
-is needed.  Test programs with unreliable sleep operations are
-required to report the measured sleep duration (walltime) back to
-the controller via `Result.Sleeps`.
+# Next Steps
 
-#### Empty Span Cost
+- container / resource api / etc. --
+  - make the clients leaner
+- make a more intensive benchmarking suite on GCP
 
-The most important cost, from the users perspective, is the fixed
-cost of an empty, traced operation, since it approximates the
-synchronous impact to the calling thread, which is often on a
-critical path for latency.
+- envoy proxy (what would it take to add)
+  - why is it hard?
+  - duplicate sends -- same span received twice?
 
-Appropraiate values for this measurement are in the 1-100μs
-range.  We consider 10μs a good measurement, while a measurement
-of 100μs indicates a library that needs improvement. 
-
-Our goal is that unless the CPU is saturated, the empty span cost
-is the only additional user-perceived latency impact that results
-from tracing.
-
-### Total CPU Cost
-
-The goal of this experiment is to estimate the worst-case CPU
-usage of all LightStep client-related activities, including the
-cost of span creation in the caller's thread, _plus all deferred
-work inside the client library_.
-
-The test controller will repeat an experiment for several values
-along each of the following dimensions:
-
-- `qps` how many Spans are generated per second (per `Concurrent` thread)
-- `load` what is the load factor (per `Concurrent` thread)
-
-The test method runs experiments for increasing load factors at
-each desired qps, for every client.  The test Control objects
-have their `Work`, `Sleep`, and `Repeat` values set to execute a
-specific load factor for a fixed period of time.  For example,
-assume the Work function takes 1ns per unit of work (by
-calibration), then to setup a 100qps test at 70% load, use the
-following settings to run for 30 seconds:
-
-- Control.Work == 7000000 (7 million nanoseconds == 7ms)
-- Control.Sleep == 3000000 (3 million nanoseconds == 3ms)
-- Control.Repeat == 3000 (30 seconds * 100 qps)
-
-The test program should have its number of CPUs hard-limited to
-the `Concurrent` factor, to ensure there are no extra CPU
-resources available.  As a result, when the test runs for the
-specified amount of time, we can be sure the CPU is not
-saturated.
-
-When the test program runs for longer than the specified amount
-of time, its sleep interval should be reduced until the test runs
-for the specified amount of time, since increasing the sleep
-interval gives the deferred work more time to run without
-changing qps.
-
-When the test program runs for longer than the specified amount
-of time _and_ with zero sleeping, the CPU is saturated at the
-given qps and we can compute the tracing "tax" in terms of CPU
-impairment.  For example, if the system reaches saturation at a
-load factor of 98%, we have observed a 2% tax or that the CPU is
-impaired by 2%.
-
-By comparing the saturation point with and without tracing, we
-can separate tracing costs from other overheads in the system.
-This process will be repeated to construct a plot of CPU overhead
-vs. qps for every client library.
+**why did we choose what we chose**

@@ -1,2 +1,8 @@
-.idea
-
+graphs
+__pycache__
+bazel-*
+generated
+logs
+.ipynb_checkpoints
+.pytest_cache
+*.pyc
