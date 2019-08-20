@@ -1,8 +1,33 @@
 from http.server import BaseHTTPRequestHandler
 from os import path
+import subprocess
+from threading import Thread
 
 BENCHMARK_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
+
+
+def start_logging_subprocess(cli_args, logger):
+    # send stdout and stderr to different pipes
+    # TODO: print stdout with logging.info and stderr with logging.error
+    handler = subprocess.Popen(
+        cli_args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)  # send output to stdout / stderr pipes
+
+    stdout_logging_thread = Thread(
+        target=_log_output,
+        args=(handler, logger))
+    stdout_logging_thread.daemon = True
+    stdout_logging_thread.start()
+
+    return handler
+
+
+def _log_output(process_handler, logger):
+    # read until we reach ''
+    for line in iter(process_handler.stdout.readline, b''):
+        logger.info(line.decode('ascii')[:-1])  # last char is \n, ignore this
 
 
 class ChunkedRequestHandler(BaseHTTPRequestHandler):

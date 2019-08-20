@@ -1,4 +1,3 @@
-import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 import json
@@ -8,8 +7,9 @@ import time
 import os
 from os import path
 import logging
-from .utils import PROJECT_DIR
+from .utils import PROJECT_DIR, start_logging_subprocess
 from .exceptions import InvalidClient, ClientTimeout
+
 
 """
 This module is used to benchmark tracers.
@@ -134,7 +134,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-        logger.info(self.query_json)
+        logger.debug("Client result (from query string JSON): {}".format(
+            self.query_json))
         result = Result.from_dict(self.query_json)
         self.server.save_result(result)
 
@@ -324,7 +325,7 @@ class Controller:
                            'Try adjusting `controller.calibration_work`.')
 
         logger.info(f'Client completes {work_per_second} units work / sec.')
-        logger.info(result)
+        logger.debug(result)
 
         return calibration_work * result.spans_per_second
 
@@ -454,28 +455,24 @@ class Controller:
         return result
 
     def _raw_benchmark(self, command):
-        log_filepath = path.join(PROJECT_DIR, f'logs/{self.client_name}.log')
+        logger.info("Starting client...")
 
-        # startup test process
-        with open(log_filepath, 'a+') as logfile:
-            logger.info("Starting client...")
-            client_handle = subprocess.Popen(
-                self.client_startup_args,
-                stdout=logfile,
-                stderr=logfile)
+        client_logger = logging.getLogger(f'{self.client_name}_client')
+        client_handle = start_logging_subprocess(
+            self.client_startup_args,
+            client_logger)
 
-            logger.info("Client started.")
+        logger.info("Client started.")
 
-            result = self.server.execute_command(command)
-            self.server.execute_command({'Exit': True})
+        result = self.server.execute_command(command)
+        self.server.execute_command({'Exit': True})
 
-            # at this point, we have sent the exit command and received a
-            # response wait for the client program to shutdown
-            logger.info("Waiting for client to shutdown...")
-            while client_handle.poll() is None:
-                pass
-            logger.info("Client shutdown.")
+        # at this point, we have sent the exit command and received a
+        # response wait for the client program to shutdown
+        logger.info("Waiting for client to shutdown...")
 
-        # removes results from queue
-        # don't include that last result because it's from the exit command
+        while client_handle.poll() is None:
+            pass
+
+        logger.info("Client shutdown.")
         return result

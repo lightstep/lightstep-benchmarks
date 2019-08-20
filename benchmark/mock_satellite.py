@@ -40,7 +40,9 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             # don't need to worry about locking here since we're not going to
             # modify
             global spans_received
-            logging.info(f'responded that {spans_received} spans received')
+            logging.info("Responded with '{}' to /spans_received".format(
+                spans_received))
+
             self._send_response(200, body_string=str(spans_received))
             return
         else:
@@ -79,11 +81,12 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             with global_lock:
                 spans_received += spans_in_report
 
-            logging.debug(
-                f'read {spans_in_report} spans, total {spans_received}')
+            logging.debug('Just read {} spans, read {} in total.'.format(
+                spans_in_report, spans_received))
 
+            # Right now `response_string` is actually just b'', but we can
+            # improve this is need be to make a more sophisticated response
             response_string = collector.ReportResponse().SerializeToString()
-            logging.info(f'response string: {response_string}')
 
             self._send_response(200, body_string=response_string)
         else:

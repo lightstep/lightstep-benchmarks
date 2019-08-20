@@ -1,22 +1,11 @@
-import subprocess
 import time
 import requests
 from os import path
-from .utils import BENCHMARK_DIR
+from .utils import BENCHMARK_DIR, start_logging_subprocess
 import logging
 from .exceptions import SatelliteBadResponse, DeadSatellites
-from threading import Thread
 
 DEFAULT_PORTS = list(range(8360, 8368))
-
-
-def _log_satellite_output(handler, logger):
-    while True:
-        for line in iter(handler.stdout.readline, b''):  # b'\n'separated lines
-            # convert from binary string --> string
-            # remove last character because its a newline character
-            logger.info(line.decode('ascii')[:-1])
-        time.sleep(.001)
 
 
 class MockSatelliteHandler:
@@ -29,20 +18,11 @@ class MockSatelliteHandler:
         self._spans_received_baseline = 0
 
         mock_satellite_path = path.join(BENCHMARK_DIR, 'mock_satellite.py')
-
-        self._handler = subprocess.Popen(
-            ["python3", mock_satellite_path, str(port), mode],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
-
         mock_satellite_logger = logging.getLogger(f'{__name__}.{port}')
 
-        self._logging_thread = Thread(
-            target=_log_satellite_output,
-            args=(self._handler, mock_satellite_logger))
-
-        self._logging_thread.daemon = True  # logging thread dies with program
-        self._logging_thread.start()
+        self._handler = start_logging_subprocess(
+            ["python3", mock_satellite_path, str(port), mode],
+            mock_satellite_logger)
 
     def is_running(self):
         return self._handler.poll() is None
