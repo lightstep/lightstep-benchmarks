@@ -1,14 +1,15 @@
 import matplotlib.pyplot as plt
 from benchmark.controller import Controller
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
-import numpy as np
 import argparse
 from os import path, makedirs
 from benchmark.utils import PROJECT_DIR
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('client', help='Name of the client to use in these tests.')
+    parser.add_argument(
+        'client',
+        help='Name of the client to use in these tests.')
     args = parser.parse_args()
 
     # two charts stacked on top of eachother, sharing the x axis
@@ -38,9 +39,16 @@ if __name__ == '__main__':
                 sps_list.append(result.spans_per_second)
 
     dropped_ax.plot(sps_list, dropped_list)
-    dropped_ax.set(xlabel="Spans per second", ylabel="Percent spans dropped", title=f'{controller.client_name.title()} Spans Dropped')
+    dropped_ax.set(
+        xlabel="Spans per second",
+        ylabel="Percent spans dropped",
+        title=f'{controller.client_name.title()} Spans Dropped')
 
     cpu_ax.plot(sps_list, cpu_list)
-    cpu_ax.set(ylabel="Percent CPU usage", title=f'{controller.client_name.title()} CPU Usage')
+    cpu_ax.set(
+        ylabel="Percent CPU usage",
+        title=f'{controller.client_name.title()} CPU Usage')
 
-    fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_sps_vs_dropped.png'))
+    fig.savefig(path.join(
+        PROJECT_DIR,
+        f'graphs/{controller.client_name}_sps_vs_dropped.png'))

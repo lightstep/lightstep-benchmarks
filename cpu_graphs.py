@@ -11,9 +11,19 @@ RUNTIME = 10
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('client', help='Name of the client to use in these tests.')
-    parser.add_argument('--trials', nargs='?', type=int, help='Number of trials to run at each span rate.')
-    parser.add_argument('--runtime', nargs='?', type=int, help='Length of each trial.')
+    parser.add_argument(
+        'client',
+        help='Name of the client to use in these tests.')
+    parser.add_argument(
+        '--trials',
+        nargs='?',
+        type=int,
+        help='Number of trials to run at each span rate.')
+    parser.add_argument(
+        '--runtime',
+        nargs='?',
+        type=int,
+        help='Length of each trial.')
 
     args = parser.parse_args()
 
@@ -63,21 +73,31 @@ if __name__ == '__main__':
                 sps_untraced.append(np.mean(temp_sps_untraced))
 
     # compute the difference between traced and untraced CPU usage
-    cpu_difference = [cpu_traced[i] - cpu_untraced[i] for i in range(len(cpu_traced))]
-    cpu_difference_std = [(cpu_traced_std[i]**2 + cpu_traced_std[i]**2)**.5 for i in range(len(cpu_traced_std))]
+    cpu_difference = [
+        cpu_traced[i] - cpu_untraced[i] for i in range(len(cpu_traced))]
+
+    cpu_difference_std = [(cpu_traced_std[i]**2 + cpu_traced_std[i]**2)**.5
+                          for i in range(len(cpu_traced_std))]
 
     # draw two distinct plots
     fig, ax = plt.subplots()
     ax.errorbar(sps_traced, cpu_traced, yerr=cpu_traced_std, label='traced')
-    ax.errorbar(sps_untraced, cpu_untraced, yerr=cpu_untraced_std, label='untraced')
+    ax.errorbar(sps_untraced, cpu_untraced,
+                yerr=cpu_untraced_std, label='untraced')
     ax.set(xlabel="Spans per second", ylabel="Total program CPU usage")
-    ax.set_title(f'{controller.client_name.title()} Traced vs Untraced CPU Use')
+    ax.set_title(
+        f'{controller.client_name.title()} Traced vs Untraced CPU Use')
     ax.legend()
-    fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_sps_vs_cpu_comparison.png'))
+    fig.savefig(path.join(
+        PROJECT_DIR,
+        f'graphs/{controller.client_name}_sps_vs_cpu_comparison.png'))
 
     # draw difference ploit
     fig, ax = plt.subplots()
     ax.errorbar(sps_untraced, cpu_difference, yerr=cpu_difference_std)
     ax.set(xlabel="Spans per second", ylabel="Tracer library CPU usage")
-    ax.set_title(f'{controller.client_name.title()} CPU Use of LightStep Tracer')
-    fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_sps_vs_cpu.png'))
+    ax.set_title(
+        f'{controller.client_name.title()} CPU Use of LightStep Tracer')
+    fig.savefig(path.join(
+        PROJECT_DIR,
+        f'graphs/{controller.client_name}_sps_vs_cpu.png'))

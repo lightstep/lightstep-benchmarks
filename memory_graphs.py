@@ -1,14 +1,15 @@
 import matplotlib.pyplot as plt
 from benchmark.controller import Controller
 from benchmark.satellite import MockSatelliteGroup as SatelliteGroup
-import numpy as np
 import argparse
 from os import path, makedirs
 from benchmark.utils import PROJECT_DIR
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('client', help='Name of the client to use in these tests.')
+    parser.add_argument(
+        'client',
+        help='Name of the client to use in these tests.')
     args = parser.parse_args()
 
     fig, ax = plt.subplots()
@@ -32,7 +33,11 @@ if __name__ == '__main__':
 
                 ax.plot(runtime_list, memory_list, label=f'{sps} spans / sec')
 
-    ax.set(xlabel="Seconds program runtime", ylabel="Program memory footprint (MB)")
+    ax.set(
+        xlabel="Seconds program runtime",
+        ylabel="Program memory footprint (MB)")
     ax.set_title(f'{controller.client_name.title()} Memory Use Over Time')
     ax.legend()
-    fig.savefig(path.join(PROJECT_DIR, f'graphs/{controller.client_name}_runtime_vs_memory.png'))
+    fig.savefig(path.join(
+        PROJECT_DIR,
+        f'graphs/{controller.client_name}_runtime_vs_memory.png'))
