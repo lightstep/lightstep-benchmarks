@@ -1,7 +1,8 @@
 from http.server import BaseHTTPRequestHandler
-from os import path
+from os import path, makedirs
 import subprocess
 from threading import Thread
+import logging
 
 BENCHMARK_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
@@ -28,6 +29,26 @@ def _log_output(process_handler, logger):
     # read until we reach ''
     for line in iter(process_handler.stdout.readline, b''):
         logger.info(line.decode('ascii')[:-1])  # last char is \n, ignore this
+
+
+def setup_file_logger(logger, filename):
+    basic_formatter = logging.Formatter(
+        fmt="%(levelname)s %(name)s %(asctime)s: %(message)s",
+        datefmt='%H:%M:%S',
+        style='%')
+
+    # create the logs folder
+    logs_dir = path.join(PROJECT_DIR, 'logs')
+    logs_file = path.join(logs_dir, filename)
+    makedirs(logs_dir, exist_ok=True)
+
+    # output ALL logs to a file
+    file_handler = logging.FileHandler(logs_file, mode='a')
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(basic_formatter)
+
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
 
 
 class ChunkedRequestHandler(BaseHTTPRequestHandler):

@@ -4,7 +4,6 @@ import json
 import copy
 from urllib.parse import urlparse, parse_qs
 import time
-import os
 from os import path
 import logging
 from .utils import PROJECT_DIR, start_logging_subprocess
@@ -256,9 +255,6 @@ class Controller:
 
         self.client_startup_args = client_args[client_name]
         self.client_name = client_name
-
-        # makes sure that the logs dir exists
-        os.makedirs(path.join(PROJECT_DIR, "logs"), exist_ok=True)
 
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)

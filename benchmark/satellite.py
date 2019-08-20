@@ -7,6 +7,8 @@ from .exceptions import SatelliteBadResponse, DeadSatellites
 
 DEFAULT_PORTS = list(range(8360, 8368))
 
+logger = logging.getLogger(__name__)
+
 
 class MockSatelliteHandler:
     def __init__(self, port, mode):
@@ -74,8 +76,6 @@ class MockSatelliteGroup:
             If the group of mock satellites is currently running.
         """
 
-        self.logger = logging.getLogger(__name__)
-
         self._ports = ports
         self._satellites = \
             [MockSatelliteHandler(port, mode) for port in ports]
@@ -115,7 +115,7 @@ class MockSatelliteGroup:
             raise DeadSatellites("One or more satellites is not running.")
 
         received = sum([s.get_spans_received() for s in self._satellites])
-        self.logger.info(f'All satellites have {received} spans.')
+        logger.info(f'All satellites have {received} spans.')
         return received
 
     def all_running(self):
@@ -142,11 +142,11 @@ class MockSatelliteGroup:
         """
 
         if not self._satellites:
-            self.logger.warn(
+            logger.warn(
                 "Cannot reset spans received since satellites are shutdown.")
             return
 
-        self.logger.info("Resetting spans received.")
+        logger.info("Resetting spans received.")
         for s in self._satellites:
             s.reset_spans_received()
 
@@ -165,11 +165,11 @@ class MockSatelliteGroup:
         """
 
         if self._satellites:
-            self.logger.warn(
+            logger.warn(
                 "Cannot startup satellites because they are already running.")
             return
 
-        self.logger.info("Starting up mock satellite group.")
+        logger.info("Starting up mock satellite group.")
         self.__init__(mode, ports=ports)
 
     def shutdown(self):
@@ -178,11 +178,11 @@ class MockSatelliteGroup:
         """
 
         if not self._satellites:
-            self.logger.warn(
+            logger.warn(
                 "Cannot shutdown satellites since they are already shutdown.")
             return
 
-        self.logger.info("Shutting down mock satellite group.")
+        logger.info("Shutting down mock satellite group.")
         for s in self._satellites:
             s.terminate()
 
