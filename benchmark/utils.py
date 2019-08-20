@@ -3,6 +3,7 @@ from os import path, makedirs
 import subprocess
 from threading import Thread
 import logging
+import sys
 
 BENCHMARK_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
@@ -44,11 +45,15 @@ def setup_file_logger(logger, filename):
 
     # output ALL logs to a file
     file_handler = logging.FileHandler(logs_file, mode='a')
-    file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(basic_formatter)
+    file_handler.setLevel(logging.DEBUG)
 
-    logger.setLevel(logging.DEBUG)
+    print_handler = logging.StreamHandler(stream=sys.stdout)
+    print_handler.setFormatter(basic_formatter)
+    print_handler.setLevel(logging.WARNING)
+
     logger.addHandler(file_handler)
+    logger.addHandler(print_handler)
 
 
 class ChunkedRequestHandler(BaseHTTPRequestHandler):

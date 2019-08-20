@@ -74,8 +74,9 @@ class CommandServer(HTTPServer):
         self._result = None
 
     def handle_timeout(self):
-        logger.error("""Timeout waiting for client to complete test.
-                        Try running the test with `no_timeout = True`?""")
+        logger.error('Timeout waiting for client to complete test. ' +
+                     'Try running the test with `no_timeout = True`?')
+
         raise ClientTimeout()
 
     def execute_command(self, command):
@@ -317,7 +318,7 @@ class Controller:
         # make sure that calibration isn't too short because we want a
         # stable measurement
         if result.clock_time < 2:
-            logger.warning('Calibration ran for less than 2 seconds.' +
+            logger.warning('Calibration ran for less than 2 seconds. ' +
                            'Try adjusting `controller.calibration_work`.')
 
         logger.info(f'Client completes {work_per_second} units work / sec.')
@@ -345,7 +346,7 @@ class Controller:
             # make sure that calibration isn't too short because we want a
             # stable measurement
             if result.clock_time < 2:
-                logger.warning('Calibration ran for less than 2 seconds.' +
+                logger.warning('Calibration ran for less than 2 seconds. ' +
                                'Try adjusting `controller.calibration_work`.')
 
             logger.info('clock time: {}, program time: {}'.format(
@@ -417,7 +418,7 @@ class Controller:
             raise ValueError("Cannot target 0 spans per second.")
 
         if runtime < 1:
-            logger.warn("Runtime should be longer than 1 second.")
+            logger.warn("Test `runtime` should be longer than 1 second.")
 
         work = self._work_per_second / spans_per_second
         repeat = self._work_per_second * runtime / work
