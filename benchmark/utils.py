@@ -1,18 +1,16 @@
-import random
 from http.server import BaseHTTPRequestHandler
-import logging
 from os import path
 
 BENCHMARK_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
 
-class ChunkedRequestHandler(BaseHTTPRequestHandler):
-    # A class that extends BaseHTTPRequestHandler to support chunked encoding. The
-    # class will read POST request headers and determine if the request is in
-    # fixed-length or chunked format. The request body will be parsed and saved
-    # in @binary_body bytearray.
-    # Derrived classes should use POST and GET instead of do_POST and do_GET.
 
+class ChunkedRequestHandler(BaseHTTPRequestHandler):
+    # A class that extends BaseHTTPRequestHandler to support chunked encoding.
+    # The class will read POST request headers and determine if the request is
+    # in fixed-length or chunked format. The request body will be parsed and
+    # saved in `binary_body` bytearray.
+    # Derrived classes should use POST and GET instead of do_POST and do_GET.
 
     def do_POST(self):
         # if there is a content-length header, we know how much data to read
@@ -20,8 +18,10 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers["Content-Length"])
             self.binary_body = self.rfile.read(content_length)
 
-        # if there is a chunked encoding,
-        elif 'Transfer-Encoding' in self.headers and self.headers['Transfer-Encoding'] == 'chunked': # see http://en.wikipedia.org/wiki/Chunked_transfer_encoding
+        # see http://en.wikipedia.org/wiki/Chunked_transfer_encoding
+        elif 'Transfer-Encoding' in self.headers and \
+                self.headers['Transfer-Encoding'] == 'chunked':
+
             self.binary_body = bytearray()
 
             while True:
@@ -40,7 +40,8 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
                 self._read_delimiter()
 
         else:
-            raise Exception("POST request didn't have Content-Length or Transfer-Encoding headers")
+            raise Exception(
+                "Missing Content-Length or Transfer-Encoding headers")
 
         self.POST()
 
@@ -57,7 +58,7 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
         bytes_read = self.rfile.read(len(delimiter))
 
         if bytes_read != delimiter:
-            raise Exception("something was malformatted because we were not able to read delimiter")
+            raise Exception("Unable to read delimiter.")
 
     def _read_chunk_length(self, delimiter=b'\r\n', max_bytes=16):
         buf = bytearray()
@@ -71,8 +72,7 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
             if buf[-delim_len:] == delimiter:
 
                 try:
-                    l = int(bytes(buf[:-delim_len]), 16)
-                    return l
+                    return int(bytes(buf[:-delim_len]), 16)
                 except ValueError:
                     return -1
 

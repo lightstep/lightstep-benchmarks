@@ -1,10 +1,9 @@
-from .controller import Controller, Result
+from .controller import Controller
 from .satellite import MockSatelliteGroup as SatelliteGroup
-import matplotlib.pyplot as plt
-import numpy as np
+from .exceptions import DeadSatellites
 import pytest
 import requests
-from time import time, sleep
+from time import time
 import logging
 
 import lightstep
@@ -13,9 +12,11 @@ from lightstep import collector_pb2 as collector
 
 logging.basicConfig(level=logging.INFO)
 
+
 class TestController:
     def test_cpu_calibration(self):
-        """ Tests that the controller's CPU usage calibration is accurate to 2%. """
+        """ Tests that the controller's CPU usage calibration is
+        accurate to 2%. """
 
         with Controller('python', target_cpu_usage=.7) as controller:
             result = controller.benchmark(trace=False, runtime=10)
@@ -26,7 +27,9 @@ class TestController:
             assert abs(result.cpu_usage - .8) < .02
 
     def test_runtime_calibration(self):
-        """ Tests that the controller's runtime calibration is accurate to 20%. """
+        """ Tests that the controller's runtime calibration is accurate to
+        20%. """
+
         RUNTIME = 10
 
         with Controller('python') as controller:
@@ -47,8 +50,8 @@ class TestController:
                     runtime=5
                 )
 
-                # make sure that controller calls get_spans_received on satellite
-                # and updates spans_received field
+                # make sure that controller calls get_spans_received on
+                # satellite and updates spans_received field
                 assert result.spans_received == result.spans_sent
 
                 # make sure that controller resets spans_received after it has
@@ -90,8 +93,9 @@ class TestController:
             assert result.spans_per_second > 0
 
     def test_raw_benchmark(self):
-        """ Make sure that raw_benchmark sends the correct number of spans. """
-        
+        """ Make sure that raw_benchmark sends the correct number of spans.
+        """
+
         with Controller('python') as controller:
             result = controller._raw_benchmark({
                 'Trace': False,
@@ -109,31 +113,29 @@ class TestController:
 class TestMockSatelliteGroup:
     def test_all_running(self):
         satellites = SatelliteGroup('typical')
-        assert satellites.all_running() == True
+        assert satellites.all_running() is True
 
         satellites.shutdown()
-        assert satellites.all_running() == False
-
+        assert satellites.all_running() is False
 
     def test_shutdown_start(self):
         satellites = SatelliteGroup('typical')
         satellites.shutdown()
-        assert satellites.all_running() == False
+        assert satellites.all_running() is False
 
         satellites.start('typical')
-        assert satellites.all_running() == True
+        assert satellites.all_running() is True
 
         satellites.shutdown()
-        assert satellites.all_running() == False
+        assert satellites.all_running() is False
 
     def test_with_statement(self):
         """ Satellites should shutdown when program exits scope. """
 
         with SatelliteGroup('typical') as satellites:
-            assert satellites.all_running() == True
+            assert satellites.all_running() is True
 
-        assert satellites.all_running() == False
-
+        assert satellites.all_running() is False
 
     def test_spans_received(self):
         with SatelliteGroup('typical') as satellites:
@@ -148,7 +150,7 @@ class TestMockSatelliteGroup:
                 use_http=True,
                 access_token='test'
             )
-            with tracer.start_active_span('TestSpan') as scope:
+            with tracer.start_active_span('TestSpan'):
                 pass
             tracer.flush()
 
@@ -158,11 +160,11 @@ class TestMockSatelliteGroup:
         """ Satellites should raise an exception if we try to start two
         instances, because they bind on the same ports. """
 
-        with SatelliteGroup('typical') as satellites:
-            with pytest.raises(Exception) as exception_info:
-                new_satellites = SatelliteGroup('typical')
+        with SatelliteGroup('typical'):
+            with pytest.raises(DeadSatellites) as exception_info:
+                SatelliteGroup('typical')
 
-            assert exception_info.type == Exception
+            assert exception_info.type == DeadSatellites
 
     def _make_report_request(self, number_spans):
         """ make a very simple 50 span report """
@@ -187,9 +189,10 @@ class TestMockSatelliteGroup:
             start_time = time()
             spans_sent = 0
             while time() < start_time + TEST_LENGTH:
-                res = requests.post(url='http://localhost:8360/api/v2/reports',
-                                    data=report_request,
-                                    headers={'Content-Type': 'application/octet-stream'})
+                requests.post(
+                    url='http://localhost:8360/api/v2/reports',
+                    data=report_request,
+                    headers={'Content-Type': 'application/octet-stream'})
                 spans_sent += SPANS_IN_REPORT_REQUEST
 
             test_time = time() - start_time

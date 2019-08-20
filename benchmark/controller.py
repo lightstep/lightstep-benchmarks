@@ -7,11 +7,9 @@ from urllib.parse import urlparse, parse_qs
 import time
 import os
 from os import path
-import numpy as np
 import logging
-
-from .satellite import MockSatelliteGroup
 from .utils import PROJECT_DIR
+from .exceptions import InvalidClient, ClientTimeout
 
 """
 This module is used to benchmark tracers.
@@ -30,7 +28,7 @@ client_args : dict mapping str to list of str
 """
 
 CONTROLLER_PORT = 8023
-DEFAULT_SLEEP_INTERVAL = 10**8 # ns
+DEFAULT_SLEEP_INTERVAL = 10**8  # ns
 
 # since calibration_work should be set to produce roughly 100 spans / second,
 # this value of CALIBARATION_REPEAT should make the test last 5 seconds.
@@ -40,14 +38,22 @@ CALIBRATION_TIMEOUT = 60
 
 calibration_work = 200000
 client_args = {
-    'python': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8360', 'vanilla'],
-    'python-cpp': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8360', 'cpp'],
-    'python-sidecar': ['python3', path.join(PROJECT_DIR, 'clients/python_client.py'), '8024', 'vanilla']
+    'python': [
+        'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
+        '8360', 'vanilla'],
+    'python-cpp': [
+        'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
+        '8360', 'cpp'],
+    'python-sidecar': [
+        'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
+        '8024', 'vanilla']
 }
+
+logger = logging.getLogger(__name__)
 
 
 def _format_query_json(query_dict):
-    # Dictionaries created by urllib.parse.parse_qs looks like {key: [value], ...}
+    # Dictionaries created by urllib.parse.parse_qs looks like {key: [value]}
     # This function take dictionaries of that format and makes them normal.
 
     normal_dict = {}
@@ -59,6 +65,7 @@ def _format_query_json(query_dict):
 
     return normal_dict
 
+
 class CommandServer(HTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -68,29 +75,28 @@ class CommandServer(HTTPServer):
         self._result = None
 
     def handle_timeout(self):
-        raise Exception("Client waited too long to make a request.")
-
+        logger.error("""Timeout waiting for client to complete test.
+                        Try running the test with `no_timeout = True`?""")
+        raise ClientTimeout()
 
     def execute_command(self, command):
         # Schedules a test for the client process to run.
-
         with self._lock:
-            assert self._command == None
+            assert self._command is None
             self._command = command
 
         while True:
             self.handle_request()
 
             with self._lock:
-                if self._result != None:
+                if self._result is not None:
                     result = copy.copy(self._result)
                     self._result = None
                     return result
 
-
     def next_command(self):
         with self._lock:
-            assert self._command != None
+            assert self._command is not None
             command = copy.copy(self._command)
             self._command = None
 
@@ -100,14 +106,14 @@ class CommandServer(HTTPServer):
         assert isinstance(result, Result)
 
         with self._lock:
-            assert self._result == None
+            assert self._result is None
             self._result = result
 
 
 class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_url = urlparse(self.path)
-        self.path = parsed_url.path # redefine path so it excludes query string
+        self.path = parsed_url.path  # redefine path so it excludes query str
         self.query_json = _format_query_json(parse_qs(parsed_url.query))
 
         if self.path == "/control":
@@ -128,13 +134,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-        logging.info(self.query_json)
+        logger.info(self.query_json)
         result = Result.from_dict(self.query_json)
         self.server.save_result(result)
 
     def log_message(self, format, *args):
         return
-
 
 
 class Result:
@@ -166,7 +171,8 @@ class Result:
         Average CPU usage over the entire length of the test, from 0.0 to 1.0.
     """
 
-    def __init__(self, spans_sent, program_time, clock_time, memory_list, cpu_list, spans_received=0):
+    def __init__(self, spans_sent, program_time, clock_time,
+                 memory_list, cpu_list, spans_received=0):
         self.spans_sent = spans_sent
         self.program_time = program_time
         self.clock_time = clock_time
@@ -180,7 +186,8 @@ class Result:
         ret += f'\t{self.cpu_usage * 100:.2f}% CPU usage\n'
         ret += f'\t{self.memory} bytes of virtual memory used at finish\n'
         if self.spans_sent > 0:
-            ret += f'\t{self.dropped_spans / self.spans_sent * 100:.1f}% spans dropped (out of {self.spans_sent} sent)\n'
+            ret += (f'\t{self.dropped_spans / self.spans_sent * 100:.1f}' +
+                    f'% spans dropped (out of {self.spans_sent} sent)\n')
         ret += f'\ttook {self.clock_time:.1f}s'
 
         return ret
@@ -193,10 +200,18 @@ class Result:
         spans_sent = result_dict.get('SpansSent', 0)
         program_time = result_dict.get('ProgramTime', 0)
         clock_time = result_dict.get('ClockTime', 0)
-        memory_list = [int(m) for m in to_list(result_dict.get('MemoryList', []))]
-        cpu_list = [float(m) for m in to_list(result_dict.get('CPUList', []))]
+        memory_list = \
+            [int(m) for m in to_list(result_dict.get('MemoryList', []))]
+        cpu_list = \
+            [float(m) for m in to_list(result_dict.get('CPUList', []))]
 
-        return Result(int(spans_sent), float(program_time), float(clock_time), memory_list, cpu_list, spans_received=int(spans_received))
+        return Result(
+            int(spans_sent),
+            float(program_time),
+            float(clock_time),
+            memory_list,
+            cpu_list,
+            spans_received=int(spans_received))
 
     @property
     def memory(self):
@@ -227,15 +242,16 @@ class Controller:
         Parameters
         ---------
         client_name : str
-            Name of the client which will be used to perform tests (eg. 'python', 'python-cpp').
-            Clients are registered in `client_args` global variable.
+            Name of the client which will be used to perform tests
+            (eg. 'python', 'python-cpp'). Clients are registered in
+            `client_args` global variable.
         target_cpu_usage : float
             Calibrate client program to use `target_cpu_usage` percent CPU when
             using a NoOp tracer.
         """
 
         if client_name not in client_args:
-            raise Exception("Invalid client name. Did you forget to register your client?")
+            raise InvalidClient()
 
         self.client_startup_args = client_args[client_name]
         self.client_name = client_name
@@ -245,25 +261,26 @@ class Controller:
 
         # start server that will communicate with client
         self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
-        logging.info("Started controller server.")
+        logger.info("Started controller server.")
 
         self._calibrate(target_cpu_usage)
 
     def _calibrate(self, target_cpu_usage):
-        self.server.timeout = CALIBRATION_TIMEOUT #  timeout used during client calibration
+        # timeout used during client calibration
+        self.server.timeout = CALIBRATION_TIMEOUT
 
         try:
-            # calibrate the amount of work the controller does so that when we are using
-            # a noop tracer the CPU usage is around 70%
-            self._sleep_per_work = self._estimate_sleep_per_work(target_cpu_usage)
+            # calibrate the amount of work the controller does so that when we
+            # are using a noop tracer the CPU usage is around 70%
+            self._sleep_per_work = \
+                self._estimate_sleep_per_work(target_cpu_usage)
 
-            # calculate work per second, which we can use to estimate spans per second
+            # calculate work / second, which we use to estimate spans / second
             self._work_per_second = self._estimate_work_per_second()
 
-        # if for some reason calibration fails, we still want to shutdown gracefully
-        except:
+        # if calibration fails, we still want to shutdown gracefully
+        except Exception:
             self.shutdown()
-            logging.error("An exception was raised while calibrating.")
             raise
 
     def __enter__(self):
@@ -276,17 +293,17 @@ class Controller:
     def shutdown(self):
         """ Shutdown the Controller. """
 
-        logging.info("Controller shutdown called")
-        self.server.server_close() # unbind controller server from socket
-        logging.info("Controller shutdown complete")
-
+        logger.info("Controller shutdown called")
+        self.server.server_close()  # unbind controller server from socket
+        logger.info("Controller shutdown complete")
 
     def _estimate_work_per_second(self):
-        # Estimate how much work per second the client does. Although in practice
-        # this is slightly dependent on work and repeat values, it is mostly dependent on
-        # the sleep value.
-        # This varies quite a bit with spans / second, which makes it a bit tricy to get
-        # exactly right. Fortunately, we just have to get in the ballpark.
+        # Estimate how much work per second the client does. Although in
+        # practice this is slightly dependent on work and repeat values, it
+        # is mostly dependent on the sleep value.
+        # This varies quite a bit with spans / second, which makes it a bit
+        # tricky to get exactly right. Fortunately, we just have to get in the
+        # ballpark
 
         result = self._raw_benchmark({
             'Trace': False,
@@ -298,14 +315,18 @@ class Controller:
             'NoFlush': False
         })
 
-        # make sure that client doesn't run this tests because we want a stable measurement
-        assert result.clock_time > 2
+        work_per_second = calibration_work * result.spans_per_second
 
-        logging.info(f'Calculated that this client completes {calibration_work * result.spans_per_second} units of work / second.')
-        logging.info(result)
+        # make sure that calibration isn't too short because we want a
+        # stable measurement
+        if result.clock_time < 2:
+            logger.warning('Calibration ran for less than 2 seconds.' +
+                           'Try adjusting `controller.calibration_work`.')
+
+        logger.info(f'Client completes {work_per_second} units work / sec.')
+        logger.info(result)
 
         return calibration_work * result.spans_per_second
-
 
     def _estimate_sleep_per_work(self, target_cpu_usage, trials=3):
         # Finds sleep per work in ns which leads to target CPU usage.
@@ -324,31 +345,43 @@ class Controller:
                 'NoFlush': False
             })
 
-            # make sure that client doesn't run this tests because we want a stable measurement
-            assert result.clock_time > 2
+            # make sure that calibration isn't too short because we want a
+            # stable measurement
+            if result.clock_time < 2:
+                logger.warning('Calibration ran for less than 2 seconds.' +
+                               'Try adjusting `controller.calibration_work`.')
 
-            logging.info(f'clock time: {result.clock_time}, program time: {result.program_time}')
-            logging.info(result)
+            logger.info('clock time: {}, program time: {}'.format(
+                result.clock_time,
+                result.program_time))
 
-            # **assuming** that the program performs the same with added sleep commands
-            # calculate the additional sleep needed throughout the program to hit the
-            # target CPU usage
-            additional_sleep = (result.program_time / target_cpu_usage) - result.clock_time
-            sleep_per_work += (additional_sleep / (calibration_work * CALIBRATION_REPEAT)) * 10**9
+            logger.debug(result)
 
-            logging.info(f'sleep per work is now {sleep_per_work}ns')
+            # **assuming** that the program performs the same with added sleep
+            # commands calculate the additional sleep needed throughout the
+            # program to hit the target CPU usage
 
-        logging.info(f'sleep per work {sleep_per_work} yielded {result.cpu_usage * 100}% CPU usage')
+            additional_sleep = \
+                (result.program_time / target_cpu_usage) - result.clock_time
+            total_work = (calibration_work * CALIBRATION_REPEAT)
+            sleep_per_work += (additional_sleep / total_work) * 10**9
+
+            logger.info(f'sleep per work is now {sleep_per_work}ns')
+
+        logger.info(f'sleep per work {sleep_per_work} yielded' +
+                    f' {result.cpu_usage * 100}% CPU usage')
 
         return sleep_per_work
 
-    def benchmark(self,
+    def benchmark(
+            self,
             satellites=None,
             trace=True,
-            no_flush=False, # we typically want flush included with our measurements
+            no_flush=False,
             spans_per_second=100,
             runtime=10,
             no_timeout=False):
+
         """
         Run a test using the client this Controller is bound to.
 
@@ -376,13 +409,18 @@ class Controller:
         -------
         controller.Result
             The result of the test.
+
+        Raises
+        ------
+        ValueError
+            If `spans_per_second` is set to 0.
         """
 
         if spans_per_second == 0:
-            raise Exception("Cannot target 0 spans per second.")
+            raise ValueError("Cannot target 0 spans per second.")
 
         if runtime < 1:
-            raise Exception("Runtime needs to be longer than 1s.")
+            logger.warn("Runtime should be longer than 1 second.")
 
         work = self._work_per_second / spans_per_second
         repeat = self._work_per_second * runtime / work
@@ -415,25 +453,28 @@ class Controller:
 
         return result
 
-
     def _raw_benchmark(self, command):
         log_filepath = path.join(PROJECT_DIR, f'logs/{self.client_name}.log')
 
         # startup test process
         with open(log_filepath, 'a+') as logfile:
-            logging.info("Starting client...")
-            client_handle = subprocess.Popen(self.client_startup_args, stdout=logfile, stderr=logfile)
-            logging.info("Client started.")
+            logger.info("Starting client...")
+            client_handle = subprocess.Popen(
+                self.client_startup_args,
+                stdout=logfile,
+                stderr=logfile)
+
+            logger.info("Client started.")
 
             result = self.server.execute_command(command)
             self.server.execute_command({'Exit': True})
 
-            # at this point, we have sent the exit command and received a response
-            # wait for the client program to shutdown
-            logging.info("Waiting for client to shutdown...")
-            while client_handle.poll() == None:
+            # at this point, we have sent the exit command and received a
+            # response wait for the client program to shutdown
+            logger.info("Waiting for client to shutdown...")
+            while client_handle.poll() is None:
                 pass
-            logging.info("Client shutdown.")
+            logger.info("Client shutdown.")
 
         # removes results from queue
         # don't include that last result because it's from the exit command
