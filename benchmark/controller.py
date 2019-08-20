@@ -454,7 +454,8 @@ class Controller:
     def _raw_benchmark(self, command):
         logger.info("Starting client...")
 
-        client_logger = logging.getLogger(f'{self.client_name}_client')
+        client_logger = logging.getLogger(
+            f'{__name__}.{self.client_name}_client')
         client_handle = start_logging_subprocess(
             self.client_startup_args,
             client_logger)
