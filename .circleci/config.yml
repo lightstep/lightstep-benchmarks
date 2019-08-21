@@ -16,3 +16,10 @@ jobs:
       # many CI pipelines which all test different tracers
       - run: sudo pip install lightstep
       - run: pytest benchmark/test.py
+      - run: python cpu_graphs.py --trials 3 --runtime 1 python
+      - store_artifacts:
+          path: graphs
+          destination: graphs
+      - store_artifacts:
+          path: logs
+          destination: logs

@@ -16,15 +16,15 @@ logging.basicConfig(level=logging.INFO)
 class TestController:
     def test_cpu_calibration(self):
         """ Tests that the controller's CPU usage calibration is
-        accurate to 2%. """
+        accurate to 4%. """
 
         with Controller('python', target_cpu_usage=.7) as controller:
             result = controller.benchmark(trace=False, runtime=10)
-            assert abs(result.cpu_usage - .7) < .02
+            assert abs(result.cpu_usage - .7) < .04
 
         with Controller('python', target_cpu_usage=.8) as controller:
             result = controller.benchmark(trace=False, runtime=10)
-            assert abs(result.cpu_usage - .8) < .02
+            assert abs(result.cpu_usage - .8) < .04
 
     def test_runtime_calibration(self):
         """ Tests that the controller's runtime calibration is accurate to

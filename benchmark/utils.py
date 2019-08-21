@@ -34,7 +34,7 @@ def _log_output(process_handler, logger):
 
 def setup_logger(logger, filename):
     basic_formatter = logging.Formatter(
-        fmt="%(levelname)s %(name)s %(asctime)s: %(message)s",
+        fmt="%(levelname)s %(name)s %(asctime)s.%(msecs)03d: %(message)s",
         datefmt='%H:%M:%S',
         style='%')
 

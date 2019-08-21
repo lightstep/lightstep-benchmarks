@@ -14,9 +14,13 @@ logging.basicConfig(format='%(message)s', level=logging.DEBUG)
 MEMORY_PERIOD = 1  # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
 NUM_SATELLITES = 8
-MAX_BUFFERED_SPANS = 10000
-REPORTING_PERIOD = 200  # ms
 SPANS_PER_LOOP = 6
+
+# these are much more aggressive than the defaults but are common in
+# production
+MAX_BUFFERED_SPANS = 10000
+REPORTING_PERIOD = .2  # seconds
+SATELLITE_PORTS = [8360, 8361, 8362, 8363, 8364, 8365, 8366, 8367]
 
 
 def do_work(units):
@@ -59,20 +63,18 @@ class Monitor:
                 time.time() - self.start_clock_time)
 
 
-def build_tracer(command, tracer_name, port):
+def build_tracer(command, tracer_name):
     if command['Trace'] and tracer_name == "vanilla":
         logging.info("We're using the python tracer.")
         import lightstep
         return lightstep.Tracer(
             component_name='isaac_service',
-            collector_port=port,
+            collector_port=SATELLITE_PORTS[0],
             collector_host='localhost',
             collector_encryption='none',
             use_http=True,
             access_token='developer',
-            # these are much more aggressive than the defaults
-            # but are common in production
-            periodic_flush_seconds=REPORTING_PERIOD / 1000,
+            periodic_flush_seconds=REPORTING_PERIOD,
             max_span_records=MAX_BUFFERED_SPANS,
         )
     elif command['Trace'] and tracer_name == "cpp":
@@ -84,9 +86,9 @@ def build_tracer(command, tracer_name, port):
             use_stream_recorder=True,
             collector_plaintext=True,
             satellite_endpoints=[{'host': 'localhost', 'port': p}
-                                 for p in range(port, port + NUM_SATELLITES)],
+                                 for p in SATELLITE_PORTS],
             max_buffered_spans=MAX_BUFFERED_SPANS,
-            reporting_period=REPORTING_PERIOD,
+            reporting_period=REPORTING_PERIOD * 10**6,  # s --> us
         )
 
     logging.info("We're using a NoOp tracer.")
@@ -154,9 +156,8 @@ def generate_spans(tracer, units_work, number_spans, scope=None):
                            number_spans, scope=server_scope)
 
 
-def perform_work(command, tracer_name, port):
+def perform_work(command, tracer_name):
     logging.info("About to run this test: {}".format(command))
-    logging.info("Connecting to satellite on port {}".format(port))
 
     # if exit is set to true, end the program
     if command['Exit']:
@@ -164,7 +165,7 @@ def perform_work(command, tracer_name, port):
         logging.info("sent exit response, now exiting...")
         sys.exit()
 
-    tracer = build_tracer(command, tracer_name, port)
+    tracer = build_tracer(command, tracer_name)
 
     sleep_debt = 0
     spans_sent = 0
@@ -220,11 +221,6 @@ if __name__ == '__main__':
         description='Start a client to test a LightStep tracer.')
 
     parser.add_argument(
-        'port',
-        type=int,
-        help='Which port to connect to the satellite on.')
-
-    parser.add_argument(
         'tracer',
         type=str,
         choices=["vanilla", "cpp"],
@@ -234,4 +230,4 @@ if __name__ == '__main__':
 
     while True:
         r = requests.get(f'http://localhost:{CONTROLLER_PORT}/control')
-        perform_work(r.json(), args.tracer, args.port)
+        perform_work(r.json(), args.tracer)

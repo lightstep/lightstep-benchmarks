@@ -9,6 +9,10 @@ from os import path, makedirs
 TRIALS = 20
 RUNTIME = 10
 
+GRAPHS_DIR = path.join(PROJECT_DIR, "graphs")
+RAW_TRACED_FILE = path.join(GRAPHS_DIR, 'raw_data_traced.txt')
+RAW_UNTRACED_FILE = path.join(GRAPHS_DIR, 'raw_data_untraced.txt')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -27,7 +31,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    makedirs(path.join(PROJECT_DIR, "graphs"), exist_ok=True)
+    makedirs(GRAPHS_DIR, exist_ok=True)
 
     cpu_traced = []
     cpu_untraced = []
@@ -38,7 +42,7 @@ if __name__ == '__main__':
 
     with SatelliteGroup('typical') as satellites:
         with Controller(args.client) as controller:
-            for sps in [100, 300, 500, 800, 1000]:
+            for sps in [100, 500, 1000, 2000, 3000, 4000, 5000, 7500, 10000]:
                 temp_cpu_traced = []
                 temp_cpu_untraced = []
                 temp_sps_traced = []
@@ -49,7 +53,10 @@ if __name__ == '__main__':
                         trace=True,
                         spans_per_second=sps,
                         runtime=args.runtime,
+                        no_timeout=True,
+                        satellites=satellites,
                     )
+
                     print(result)
                     temp_cpu_traced.append(result.cpu_usage * 100)
                     temp_sps_traced.append(result.spans_per_second)
@@ -58,10 +65,22 @@ if __name__ == '__main__':
                         trace=False,
                         spans_per_second=sps,
                         runtime=args.runtime,
+                        no_timeout=True,
                     )
                     print(result)
                     temp_cpu_untraced.append(result.cpu_usage * 100)
                     temp_sps_untraced.append(result.spans_per_second)
+
+                # save all raw data from tests
+                with open(RAW_TRACED_FILE, 'a+') as file:
+                    for i in range(len(temp_cpu_traced)):
+                        file.write(
+                            f'{temp_cpu_traced[i]} {temp_sps_traced[i]}\n')
+
+                with open(RAW_UNTRACED_FILE, 'a+') as file:
+                    for i in range(len(temp_cpu_untraced)):
+                        file.write(
+                            f'{temp_cpu_untraced[i]} {temp_sps_untraced[i]}\n')
 
                 cpu_traced.append(np.mean(temp_cpu_traced))
                 cpu_untraced.append(np.mean(temp_cpu_untraced))
@@ -72,6 +91,48 @@ if __name__ == '__main__':
                 sps_traced.append(np.mean(temp_sps_traced))
                 sps_untraced.append(np.mean(temp_sps_untraced))
 
+    # draw two distinct plots
+    fig, ax = plt.subplots()
+
+    ax.errorbar(
+        sps_untraced,
+        cpu_untraced,
+        yerr=[cpu_std / np.sqrt(args.trials) for cpu_std in cpu_untraced_std],
+        label='untraced',
+        color='black')
+
+    ax.fill_between(
+        sps_untraced,
+        [cpu_untraced[i] - cpu_untraced_std[i]
+            for i in range(len(cpu_untraced))],
+        [cpu_untraced[i] + cpu_untraced_std[i]
+            for i in range(len(cpu_untraced))],
+        facecolor='black',
+        alpha=0.5,
+        label='untraced standard deviation')
+
+    ax.errorbar(
+        sps_traced,
+        cpu_traced,
+        yerr=[cpu_std / np.sqrt(args.trials) for cpu_std in cpu_traced_std],
+        label='traced',
+        color='blue')
+
+    ax.fill_between(
+        sps_traced,
+        [cpu_traced[i] - cpu_traced_std[i] for i in range(len(cpu_traced))],
+        [cpu_traced[i] + cpu_traced_std[i] for i in range(len(cpu_traced))],
+        facecolor='blue',
+        alpha=0.5,
+        label='traced standard deviation')
+
+    ax.set(xlabel="Spans per second", ylabel="Total program CPU usage")
+    ax.set_title(
+        f'{controller.client_name.title()} Traced vs Untraced CPU Use')
+    ax.legend()
+    fig.savefig(path.join(
+        GRAPHS_DIR, f'{controller.client_name}_sps_vs_cpu_comparison.png'))
+
     # compute the difference between traced and untraced CPU usage
     cpu_difference = [
         cpu_traced[i] - cpu_untraced[i] for i in range(len(cpu_traced))]
@@ -79,25 +140,29 @@ if __name__ == '__main__':
     cpu_difference_std = [(cpu_traced_std[i]**2 + cpu_traced_std[i]**2)**.5
                           for i in range(len(cpu_traced_std))]
 
-    # draw two distinct plots
+    # draw difference plot
     fig, ax = plt.subplots()
-    ax.errorbar(sps_traced, cpu_traced, yerr=cpu_traced_std, label='traced')
-    ax.errorbar(sps_untraced, cpu_untraced,
-                yerr=cpu_untraced_std, label='untraced')
-    ax.set(xlabel="Spans per second", ylabel="Total program CPU usage")
-    ax.set_title(
-        f'{controller.client_name.title()} Traced vs Untraced CPU Use')
-    ax.legend()
-    fig.savefig(path.join(
-        PROJECT_DIR,
-        f'graphs/{controller.client_name}_sps_vs_cpu_comparison.png'))
+    ax.errorbar(
+        sps_traced,
+        cpu_difference,
+        yerr=[cpu_std / np.sqrt(args.trials)
+              for cpu_std in cpu_difference_std],
+        color='blue',
+        label='mean & standard error')
 
-    # draw difference ploit
-    fig, ax = plt.subplots()
-    ax.errorbar(sps_untraced, cpu_difference, yerr=cpu_difference_std)
-    ax.set(xlabel="Spans per second", ylabel="Tracer library CPU usage")
+    ax.fill_between(
+        sps_traced,
+        [cpu_difference[i] - cpu_difference_std[i]
+            for i in range(len(cpu_difference))],
+        [cpu_difference[i] + cpu_difference_std[i]
+            for i in range(len(cpu_difference))],
+        facecolor='blue',
+        alpha=0.5,
+        label='standard deviation')
+
+    ax.set(xlabel="Traced spans per second", ylabel="Tracer library CPU usage")
     ax.set_title(
         f'{controller.client_name.title()} CPU Use of LightStep Tracer')
+    ax.legend()
     fig.savefig(path.join(
-        PROJECT_DIR,
-        f'graphs/{controller.client_name}_sps_vs_cpu.png'))
+        GRAPHS_DIR, f'{controller.client_name}_sps_vs_cpu.png'))
