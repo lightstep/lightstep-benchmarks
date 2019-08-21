@@ -430,6 +430,7 @@ class Controller:
             self.server.timeout = None
 
         # make sure that satellite span counters are all zeroed
+        # throws an error if the satellites aren't running
         if satellites:
             satellites.reset_spans_received()
 

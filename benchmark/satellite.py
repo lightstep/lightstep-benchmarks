@@ -138,7 +138,12 @@ class MockSatelliteGroup:
 
     def reset_spans_received(self):
         """ Resets the number of spans that the group of mock satellites have
-        received to 0. Does nothing if the satellite group has been shutdown.
+        received to 0. Does nothing if the satellite group has been shutdown.\
+
+        Raises
+        ------
+        SatelliteBadResponse
+            If we were unable to reset the number of spans received.
         """
 
         if not self._satellites:
@@ -151,7 +156,7 @@ class MockSatelliteGroup:
             s.reset_spans_received()
 
     def start(self, mode, ports=DEFAULT_PORTS):
-        """ Restarts the group of mock satellites. Should only be called if the the
+        """ Restarts the group of mock satellites. Should only be called if the
         group is currently shutdown.
 
         Parameters
