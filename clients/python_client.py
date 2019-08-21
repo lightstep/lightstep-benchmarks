@@ -14,9 +14,12 @@ logging.basicConfig(format='%(message)s', level=logging.DEBUG)
 MEMORY_PERIOD = 1  # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
 NUM_SATELLITES = 8
-MAX_BUFFERED_SPANS = 10000
-REPORTING_PERIOD = 200  # ms
 SPANS_PER_LOOP = 6
+
+# these are much more aggressive than the defaults but are common in
+# production
+MAX_BUFFERED_SPANS = 10000
+REPORTING_PERIOD = .2  # seconds
 
 
 def do_work(units):
@@ -70,9 +73,7 @@ def build_tracer(command, tracer_name, port):
             collector_encryption='none',
             use_http=True,
             access_token='developer',
-            # these are much more aggressive than the defaults
-            # but are common in production
-            periodic_flush_seconds=REPORTING_PERIOD / 1000,
+            periodic_flush_seconds=REPORTING_PERIOD,
             max_span_records=MAX_BUFFERED_SPANS,
         )
     elif command['Trace'] and tracer_name == "cpp":
@@ -86,7 +87,7 @@ def build_tracer(command, tracer_name, port):
             satellite_endpoints=[{'host': 'localhost', 'port': p}
                                  for p in range(port, port + NUM_SATELLITES)],
             max_buffered_spans=MAX_BUFFERED_SPANS,
-            reporting_period=REPORTING_PERIOD,
+            reporting_period=REPORTING_PERIOD * 10**6,  # s --> us
         )
 
     logging.info("We're using a NoOp tracer.")
