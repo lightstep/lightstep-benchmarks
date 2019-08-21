@@ -96,6 +96,9 @@ def test_max_throughput(client_name, satellites):
             if result.cpu_usage > .8:
                 break
 
+            if target_sps > 3000:
+                break
+
             target_sps += SPS_INCREMENT
 
         assert result.spans_per_second > 3000

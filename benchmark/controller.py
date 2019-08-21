@@ -39,13 +39,10 @@ calibration_work = 200000
 client_args = {
     'python': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
-        '8360', 'vanilla'],
+        'vanilla'],
     'python-cpp': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
-        '8360', 'cpp'],
-    'python-sidecar': [
-        'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
-        '8024', 'vanilla']
+        'cpp'],
 }
 
 logger = logging.getLogger(__name__)
@@ -413,6 +410,12 @@ class Controller:
         ValueError
             If `spans_per_second` is set to 0.
         """
+
+        logger.info(
+            "attempting to run test with {}, trace={}, no_flush={}, " +
+            "spans_per_second={}, runtime={}, no_timeout={}".format(
+                'satellites' if satellites else 'no satellites',
+                trace, no_flush, spans_per_second, runtime, no_timeout))
 
         if spans_per_second == 0:
             raise ValueError("Cannot target 0 spans per second.")

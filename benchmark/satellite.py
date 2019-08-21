@@ -72,8 +72,8 @@ class MockSatelliteGroup:
 
         Raises
         ------
-        Exception
-            If the group of mock satellites is currently running.
+        DeadSatellites
+            If one or more of the satellites died during startup.
         """
 
         self._ports = ports
