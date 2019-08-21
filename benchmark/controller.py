@@ -42,10 +42,7 @@ client_args = {
         '8360', 'vanilla'],
     'python-cpp': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
-        '8360', 'cpp'],
-    'python-sidecar': [
-        'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
-        '8024', 'vanilla']
+        '8360', 'cpp']
 }
 
 logger = logging.getLogger(__name__)
