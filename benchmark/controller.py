@@ -411,9 +411,9 @@ class Controller:
             If `spans_per_second` is set to 0.
         """
 
-        logger.info(
+        logger.info((
             "attempting to run test with {}, trace={}, no_flush={}, " +
-            "spans_per_second={}, runtime={}, no_timeout={}".format(
+            "spans_per_second={}, runtime={}, no_timeout={}").format(
                 'satellites' if satellites else 'no satellites',
                 trace, no_flush, spans_per_second, runtime, no_timeout))
 

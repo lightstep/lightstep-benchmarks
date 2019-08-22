@@ -89,6 +89,7 @@ def build_tracer(command, tracer_name):
                                  for p in SATELLITE_PORTS],
             max_buffered_spans=MAX_BUFFERED_SPANS,
             reporting_period=REPORTING_PERIOD * 10**6,  # s --> us
+            verbose=True,  # print out a bunch of info !
         )
 
     logging.info("We're using a NoOp tracer.")
