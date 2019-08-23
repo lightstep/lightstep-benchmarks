@@ -43,14 +43,17 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
         if body_string:
             self.wfile.write((body_string).encode('utf-8'))
 
+    def log_message(self, message, *args):
+        logging.info(message % tuple(args))
+
     def GET(self):
         if self.path == "/spans_received":
             # don't need to worry about locking here since we're not going to
             # modify
             global spans_received
-            logging.info("Responded that {} spans have been received.".format(
-                spans_received))
-            logging.info("This number does NOT count resets.")
+            logging.info(("Responded that {} spans have been received. " +
+                          "This number does NOT count resets.").format(
+                          spans_received))
 
             self._send_response(200, body_string=str(spans_received))
             return
