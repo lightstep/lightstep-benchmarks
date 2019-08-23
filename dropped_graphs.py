@@ -34,7 +34,8 @@ if __name__ == '__main__':
 
                 print(result)
 
-                dropped_list.append(result.dropped_spans / result.spans_sent)
+                dropped_list.append(
+                    result.dropped_spans / result.spans_sent * 100)
                 cpu_list.append(result.cpu_usage * 100)
                 sps_list.append(result.spans_per_second)
 

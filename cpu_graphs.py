@@ -126,7 +126,7 @@ if __name__ == '__main__':
         alpha=0.5,
         label='traced standard deviation')
 
-    ax.set(xlabel="Spans per second", ylabel="Total program CPU usage")
+    ax.set(xlabel="Spans per second", ylabel="Total CPU usage (percent)")
     ax.set_title(
         f'{controller.client_name.title()} Traced vs Untraced CPU Use')
     ax.legend()
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         alpha=0.5,
         label='standard deviation')
 
-    ax.set(xlabel="Traced spans per second", ylabel="Tracer library CPU usage")
+    ax.set(xlabel="Spans per second", ylabel="Tracer CPU usage (percent)")
     ax.set_title(
         f'{controller.client_name.title()} CPU Use of LightStep Tracer')
     ax.legend()
