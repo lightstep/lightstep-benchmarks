@@ -6,10 +6,16 @@ import threading
 import argparse
 import time
 import logging
+import sys
 
+# log everything with no format, because these messages will be formatted
+# and printed by the controller
+# log to stdout so that the controller can differentiate between errors
+# (written to stderr) and logs (written to stdout)
 logging.basicConfig(
     format='%(message)s',
-    level=logging.DEBUG)
+    level=logging.DEBUG,
+    handlers=[logging.StreamHandler(sys.stdout)])
 
 # multiple threads may access spans_received so it's protected with a lock
 spans_received = 0

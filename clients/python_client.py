@@ -8,7 +8,12 @@ import logging
 
 # log everything with no format, because these messages will be formatted
 # and printed by the controller
-logging.basicConfig(format='%(message)s', level=logging.DEBUG)
+# log to stdout so that the controller can differentiate between errors
+# (written to stderr) and logs (written to stdout)
+logging.basicConfig(
+    format='%(message)s',
+    level=logging.DEBUG,
+    handlers=[logging.StreamHandler(sys.stdout)])
 
 
 MEMORY_PERIOD = 1  # report memory use every 5 seconds
