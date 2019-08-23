@@ -42,7 +42,7 @@ def _log_output(pipe, logger_method):
         logger_method(line.decode('ascii')[:-1])
 
 
-def setup_logger(logger, filename):
+def setup_logger(logger):
     basic_formatter = logging.Formatter(
         fmt="%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s",
         datefmt='%H:%M:%S',
@@ -50,13 +50,20 @@ def setup_logger(logger, filename):
 
     # create the logs folder
     logs_dir = path.join(PROJECT_DIR, 'logs')
-    logs_file = path.join(logs_dir, filename)
+    logs_file = path.join(logs_dir, 'benchmark.log')
+    verbose_logs_file = path.join(logs_dir, 'benchmark_verbose.log')
     makedirs(logs_dir, exist_ok=True)
 
-    # output ALL logs to a file
+    # output INFO and higher to a file
     file_handler = logging.FileHandler(logs_file, mode='a')
     file_handler.setFormatter(basic_formatter)
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(logging.INFO)
+
+    # output ALL logs to a file
+    # these are occasionally useful, but are really too verbose for easy use
+    verbose_file_handler = logging.FileHandler(verbose_logs_file, mode='a')
+    verbose_file_handler.setFormatter(basic_formatter)
+    verbose_file_handler.setLevel(logging.DEBUG)
 
     print_handler = logging.StreamHandler(stream=sys.stdout)
     print_handler.setFormatter(basic_formatter)
@@ -64,6 +71,7 @@ def setup_logger(logger, filename):
 
     logger.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
+    logger.addHandler(verbose_file_handler)
     logger.addHandler(print_handler)
 
 
