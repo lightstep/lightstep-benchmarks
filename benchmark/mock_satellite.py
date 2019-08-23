@@ -7,7 +7,9 @@ import argparse
 import time
 import logging
 
-logging.basicConfig(format='%(message)s', level=logging.DEBUG)
+logging.basicConfig(
+    format='[%(asctime)s.%(msecs)03d] %(message)s',
+    level=logging.DEBUG)
 
 # multiple threads may access spans_received so it's protected with a lock
 spans_received = 0
@@ -40,8 +42,9 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             # don't need to worry about locking here since we're not going to
             # modify
             global spans_received
-            logging.info("Responded with '{}' to /spans_received".format(
+            logging.info("Responded that {} spans have been received.".format(
                 spans_received))
+            logging.info("This number does NOT count resets.")
 
             self._send_response(200, body_string=str(spans_received))
             return
@@ -52,7 +55,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
         if self.path == "/api/v2/reports":
             global MODE
 
-            logging.info("starting to process report request")
+            logging.info("Processing report request in {} mode.".format(MODE))
 
             if MODE == 'typical':
                 time.sleep((TYPICAL_RESPONSE_TIME + NETWORK_LATENCY) * 10**-6)
@@ -81,7 +84,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             with global_lock:
                 spans_received += spans_in_report
 
-            logging.debug('Just read {} spans, read {} in total.'.format(
+            logging.debug('Report Request contained {} spans.'.format(
                 spans_in_report, spans_received))
 
             # Right now `response_string` is actually just b'', but we can

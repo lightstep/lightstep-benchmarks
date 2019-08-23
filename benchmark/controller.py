@@ -246,6 +246,11 @@ class Controller:
         target_cpu_usage : float
             Calibrate client program to use `target_cpu_usage` percent CPU when
             using a NoOp tracer.
+
+        Raises
+        ------
+        InvalidClient
+            If `client_name` is not the name of a registered client.
         """
 
         if client_name not in client_args:
