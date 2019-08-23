@@ -8,7 +8,7 @@ import time
 import logging
 
 logging.basicConfig(
-    format='[%(asctime)s.%(msecs)03d] %(message)s',
+    format='%(message)s',
     level=logging.DEBUG)
 
 # multiple threads may access spans_received so it's protected with a lock
