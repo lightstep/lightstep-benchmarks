@@ -78,8 +78,7 @@ class TestController:
                 assert isinstance(item, float)
                 assert item >= 0 and item <= 1
 
-            # check result.memory_list and result.memory
-            assert isinstance(result.memory, int)
+            # check result.memory_list
             assert isinstance(result.memory_list, list)
             for item in result.memory_list:
                 assert isinstance(item, int)

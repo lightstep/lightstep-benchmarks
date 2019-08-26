@@ -28,7 +28,7 @@ def test_memory(client_name, satellites):
             runtime=5,
             satellites=satellites)
 
-    assert(result_100s.memory / result_5s.memory < 2)
+    assert(result_100s.memory_list[-1] / result_5s.memory_list[-1] < 2)
 
 
 def test_dropped_spans(client_name, satellites):

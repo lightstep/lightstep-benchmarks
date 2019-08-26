@@ -261,7 +261,6 @@ class Result:
         ret = 'controller.Results object:\n'
         ret += f'\t{self.spans_per_second:.1f} spans / sec\n'
         ret += f'\t{self.cpu_usage * 100:.2f}% CPU usage\n'
-        ret += f'\t{self.memory} bytes of virtual memory used at finish\n'
         if self.spans_sent > 0:
             ret += (f'\t{self.dropped_spans / self.spans_sent * 100:.1f}' +
                     f'% spans dropped (out of {self.spans_sent} sent)\n')
@@ -289,10 +288,6 @@ class Result:
             memory_list,
             cpu_list,
             spans_received=int(spans_received))
-
-    @property
-    def memory(self):
-        return self.memory_list[-1]
 
     @property
     def spans_per_second(self):
