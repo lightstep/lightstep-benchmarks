@@ -45,6 +45,9 @@ client_args = {
     'python-cpp': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
         'cpp'],
+    'js': [
+        'node', path.join(PROJECT_DIR, 'clients/js_client.js'),
+    ]
 }
 
 logger = logging.getLogger(__name__)
