@@ -64,25 +64,25 @@ class CommandServer(HTTPServer):
         raise ClientTimeout()
 
     def run_test(self, command, process_handle):
-        logging.info("execute command")
+        logger.info("execute command")
         # Schedules a test for the client process to run.
         with self._lock:
             assert self._command is None
             self._command = command
 
-        logging.info('handling one request')
+        logger.info('handling one request')
         self.handle_request()
-        logging.info('request handled')
+        logger.info('request handled')
 
         while process_handle.poll() is None:
             pass
 
-        logging.info("execute command finished.")
+        logger.info("execute command finished.")
 
         return process_handle.get_results()
 
     def get_test_command(self):
-        logging.info("next command")
+        logger.info("next command")
         with self._lock:
             assert self._command is not None
             command = copy.copy(self._command)
@@ -261,7 +261,6 @@ class Result:
         ret = 'controller.Results object:\n'
         ret += f'\t{self.spans_per_second:.1f} spans / sec\n'
         ret += f'\t{self.cpu_usage * 100:.2f}% CPU usage\n'
-        ret += f'\t{self.memory} bytes of virtual memory used at finish\n'
         if self.spans_sent > 0:
             ret += (f'\t{self.dropped_spans / self.spans_sent * 100:.1f}' +
                     f'% spans dropped (out of {self.spans_sent} sent)\n')
@@ -289,10 +288,6 @@ class Result:
             memory_list,
             cpu_list,
             spans_received=int(spans_received))
-
-    @property
-    def memory(self):
-        return self.memory_list[-1]
 
     @property
     def spans_per_second(self):
