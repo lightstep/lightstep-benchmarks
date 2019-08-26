@@ -64,25 +64,25 @@ class CommandServer(HTTPServer):
         raise ClientTimeout()
 
     def run_test(self, command, process_handle):
-        logging.info("execute command")
+        logger.info("execute command")
         # Schedules a test for the client process to run.
         with self._lock:
             assert self._command is None
             self._command = command
 
-        logging.info('handling one request')
+        logger.info('handling one request')
         self.handle_request()
-        logging.info('request handled')
+        logger.info('request handled')
 
         while process_handle.poll() is None:
             pass
 
-        logging.info("execute command finished.")
+        logger.info("execute command finished.")
 
         return process_handle.get_results()
 
     def get_test_command(self):
-        logging.info("next command")
+        logger.info("next command")
         with self._lock:
             assert self._command is not None
             command = copy.copy(self._command)
