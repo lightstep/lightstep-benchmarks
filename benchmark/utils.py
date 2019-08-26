@@ -9,11 +9,11 @@ BENCHMARK_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
 
 
-def start_logging_subprocess(cli_args, logger):
+def start_logging_subprocess(cli_args, logger, popen_class=subprocess.Popen):
     # starts a subprocess, logs its stdout and stderr using logger.debug and
     # logger.error
 
-    handler = subprocess.Popen(
+    handler = popen_class(
         cli_args,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

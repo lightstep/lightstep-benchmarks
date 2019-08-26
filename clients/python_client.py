@@ -1,4 +1,3 @@
-import psutil
 import time
 import opentracing
 import sys
@@ -16,56 +15,20 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)])
 
 
-MEMORY_PERIOD = 1  # report memory use every 5 seconds
 CONTROLLER_PORT = 8023
-NUM_SATELLITES = 8
 SPANS_PER_LOOP = 6
+SATELLITE_PORTS = [8360, 8361, 8362, 8363, 8364, 8365, 8366, 8367]
 
 # these are much more aggressive than the defaults but are common in
 # production
 MAX_BUFFERED_SPANS = 10000
 REPORTING_PERIOD = .2  # seconds
-SATELLITE_PORTS = [8360, 8361, 8362, 8363, 8364, 8365, 8366, 8367]
 
 
 def do_work(units):
     i = 1.12563
     for i in range(0, units):
         i *= i
-
-
-def send_result(result):
-    requests.get(f'http://localhost:{CONTROLLER_PORT}/result', params=result)
-
-
-class Monitor:
-    """ Special timer to measure process time and time spent as a result of
-    this process' system calls.
-
-    Records 2 * 10^-5 seconds when we immediately run start() then stop(), so
-    tests should be at ms scale to dwarf this contribution.
-    """
-    def __init__(self):
-        self.process = psutil.Process()
-
-    def get_memory(self):
-        """ Returns the size of process virtual memory """
-        return self.process.memory_info()[0]
-
-    def start(self):
-        user, system, _, _ = self.process.cpu_times()
-        self.start_cpu_time = user + system
-        self.start_clock_time = time.time()
-        self.get_cpu()
-
-    def get_cpu(self):
-        """ Gets CPU %, calculated since last call to split. """
-        return self.process.cpu_percent(interval=None)
-
-    def stop(self):
-        user, system, _, _ = self.process.cpu_times()
-        return (user + system - self.start_cpu_time,
-                time.time() - self.start_clock_time)
 
 
 def build_tracer(command, tracer_name):
@@ -165,23 +128,10 @@ def generate_spans(tracer, units_work, number_spans, scope=None):
 def perform_work(command, tracer_name):
     logging.info("About to run this test: {}".format(command))
 
-    # if exit is set to true, end the program
-    if command['Exit']:
-        send_result({})
-        logging.info("sent exit response, now exiting...")
-        sys.exit()
-
     tracer = build_tracer(command, tracer_name)
 
     sleep_debt = 0
     spans_sent = 0
-
-    last_memory_save = time.time()
-    memory_list = []
-    cpu_list = []
-
-    monitor = Monitor()
-    monitor.start()
 
     while spans_sent < command['Repeat']:
         spans_to_send = min(command['Repeat'] - spans_sent, SPANS_PER_LOOP)
@@ -194,32 +144,13 @@ def perform_work(command, tracer_name):
             # 10^-9 nanoseconds / second
             time.sleep(command['SleepInterval'] * 10**-9)
 
-        if time.time() > last_memory_save + MEMORY_PERIOD:
-            memory_list.append(monitor.get_memory())
-            # saves CPU percentage as fraction since last call
-            cpu_list.append(monitor.get_cpu() / 100)
-            last_memory_save = time.time()
-
-    memory_list.append(monitor.get_memory())
-
     # don't include flush in time measurement
     if command['Trace'] and not command['NoFlush']:
         logging.info("Flushing spans.")
         tracer.flush()
 
-    cpu_time, clock_time = monitor.stop()
-
-    result = {
-        'ProgramTime': cpu_time,
-        'ClockTime': clock_time,
-        'SpansSent': spans_sent,
-        'MemoryList': memory_list,
-        'CPUList': cpu_list,
-    }
-
-    logging.info("Sending result to controller:")
-    logging.info(result)
-    send_result(result)
+    logging.info("Exiting.")
+    exit()
 
 
 if __name__ == '__main__':
