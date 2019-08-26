@@ -6,8 +6,16 @@ import threading
 import argparse
 import time
 import logging
+import sys
 
-logging.basicConfig(format='%(message)s', level=logging.DEBUG)
+# log everything with no format, because these messages will be formatted
+# and printed by the controller
+# log to stdout so that the controller can differentiate between errors
+# (written to stderr) and logs (written to stdout)
+logging.basicConfig(
+    format='%(message)s',
+    level=logging.DEBUG,
+    handlers=[logging.StreamHandler(sys.stdout)])
 
 # multiple threads may access spans_received so it's protected with a lock
 spans_received = 0
@@ -35,13 +43,17 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
         if body_string:
             self.wfile.write((body_string).encode('utf-8'))
 
+    def log_message(self, message, *args):
+        logging.info(message % tuple(args))
+
     def GET(self):
         if self.path == "/spans_received":
             # don't need to worry about locking here since we're not going to
             # modify
             global spans_received
-            logging.info("Responded with '{}' to /spans_received".format(
-                spans_received))
+            logging.info(("Responded that {} spans have been received. " +
+                          "This number does NOT count resets.").format(
+                          spans_received))
 
             self._send_response(200, body_string=str(spans_received))
             return
@@ -52,7 +64,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
         if self.path == "/api/v2/reports":
             global MODE
 
-            logging.info("starting to process report request")
+            logging.info("Processing report request in {} mode.".format(MODE))
 
             if MODE == 'typical':
                 time.sleep((TYPICAL_RESPONSE_TIME + NETWORK_LATENCY) * 10**-6)
@@ -81,7 +93,7 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
             with global_lock:
                 spans_received += spans_in_report
 
-            logging.debug('Just read {} spans, read {} in total.'.format(
+            logging.debug('Report Request contained {} spans.'.format(
                 spans_in_report, spans_received))
 
             # Right now `response_string` is actually just b'', but we can

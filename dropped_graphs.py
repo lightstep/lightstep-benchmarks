@@ -5,6 +5,8 @@ import argparse
 from os import path, makedirs
 from benchmark.utils import PROJECT_DIR
 
+DATA_FILE = path.join(PROJECT_DIR, "graphs/raw_data.txt")
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -34,9 +36,19 @@ if __name__ == '__main__':
 
                 print(result)
 
-                dropped_list.append(result.dropped_spans / result.spans_sent)
+                dropped_list.append(
+                    result.dropped_spans / result.spans_sent * 100)
                 cpu_list.append(result.cpu_usage * 100)
                 sps_list.append(result.spans_per_second)
+
+    # save all raw data from test
+    with open(DATA_FILE, 'a+') as file:
+        for i in range(len(dropped_list)):
+            file.write("{} {} {}\n".format(
+                sps_list[i],
+                cpu_list[i],
+                dropped_list[i],
+            ))
 
     dropped_ax.plot(sps_list, dropped_list)
     dropped_ax.set(

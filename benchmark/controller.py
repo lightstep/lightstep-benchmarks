@@ -2,13 +2,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 import json
 import copy
-from urllib.parse import urlparse, parse_qs
 import time
 from os import path
 import logging
 from .utils import PROJECT_DIR, start_logging_subprocess
 from .exceptions import InvalidClient, ClientTimeout
-
+import psutil
+from threading import Thread, Lock
+from urllib.parse import urlparse
+import subprocess
 
 """
 This module is used to benchmark tracers.
@@ -48,27 +50,12 @@ client_args = {
 logger = logging.getLogger(__name__)
 
 
-def _format_query_json(query_dict):
-    # Dictionaries created by urllib.parse.parse_qs looks like {key: [value]}
-    # This function take dictionaries of that format and makes them normal.
-
-    normal_dict = {}
-    for key in query_dict:
-        if len(query_dict[key]) == 1:
-            normal_dict[key] = query_dict[key][0]
-        else:
-            normal_dict[key] = query_dict[key]
-
-    return normal_dict
-
-
 class CommandServer(HTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._lock = threading.Lock()
         self._command = None
-        self._result = None
 
     def handle_timeout(self):
         logger.error('Timeout waiting for client to complete test. ' +
@@ -76,22 +63,26 @@ class CommandServer(HTTPServer):
 
         raise ClientTimeout()
 
-    def execute_command(self, command):
+    def run_test(self, command, process_handle):
+        logging.info("execute command")
         # Schedules a test for the client process to run.
         with self._lock:
             assert self._command is None
             self._command = command
 
-        while True:
-            self.handle_request()
+        logging.info('handling one request')
+        self.handle_request()
+        logging.info('request handled')
 
-            with self._lock:
-                if self._result is not None:
-                    result = copy.copy(self._result)
-                    self._result = None
-                    return result
+        while process_handle.poll() is None:
+            pass
 
-    def next_command(self):
+        logging.info("execute command finished.")
+
+        return process_handle.get_results()
+
+    def get_test_command(self):
+        logging.info("next command")
         with self._lock:
             assert self._command is not None
             command = copy.copy(self._command)
@@ -99,42 +90,130 @@ class CommandServer(HTTPServer):
 
         return command
 
-    def save_result(self, result):
-        assert isinstance(result, Result)
 
+class ClientProcess(subprocess.Popen):
+    """ Client process is now not expected to send back anything. """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # these are locked because they are accessed from two threads
+        self._lock = Lock()
+        self._cpu_list = []
+        self._memory_list = []
+
+        save_list_stats_thread = Thread(
+            target=self._save_list_stats,
+            args=(self._cpu_list, self._memory_list))
+        save_list_stats_thread.daemon = True
+        save_list_stats_thread.start()
+
+        save_runtime_stats_thread = Thread(
+            target=self._save_runtime_stats,
+            args=())
+        save_runtime_stats_thread.daemon = True
+        save_runtime_stats_thread.start()
+
+    @property
+    def cpu_list(self):
         with self._lock:
-            assert self._result is None
-            self._result = result
+            return self._cpu_list.copy()
+
+    @property
+    def memory_list(self):
+        with self._lock:
+            return self._memory_list.copy()
+
+    @property
+    def program_time(self):
+        if hasattr(self, "_program_time"):
+            with self._lock:
+                return self._program_time
+        raise AttributeError()
+
+    @property
+    def clock_time(self):
+        if hasattr(self, "_clock_time"):
+            with self._lock:
+                return self._clock_time
+        raise AttributeError()
+
+    def _save_runtime_stats(self):
+        # we use a separate resource monitor here because we don't want
+        # threading conflicts
+        resource_monitor = psutil.Process(pid=self.pid)
+        resource_monitor.cpu_percent()  # throw away process CPU usage so far
+        start_clock_time = time.time()
+
+        while True:
+            time.sleep(.01)
+
+            if self.poll() is not None:
+                logger.debug(
+                    'Client no longer running, stopping save runtime stats.')
+                return
+
+            try:
+                user, system, _, _ = resource_monitor.cpu_times()
+                with self._lock:
+                    self._program_time = user + system
+                    self._clock_time = time.time() - start_clock_time
+            # if the child process has shut down, ignore because self.poll()
+            # will detect this soon
+            except psutil.AccessDenied:
+                pass
+
+    def _save_list_stats(self, cpu_list, memory_list):
+        # we use a separate resource monitor here because we don't want
+        # threading conflicts
+        resource_monitor = psutil.Process(pid=self.pid)
+        resource_monitor.cpu_percent()  # throw away process CPU usage so far
+
+        while True:
+            time.sleep(1)
+
+            # if the underlying process is no longer running, don't modify cpu
+            # or memory
+            if self.poll() is not None:
+                logger.debug(
+                    'Client no longer running, stopping save list stats.')
+                return
+
+            try:
+                cpu_percent = resource_monitor.cpu_percent()
+                memory_usage = resource_monitor.memory_info()[0]
+
+                with self._lock:
+                    cpu_list.append(cpu_percent / 100)  # convert to decimal
+                    memory_list.append(memory_usage)
+            # if the child process has shut down, ignore because self.poll()
+            # will detect this soon
+            except psutil.AccessDenied:
+                pass
+
+    def get_results(self):
+        return Result(
+            0,  # spans_sent will be set later
+            self.program_time,
+            self.clock_time,
+            self.memory_list,
+            self.cpu_list)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_url = urlparse(self.path)
         self.path = parsed_url.path  # redefine path so it excludes query str
-        self.query_json = _format_query_json(parse_qs(parsed_url.query))
-
         if self.path == "/control":
             self._handle_control()
-        elif self.path == "/result":
-            self._handle_result()
 
     def _handle_control(self):
-        next_command = self.server.next_command()
+        next_command = self.server.get_test_command()
 
         self.send_response(200)
         body_string = json.dumps(next_command)
         self.send_header("Content-Length", len(body_string))
         self.end_headers()
         self.wfile.write(body_string.encode('utf-8'))
-
-    def _handle_result(self):
-        self.send_response(200)
-        self.end_headers()
-
-        logger.debug("Client result (from query string JSON): {}".format(
-            self.query_json))
-        result = Result.from_dict(self.query_json)
-        self.server.save_result(result)
 
     def log_message(self, format, *args):
         return
@@ -246,6 +325,11 @@ class Controller:
         target_cpu_usage : float
             Calibrate client program to use `target_cpu_usage` percent CPU when
             using a NoOp tracer.
+
+        Raises
+        ------
+        InvalidClient
+            If `client_name` is not the name of a registered client.
         """
 
         if client_name not in client_args:
@@ -304,7 +388,6 @@ class Controller:
             'Trace': False,
             'Sleep': calibration_work * self._sleep_per_work,
             'SleepInterval': DEFAULT_SLEEP_INTERVAL,
-            'Exit': False,
             'Work': calibration_work,
             'Repeat': CALIBRATION_REPEAT,
             'NoFlush': False
@@ -334,7 +417,6 @@ class Controller:
                 'Trace': False,
                 'Sleep': sleep_per_work * calibration_work,
                 'SleepInterval': DEFAULT_SLEEP_INTERVAL,
-                'Exit': False,
                 'Work': calibration_work,
                 'Repeat': CALIBRATION_REPEAT,
                 'NoFlush': False
@@ -441,7 +523,6 @@ class Controller:
             'Trace': trace,
             'Sleep': int(work * self._sleep_per_work),
             'SleepInterval': DEFAULT_SLEEP_INTERVAL,
-            'Exit': False,
             'Work': int(work),
             'Repeat': int(repeat),
             'NoFlush': no_flush
@@ -460,21 +541,16 @@ class Controller:
 
         client_logger = logging.getLogger(
             f'{__name__}.{self.client_name}_client')
+
         client_handle = start_logging_subprocess(
             self.client_startup_args,
-            client_logger)
+            client_logger,
+            popen_class=ClientProcess)
 
-        logger.info("Client started.")
+        logger.info("Client test started.")
+        results = self.server.run_test(command, client_handle)
+        logger.info("Client test stopped.")
 
-        result = self.server.execute_command(command)
-        self.server.execute_command({'Exit': True})
+        results.spans_sent = int(command['Repeat'])
 
-        # at this point, we have sent the exit command and received a
-        # response wait for the client program to shutdown
-        logger.info("Waiting for client to shutdown...")
-
-        while client_handle.poll() is None:
-            pass
-
-        logger.info("Client shutdown.")
-        return result
+        return results

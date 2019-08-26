@@ -5,6 +5,8 @@ import argparse
 from os import path, makedirs
 from benchmark.utils import PROJECT_DIR
 
+GRAPHS_DIR = path.join(PROJECT_DIR, 'graphs')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -18,7 +20,6 @@ if __name__ == '__main__':
 
     with SatelliteGroup('typical') as satellites:
         with Controller(args.client) as controller:
-
             for sps in [100, 500, 1000, 2000]:
                 result = controller.benchmark(
                     trace=True,
@@ -32,6 +33,15 @@ if __name__ == '__main__':
                 memory_list = [m * 2**-20 for m in result.memory_list]
 
                 ax.plot(runtime_list, memory_list, label=f'{sps} spans / sec')
+
+                # save all raw data from test
+                filepath = path.join(GRAPHS_DIR, f'raw_data_{sps}sps.txt')
+                with open(filepath, 'a+') as file:
+                    for i in range(len(runtime_list)):
+                        file.write("{} {}\n".format(
+                            runtime_list[i],
+                            memory_list[i]
+                        ))
 
     ax.set(
         xlabel="Seconds program runtime",

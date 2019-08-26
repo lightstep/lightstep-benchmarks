@@ -9,44 +9,61 @@ BENCHMARK_DIR = path.dirname(path.realpath(__file__))
 PROJECT_DIR = path.join(BENCHMARK_DIR, "..")
 
 
-def start_logging_subprocess(cli_args, logger):
-    # send stdout and stderr to different pipes
-    # TODO: print stdout with logging.info and stderr with logging.error
-    handler = subprocess.Popen(
+def start_logging_subprocess(cli_args, logger, popen_class=subprocess.Popen):
+    # starts a subprocess, logs its stdout and stderr using logger.debug and
+    # logger.error
+
+    handler = popen_class(
         cli_args,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)  # send output to stdout / stderr pipes
+        stderr=subprocess.PIPE,
+        bufsize=1  # 1 sets this to line-buffered
+    )
 
-    stdout_logging_thread = Thread(
+    stdout_thread = Thread(
         target=_log_output,
-        args=(handler, logger))
-    stdout_logging_thread.daemon = True
-    stdout_logging_thread.start()
+        args=[handler.stdout, logger.debug])
+    stdout_thread.daemon = True
+    stdout_thread.start()
+
+    stderr_thread = Thread(
+        target=_log_output,
+        args=[handler.stderr, logger.error])
+    stderr_thread.daemon = True
+    stderr_thread.start()
 
     return handler
 
 
-def _log_output(process_handler, logger):
+def _log_output(pipe, logger_method):
     # read until we reach ''
-    for line in iter(process_handler.stdout.readline, b''):
-        logger.info(line.decode('ascii')[:-1])  # last char is \n, ignore this
+    for line in iter(pipe.readline, b''):
+        # last char is \n, ignore this
+        logger_method(line.decode('ascii')[:-1])
 
 
-def setup_logger(logger, filename):
+def setup_logger(logger):
     basic_formatter = logging.Formatter(
-        fmt="%(levelname)s %(name)s %(asctime)s.%(msecs)03d: %(message)s",
+        fmt="%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s",
         datefmt='%H:%M:%S',
         style='%')
 
     # create the logs folder
     logs_dir = path.join(PROJECT_DIR, 'logs')
-    logs_file = path.join(logs_dir, filename)
+    logs_file = path.join(logs_dir, 'benchmark.log')
+    verbose_logs_file = path.join(logs_dir, 'benchmark_verbose.log')
     makedirs(logs_dir, exist_ok=True)
 
-    # output ALL logs to a file
+    # output INFO and higher to a file
     file_handler = logging.FileHandler(logs_file, mode='a')
     file_handler.setFormatter(basic_formatter)
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(logging.INFO)
+
+    # output ALL logs to a file
+    # these are occasionally useful, but are really too verbose for easy use
+    verbose_file_handler = logging.FileHandler(verbose_logs_file, mode='a')
+    verbose_file_handler.setFormatter(basic_formatter)
+    verbose_file_handler.setLevel(logging.DEBUG)
 
     print_handler = logging.StreamHandler(stream=sys.stdout)
     print_handler.setFormatter(basic_formatter)
@@ -54,6 +71,7 @@ def setup_logger(logger, filename):
 
     logger.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
+    logger.addHandler(verbose_file_handler)
     logger.addHandler(print_handler)
 
 
