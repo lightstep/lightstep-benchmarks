@@ -7,10 +7,10 @@ from threading import Timer
 import time
 from benchmark.utils import PROJECT_DIR
 
-TRIALS = 2
-TRIAL_LENGTH = 90
+TRIALS = 1
+TRIAL_LENGTH = 180
 DISCONNECT_TIME = 30
-RECONNECT_TIME = 60
+RECONNECT_TIME = 120
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -92,6 +92,17 @@ if __name__ == '__main__':
                 if action != 'disconnect':
                     satellites.shutdown()
 
+                # save all of the raw data
+                type_map = ['noop', 'traced', 'disconnect', 'reconnect']
+                filename = args.client + "_" + type_map[index] + \
+                    "_" + str(i) + '.txt'
+                filepath = path.join(PROJECT_DIR, 'graphs', filename)
+
+                with open(filepath, 'a+') as file:
+                    for memory in result.memory_list:
+                        file.write("{}\n".format(memory))
+
+                # actually plot the thing
                 sample_time = list(range(1, len(result.memory_list) + 1))
                 ax[index].plot(sample_time,
                                [m * 2**-20 for m in result.memory_list])
