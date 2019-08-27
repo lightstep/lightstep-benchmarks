@@ -1,6 +1,8 @@
 # LightStep Benchmarks
 
-Time for a brief overview of the system. The test suite is made up of three distinct parts. The **mock satellites** simulate real LightStep satellites under different conditions, a separate **client** is written to test each LightStep Tracer, and the **controller** orchestrates the tests.
+lightstep-benchmarks is a tool for analyzing the performance of [OpenTracing](https://opentracing.io/) Tracers. It is currently in use to measure the performance of LightStep's [Python Tracer](https://github.com/lightstep/lightstep-tracer-python) and [C++ / Python Tracer](https://github.com/lightstep/lightstep-tracer-cpp).
+
+This repo contains two parts: a benchmarking API which can be used to mesure the performance of OpenTracing Tracer and a suite of programs which use the benchmarking API to generate performance graphs and run regression tests.
 
 ## Setup
 
