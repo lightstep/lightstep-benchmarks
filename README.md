@@ -1,8 +1,8 @@
 # LightStep Benchmarks
 
-lightstep-benchmarks is a tool for analyzing the performance of [OpenTracing](https://opentracing.io/) Tracers. It is currently in use to measure the performance of LightStep's [Python Tracer](https://github.com/lightstep/lightstep-tracer-python) and [C++ / Python Tracer](https://github.com/lightstep/lightstep-tracer-cpp).
+LightStep Benchmarks is a tool for analyzing the performance of [OpenTracing](https://opentracing.io/) Tracers. It is currently in use to measure the performance of LightStep's [Python Tracer](https://github.com/lightstep/lightstep-tracer-python) and [Streaming Python Tracer](https://github.com/lightstep/lightstep-tracer-cpp).
 
-This repo contains two parts: a benchmarking API which can be used to mesure the performance of OpenTracing Tracer and a suite of programs which use the benchmarking API to generate performance graphs and run regression tests.
+This repo contains two parts: A benchmarking API which can be used to measure the performance of OpenTracing Tracers and a suite of programs which use the benchmarking API to generate performance graphs and run regression tests.
 
 ## Setup
 
@@ -15,13 +15,13 @@ Now, from the lightstep-benchmarks directory:
 
 - Install development dependencies: `python3 -m pip install -r requirements-dev.txt`
 - Install [Google Protobuf](https://github.com/protocolbuffers/protobuf/releases)
-- Generate Python Protobuf files from .proto files: `./scripts/generate_proto.sh`
+- Generate Python Protobuf files from .proto files using this script: `./scripts/generate_proto.sh`
 
 ## Getting Started
 
-Let's begin by benchmarking the LightStep Python Tracer, since you already have Python installed. We won't worry about setting up mock satellites for the Tracer to send spans to yet. First, make sure you don't have any programs bound to ports 8023 or 8360-8367.
+Let's begin by benchmarking the LightStep Python Tracer, since you already have Python installed. We won't worry about setting up mock Satellites for the Tracer to send spans to yet. First, make sure you don't have any programs bound to port 8023, because this port will be used during the test.
 
-Paste this code in a file in the lightstep-benchmarks directory:
+Save this code as lightstep-benchmarks/hello_world.py:
 
 ```python
 from benchmark.controller import Controller
@@ -32,20 +32,28 @@ with Controller('python', cpu_usage=.7) as controller:
     spans_per_second=100,
     runtime=10
   ))
-
-# > controller.Results object:
-# >  95.3 spans / sec
-# >  72.39% CPU usage
-# >  100.0% spans dropped (out of 499 sent)
-# >  took 10.2s
 ```
 
-The string 'python' passed to `Controller`'s constructor tells this controller that it will be benchmarking the Python Tracer. The controller will benchmark the Python Tracer by measuring the performance of a sample program, called the Python Client Program, which is instrumented with OpenTelemetry. The `cpu_usage=.7` keyword argument tells the controller to calibrate the Python client program to use 70% of a CPU core _when a NoOp tracer is running_.
+From the lightstep-benchmarks directory, run `python3 hello_world.py`. You should get an output like this:
 
-On line 4, the `benchmark` method runs a test using the same client program. Since `trace=True`, the real python LightStep tracer will be used instead of a NoOp tracer. Since a real tracer is turned on, which does more than a NoOp tracer, we should expect this test to use more than 70% CPU. The other two keyword arguments specify that the client program should run for about 10 seconds and generate about 100 spans per second. The `benchmark` method returns a `Result` object, which is printed (see sample output in comments). As we predicted, using a LightStep tracer in place of a NoOp tracer caused the Python Client to use more CPU. As expected, The program took around ten seconds to run and send about 100 spans per second. Because we did not setup any mock satellites for the Tracer to report to, 100% of generated spans were dropped.
+```
+> controller.Results object:
+>   95.3 spans / sec
+>   72% CPU usage
+>   100.0% spans dropped (out of 499 sent)
+>   took 10.2s
+```
+
+Now let's unpack what just happened. The "python" string passed to `Controller`'s constructor tells this controller that it will be benchmarking the [legacy Python Tracer](https://pypi.org/project/lightstep/). LightStep Benchmarks will test the legacy Python Tracer by running a chunk of instrumented code called a "client program" in different modes and monitoring its performance. The `cpu_usage=.7` keyword argument tells the controller to calibrate the Python client program so that it uses 70% of a CPU core _when a NoOp tracer is running_.
+
+On line 4, the `benchmark` method runs a test using the specified Python client program. Since `trace=True` and we passed "python" to the controller, the legacy Python Tracer will be used instead of the NoOp tracer that was used for calibration. The `spans_per_second=100` and `runtime=10` arguments specify that the client program should run for about 10 seconds and generate about 100 spans per second.
+
+The `benchmark` method returns a `Result` object, which the sample code prints (see sample code output above). As specified, the program took around ten seconds to run and send about 100 spans per second. Because we did not setup any mock Satellites for the tracer to report to, 100% of generated spans were dropped.
+
+Since the client program was calibrated to use 70% CPU when running a NoOp tracer, since this test used 72% CPU we can assume that the LightStep Python Tracer uses 2% CPU (72% - 70%) when sending 100 spans per second.
 
 ## Further Reading
 
-- [Benchmarking in LightStep's CI Pipeline](https://github.com/lightstep/lightstep-benchmarks/blob/master/docs/ci_integration.md)
+- [Tracer Benchmarking API Guide](https://github.com/lightstep/lightstep-benchmarks/blob/master/docs/api.md)
+- [Tracer Benchmarking in LightStep's CI Pipeline](https://github.com/lightstep/lightstep-benchmarks/blob/master/docs/ci_integration.md)
 - [How to Benchmark a New Tracer](https://github.com/lightstep/lightstep-benchmarks/blob/master/docs/adding_clients.md)
-- [Benchmarking API Guide](https://github.com/lightstep/lightstep-benchmarks/blob/master/docs/api.md)
