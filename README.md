@@ -1,162 +1,64 @@
-# CI
+# LightStep Benchmarks
 
-lightstep-benchmarks tests the [python tracer](https://github.com/lightstep/lightstep-tracer-python) and [python cpp tracer](https://github.com/lightstep/lightstep-tracer-cpp) in two ways:
+LightStep Benchmarks is a tool for analyzing the performance of [OpenTracing](https://opentracing.io/) Tracers. It is currently in use to measure the performance of LightStep's [legacy Python Tracer](https://github.com/lightstep/lightstep-tracer-python) and [Streaming Python Tracer](https://github.com/lightstep/lightstep-tracer-cpp).
 
-1. Regression tests are run automatically each time code is pushed.
-2. Performance graphs can generated if you manually approve the jobs to run in CircleCI. More info on that [here](https://circleci.com/docs/2.0/workflows/#holding-a-workflow-for-a-manual-approval).
+This repo contains two parts: A benchmarking API which can be used to measure the performance of OpenTracing Tracers and a suite of programs which use the benchmarking API to generate performance graphs and run regression tests.
 
-## Performance Graphs
+## Setup
 
-Performance graphs are fairly expensive to generate, and don't have a simple pass / fail mechanism. For these reasons they aren't generated each time code is pushed automatically. They are only generated when the job "approve_make_graphs" is manually approved in CircleCI.
+This setup has only been tested on OS X and Linux (Ubuntu).
 
-TODO: more info on the specific graphs which can be generated here
+- `git clone https://github.com/lightstep/lightstep-benchmarks.git`
+- Install Python 3.7 or higher and pip
 
-## Regression Tests
+Now, from the lightstep-benchmarks directory:
 
-Regression tests are automatically run on the python and python cpp tracers each time code is pushed. The tests check the following:
+- Install development dependencies: `sudo python3 -m pip install -r requirements-dev.txt`
+- Install [Google Protobuf](https://github.com/protocolbuffers/protobuf/releases)
+- Generate Python Protobuf files from .proto files using this script: `./scripts/generate_proto.sh`
 
-- Running a tracer for 100s (emitting 500 spans per second) shouldn't use more than twice as much memory as running a tracer for 5s.
-- The tracer shouldn't drop any spans if we're just sending 300 spans per second.
-- A test program which generates 500 spans per second is calibrated to run at 70% CPU using a NoOp tracer. The same program shouldn't exceed 80% cpu usage when a LightStep tracer is used.
-- The LightStep tracer should be able to send 3000 spans per second before the tracer (not the whole program) consumes 10% CPU.
+## Getting Started
 
-You can also run the regression tests manually from the command-line. First, make sure that you have setup the development environment (see this section). To test the pure python tracer: `pytest --client_name python regression_tests.py`. To test the cpp python tracer: `pytest --client_name python regression_tests.py`.
+Let's begin by benchmarking the legacy LightStep Python Tracer, since Python is already installed. We won't worry about setting up mock Satellites for the tracer to send spans to yet. First, make sure you don't have any programs bound to port 8023, because this port will be used during the test.
 
-# Development
-
-Time for a brief overview of the system. The test suite is made up of three distinct parts. The **mock satellites** simulate real LightStep satellites under different conditions, the **clients** test LightStep's tracers and are implemented in various languages, and the **controller** orchestrates the tests.
-
-## Setting up the Environment
-
-[steps to setup the development environment]
-
-## How to Use the Benchmark API
-
-The Benchmark API is best illustrated with this code snippet:
+Save this code as lightstep-benchmarks/hello_world.py:
 
 ```python
-with Controller('[client name]') as c:
-  with MockSatelliteGroup('[typical|slow_succeed|slow_fail]') as sats:
-    result = c.benchmark(
-      trace=True,
-      satellites=sats,
-      spans_per_second=100,
-      runtime=10)
+from benchmark.controller import Controller
 
-    # These are available no matter what.
-    print(f'The test had CPU for {result.program_time} seconds')
-    print(f'The test took {result.clock_time} seconds to run')
-    print(f'{result.spans_sent} spans were generated during the test.')
-    print(f'Percent CPU used, sampled each second: {result.cpu_list}')
-    print(f'Bytes memory used, sampled each second: {result.memory_list}')
-    print(f'When the test ended its memory footprint was {result.memory} bytes')
-
-    # These are only available if a MockSatelliteGroup object is passed to
-    # the controller via the satellites keyword.
-    print(f'{result.spans_received} spans were received by the mock satellites.')
-    print(f'{result.dropped_spans} spans were dropped.')
+with Controller('python', target_cpu_usage=.7) as controller:
+  print(controller.benchmark(
+    trace=True,
+    spans_per_second=100,
+    runtime=10
+  ))
 ```
 
-Notice that the `Controller`'s constructor needs to be passed the name of a client. These client names are the keys in the `benchmark.controller.client_args` dictionary. This dictionary holds CLI args which tell the Controller how to start different clients.
-
-A `MockSatelliteGroup` can be started in different modes: 'typical', 'slow_success', and 'slow_fail.' 'typical' Should be used unless you know what you're doing.
-
-# Controller
-
-When a controller is first initialized, it will:
-
-1.  Start a server which listens on port 8024. This server will communicate with clients and assign them work to do.
-2.  Start a client which will immediately make a GET request to localhost:8024/control asking for work.
-3.  Determine the behavior of the client when tracing is turned off. We will try and find:
-
-- The nanoseconds to sleep per unit of work which leads to 70% CPU use. The controller will vary sleep per work using P control until the CPU use is within 1/2 percent of 70%.
-- The units of work the client completes per second (which should be mostly independent of how many spans per second we are sending).
-
-4.  Start up 8 mock satellites listening on ports 8360 - 8367. Mock satellites can be started with different flags, but will usually be started in 'typical' mode where their response times are typically about 1ms.
-
-## Adding a New Client
-
-Check out `benchmark.controller.client_args`, and you'll find that there are two clients which can
-
-```python
-# get instructions from controller
-c = http_get("localhost:8024/control")
-sleep_debt = 0
-
-if c['Traced']:
-  tracer = make_real_tracer()
-else:
-  tracer = make_mock_tracer()
-
-for i in range(c['Repeat']):
-  with tracer.start_active_span('TestSpan') as scope:
-    work(c['Work'])
-
-  # since sleep commands aren't too accurate, we save up our sleep and
-  # do it all at once in a longer chunk for better accuracy
-  sleep_debt += c['Sleep']
-  if sleep_debt > c['SleepInterval']:
-    sleep_debt -= c['SleepInterval']
-    sleep(command['SleepInterval'])
-
-# send the results of the test to the controller
-http_get('localhost:8024/result', params=[spans sent, cpu use during test, test time, etc...])
-```
-
-## Garbage Collection
-
-We have observed that in a 200 second test where 200 spans / second were sent, python runs garbage collection 49 times. The test is sufficiently long the cost of garbage collection is going to remain roughly constant across tests.
-
-## Wire Format
-
-```python
-{
-  'Trace': bool,
-  'Repeat': int, # how many spans to send total
-  'Work': int, # how many units of work to do / span
-  'Sleep': int, # in nanoseconds
-  'SleepInterval': int, # in nanoseconds
-  'Exit': bool,
-  'NoFlush': bool, # whether or not to call flush on tracer
-  'MemoryList': list<int>, # memory footprint in bytes, taken every second
-  'CPUList': list<float>, # cpu usage as decimal, taken every second
-  }
-```
-
-When clients have completed the work requested in the command, they will respond with a GET to http://localhost:8023/result if the work tool 12.1 seconds to complete.
-
-They will need to pass `ProgramTime`, `ClockTime`, and `SpansSent` key-value pairs in the query string of this get request.
-
-## Nuances
-
-Don't include flush time in the measurement of CPU usage.
-
-# Ports
-
-8023 will be the standard port for the controller to run on.
-8012 - 8020 will be the standard ports for mock satellites to run on. Satellites will prefer earlier numbers, so tracers which can target only one satellite should target 8012.
+From the lightstep-benchmarks directory, run `python3 hello_world.py`. You should get an output like this:
 
 ```
-kill `ps aux | grep mock_satellite.py | tr -s ' ' | cut -d " " -f 2 | tr '\n' ' '`
+> controller.Results object:
+>   95.3 spans / sec
+>   72% CPU usage
+>   100.0% spans dropped (out of 499 sent)
+>   took 10.2s
 ```
 
-# Notes
+Now let's unpack what just happened. The "python" string passed to `Controller`'s constructor tells this controller that it will be benchmarking the legacy Python Tracer. LightStep Benchmarks will test the legacy Python Tracer by running a chunk of instrumented code called a "client program" in different modes and monitoring its performance. The `target_cpu_usage=.7` keyword argument tells the controller to calibrate the Python client program so that it uses 70% of a CPU core _when a NoOp tracer is running_.
 
-up buffer size
-increase reporting frequency
+On line 4, the `benchmark` method runs a test using the specified "python" client program. Since `trace=True`, the legacy Python Tracer will be used instead of the NoOp tracer that was used for calibration. The `spans_per_second=100` and `runtime=10` arguments specify that the client program should run for about 10 seconds and generate about 100 spans per second.
 
-100ms reporting frequency
-10000 spans (LS meta, trace assembler)
-50000 spans (for public)
+The `benchmark` method returns a `Result` object, which the sample code prints (see sample code output above). As specified, the program took around ten seconds to run and send about 100 spans per second. Because we did not setup any mock Satellites for the tracer to report to, 100% of generated spans were dropped. Recall that the client program was calibrated to use 70% CPU when running a NoOp tracer. Since the test above used 72% CPU, we can assume that the LightStep Python Tracer uses 2% CPU (72% - 70%) when sending 100 spans per second.
 
-# Next Steps
+## Further Reading
 
-- container / resource api / etc. --
-  - make the clients leaner
-- make a more intensive benchmarking suite on GCP
+- [Tracer Benchmarking API Guide](./docs/api.md)
+- [Tracer Benchmarking in LightStep's CI Pipeline](./docs/ci.md)
+- [How to Benchmark a New Tracer](./docs/adding_tracers.md)
 
-- envoy proxy (what would it take to add)
-  - why is it hard?
-  - duplicate sends -- same span received twice?
+## Next Steps
 
-**why did we choose what we chose**
+- **Testing More Tracers**: It would be useful to extend this beyond the legacy Python Tracer and the Streaming Python Tracer.
+- **Testing Envoy**: It would be very interesting to monitor the performance a tracer sending spans to a locally running Envoy Proxy instead of a Satellite. We predict that sending traces to a proxy would reduce the memory and CPU overhead of the Tracer.
+- **Investigating Duplicate Sends**: In some conditions, Tracers might send the same span twice. It would be interesting to perform tests to check how frequently this happens.
+- **Supporting OpenTelemetry**: [OpenTelemetry](https://opentelemetry.io/) is a standardized distributed tracing SDK that LightStep is leading the charge in creating. This benchmarking suite could be extended to profile the first generation of OpenTelemetry tracers.

@@ -92,7 +92,7 @@ class CommandServer(HTTPServer):
 
 
 class ClientProcess(subprocess.Popen):
-    """ Client process is now not expected to send back anything. """
+    # Client process is now not expected to send back anything.
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
