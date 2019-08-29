@@ -1,4 +1,4 @@
-# API Guide
+# LightStep Benchmarks API Guide
 
 ## Basic Example
 

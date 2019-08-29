@@ -1,4 +1,4 @@
-# Benchmarking New Tracers
+# Benchmarking a New Tracer with LightStep Benchmarks
 
 This document discusses how to extend LightStep Benchmarks to benchmark tracers other than the legacy Python Tracer or the Streaming Python Tracer. LightStep Benchmarks measures tracer performance by running and monitoring instrumented client programs which use this tracer. If you want to benchmark a new tracer, you need to create a client for that tracer. Adding a new client to LightStep Benchmarks is a two step process:
 

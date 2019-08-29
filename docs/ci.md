@@ -1,4 +1,4 @@
-# CI
+# LightStep Benchmarks CI Integration
 
 LightStep Benchmarks tests the [Python Tracer](https://github.com/lightstep/lightstep-tracer-python) and the [Python Streaming Tracer](https://github.com/lightstep/lightstep-tracer-cpp) in two ways:
 
