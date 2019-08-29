@@ -7,7 +7,7 @@ from threading import Timer
 import time
 from benchmark.utils import PROJECT_DIR
 
-TRIALS = 1
+TRIALS = 2
 TRIAL_LENGTH = 180
 DISCONNECT_TIME = 30
 RECONNECT_TIME = 120
