@@ -1,6 +1,6 @@
 # LightStep Benchmarks
 
-LightStep Benchmarks is a tool for analyzing the performance of [OpenTracing](https://opentracing.io/) Tracers. It is currently in use to measure the performance of LightStep's [legacy Python Tracer](https://github.com/lightstep/lightstep-tracer-python) and [Streaming Python Tracer](https://github.com/lightstep/lightstep-tracer-cpp).
+LightStep Benchmarks is a tool for analyzing the performance of [OpenTracing](https://opentracing.io/) Tracers. It is currently in use to measure the performance of LightStep's [legacy Python Tracer](https://github.com/lightstep/lightstep-tracer-python) and [Streaming Python Tracer](https://pypi.org/project/lightstep-native/).
 
 This repo contains two parts: A benchmarking API which can be used to measure the performance of OpenTracing Tracers and a suite of programs which use the benchmarking API to generate performance graphs and run regression tests.
 
@@ -9,7 +9,7 @@ This repo contains two parts: A benchmarking API which can be used to measure th
 This setup has only been tested on OS X and Linux (Ubuntu).
 
 - `git clone https://github.com/lightstep/lightstep-benchmarks.git`
-- Install Python 3.7 or higher and pip
+- Install [Python 3.7](https://www.python.org/downloads/) or higher (pip will come installed by default)
 
 Now, from the lightstep-benchmarks directory:
 
@@ -19,7 +19,7 @@ Now, from the lightstep-benchmarks directory:
 
 ## Getting Started
 
-Let's begin by benchmarking the legacy LightStep Python Tracer, since Python is already installed. We won't worry about setting up mock Satellites for the tracer to send spans to yet. First, make sure you don't have any programs bound to port 8023, because this port will be used during the test.
+Let's begin by benchmarking the legacy LightStep Python Tracer, since Python is already installed. We won't worry about setting up mock Satellites for the tracer to send spans to yet. First, make sure you don't have any programs bound to ports 8023 or 8360, because these port will be used during the test. You can check bound ports on Linux with: `sudo lsof -i -P -n | grep LISTEN`.
 
 Save this code as lightstep-benchmarks/hello_world.py:
 
