@@ -47,8 +47,8 @@ def build_tracer(command, tracer_name):
         )
     elif command['Trace'] and tracer_name == "cpp":
         logging.info("We're using the python-cpp tracer.")
-        import lightstep_native
-        return lightstep_native.Tracer(
+        import lightstep_streaming
+        return lightstep_streaming.Tracer(
             component_name='isaac_service',
             access_token='developer',
             use_stream_recorder=True,

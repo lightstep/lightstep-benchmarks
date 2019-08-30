@@ -13,12 +13,12 @@ Performance graphs are fairly expensive to generate, and don't have a simple pas
 
 ### Unreliable Satellite Graphs
 
-These graphs display information about how a traced client program's memory footprint is impacted by Satellites disconnecting and reconnecting from tracers. The raw data from these tests are saved as CI artifacts. Four distinct tests are run during which tracers report fifty spans per second for 180 seconds. Results are displayed in four distinct graphs:
+These graphs display information about how a traced client program's memory footprint is impacted by Satellites disconnecting and reconnecting from tracers. The raw data from these tests are saved as CI artifacts. Four distinct tests are run during which tracers report 50 spans per second for 180 seconds. Results are displayed in four distinct graphs:
 
 - **NoOp Test**: Memory use of the NoOp tracer is plotted.
 - **LightStep Tracer Test**: Memory use of a LightStep tracer is plotted.
-- **Satellite Disconnect Test**: Memory use of a LightStep tracer is plotted. All mock Satellites are shutdown 30 seconds into the test, indicated by a red line in the plot.
-- **Satellite Reconnect Test**: Memory use of a LightStep tracer is plotted. All mock Satellites are shutdown at the red line 30 seconds into the test, then started at the green line 120 seconds into the test.
+- **Satellite Disconnect Test**: Memory use of a LightStep tracer is plotted. Mock Satellites are shutdown 30 seconds into the test, indicated by a red line in the plot.
+- **Satellite Reconnect Test**: Memory use of a LightStep tracer is plotted. Mock Satellites are shutdown at the red line 30 seconds into the test, then started at the green line 120 seconds into the test.
 
 ![Unreliable Satellite Graphs](./python_satellite_disconnect.png "Unreliable Satellite Graphs")
 

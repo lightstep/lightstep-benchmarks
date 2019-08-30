@@ -45,6 +45,9 @@ client_args = {
     'python-cpp': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
         'cpp'],
+    'js': [
+        'node', path.join(PROJECT_DIR, 'clients/js_client.js'),
+    ]
 }
 
 logger = logging.getLogger(__name__)
@@ -159,7 +162,7 @@ class ClientProcess(subprocess.Popen):
                     self._clock_time = time.time() - start_clock_time
             # if the child process has shut down, ignore because self.poll()
             # will detect this soon
-            except psutil.AccessDenied:
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
                 pass
 
     def _save_list_stats(self, cpu_list, memory_list):
@@ -187,7 +190,7 @@ class ClientProcess(subprocess.Popen):
                     memory_list.append(memory_usage)
             # if the child process has shut down, ignore because self.poll()
             # will detect this soon
-            except psutil.AccessDenied:
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
                 pass
 
     def get_results(self):
