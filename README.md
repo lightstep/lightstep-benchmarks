@@ -14,7 +14,7 @@ This setup has only been tested on OS X and Linux (Ubuntu).
 Now, from the lightstep-benchmarks directory:
 
 - Install development dependencies: `sudo python3 -m pip install -r requirements-dev.txt`
-- Install [Google Protobuf](https://github.com/protocolbuffers/protobuf/releases)
+- Install [Google Protobuf](https://github.com/protocolbuffers/protobuf/releases). If you're installing on OS X, you may benefit form these [install instructions](https://medium.com/@erika_dike/installing-the-protobuf-compiler-on-a-mac-a0d397af46b8).
 - Generate Python Protobuf files from .proto files using this script: `./scripts/generate_proto.sh`
 
 ## Getting Started
