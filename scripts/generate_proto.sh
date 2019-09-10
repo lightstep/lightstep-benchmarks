@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 SRC_FOLDER="proto"
 DST_FOLDER="generated"
 

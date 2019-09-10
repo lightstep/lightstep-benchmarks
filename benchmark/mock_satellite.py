@@ -25,10 +25,11 @@ global_lock = threading.Lock()
 MODE = None
 
 # all in microseconds:
-NETWORK_LATENCY = 500  # standard datacenter latency
-TYPICAL_RESPONSE_TIME = 500
-SLOW_RESPONSE_TIME = 10000
-FAST_RESPONSE_TIME = 100
+
+SPAN_NORMALIZER = 10000.0
+TYPICAL_RESPONSE_TIME = 500 / SPAN_NORMALIZER
+SLOW_RESPONSE_TIME = 10000 / SPAN_NORMALIZER
+FAST_RESPONSE_TIME = 100 / SPAN_NORMALIZER
 
 
 class SatelliteRequestHandler(ChunkedRequestHandler):
@@ -66,19 +67,20 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
 
             logging.info("Processing report request in {} mode.".format(MODE))
 
-            if MODE == 'typical':
-                time.sleep((TYPICAL_RESPONSE_TIME + NETWORK_LATENCY) * 10**-6)
-            if MODE == 'slow_succeed':
-                time.sleep((SLOW_RESPONSE_TIME + NETWORK_LATENCY) * 10**-6)
-            if MODE == 'slow_fail':
-                time.sleep((FAST_RESPONSE_TIME + NETWORK_LATENCY) * 10**-6)
-                self._send_response(400)
-                return
-
             report_request = collector.ReportRequest()
 
             try:
                 report_request.ParseFromString(self.binary_body)
+                spans_in_report = len(report_request.spans)
+                if MODE == 'typical':
+                    time.sleep(
+                        (TYPICAL_RESPONSE_TIME*spans_in_report) * 10**-6)
+                if MODE == 'slow_succeed':
+                    time.sleep((SLOW_RESPONSE_TIME*spans_in_report) * 10**-6)
+                if MODE == 'slow_fail':
+                    time.sleep((FAST_RESPONSE_TIME*spans_in_report) * 10**-6)
+                    self._send_response(400)
+                    return
             except google.protobuf.message.DecodeError as e:
                 # when satellites are unable to parse the report_request, they
                 # send a 500 with a brief description
@@ -86,7 +88,6 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
                 return
 
             global spans_received
-            spans_in_report = len(report_request.spans)
 
             # aquire the global variable lock because we are using a
             # "multithreaded" server
