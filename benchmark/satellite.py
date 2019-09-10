@@ -25,8 +25,13 @@ class MockSatelliteHandler:
         mock_satellite_logger = logging.getLogger(f'{__name__}.{port}')
 
         self._handler = start_logging_subprocess(
-            ["trickle", "-s", "-u", str(BANDWIDTH_LIMIT_KB_PER_SEC), "-d", str(BANDWIDTH_LIMIT_KB_PER_SEC), 
-                "python3", mock_satellite_path, str(port), mode],
+            [
+                "trickle",
+                "-s",
+                "-u", str(BANDWIDTH_LIMIT_KB_PER_SEC),
+                "-d", str(BANDWIDTH_LIMIT_KB_PER_SEC),
+                "python3", mock_satellite_path, str(port), mode
+            ],
             mock_satellite_logger)
 
     def is_running(self):
