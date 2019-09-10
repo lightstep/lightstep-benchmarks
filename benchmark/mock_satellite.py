@@ -26,10 +26,10 @@ MODE = None
 
 # all in microseconds:
 
-SPAN_NORMALIZER=10000.0
+SPAN_NORMALIZER = 10000.0
 TYPICAL_RESPONSE_TIME = 500 / SPAN_NORMALIZER
 SLOW_RESPONSE_TIME = 10000 / SPAN_NORMALIZER
-FAST_RESPONSE_TIME = 100  / SPAN_NORMALIZER
+FAST_RESPONSE_TIME = 100 / SPAN_NORMALIZER
 
 
 class SatelliteRequestHandler(ChunkedRequestHandler):
@@ -73,7 +73,8 @@ class SatelliteRequestHandler(ChunkedRequestHandler):
                 report_request.ParseFromString(self.binary_body)
                 spans_in_report = len(report_request.spans)
                 if MODE == 'typical':
-                    time.sleep((TYPICAL_RESPONSE_TIME*spans_in_report) * 10**-6)
+                    time.sleep(
+                        (TYPICAL_RESPONSE_TIME*spans_in_report) * 10**-6)
                 if MODE == 'slow_succeed':
                     time.sleep((SLOW_RESPONSE_TIME*spans_in_report) * 10**-6)
                 if MODE == 'slow_fail':
