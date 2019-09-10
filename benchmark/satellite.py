@@ -9,6 +9,8 @@ DEFAULT_PORTS = list(range(8360, 8368))
 
 logger = logging.getLogger(__name__)
 
+BANDWIDTH_LIMIT_KB_PER_SEC = 50*1024
+
 
 class MockSatelliteHandler:
     def __init__(self, port, mode):
@@ -23,7 +25,8 @@ class MockSatelliteHandler:
         mock_satellite_logger = logging.getLogger(f'{__name__}.{port}')
 
         self._handler = start_logging_subprocess(
-            ["python3", mock_satellite_path, str(port), mode],
+            ["trickle", "-s", "-u", str(BANDWIDTH_LIMIT_KB_PER_SEC), "-d", str(BANDWIDTH_LIMIT_KB_PER_SEC), 
+                "python3", mock_satellite_path, str(port), mode],
             mock_satellite_logger)
 
     def is_running(self):
