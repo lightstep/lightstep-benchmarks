@@ -1,8 +1,9 @@
 #!/bin/bash
 
 set -e
-apt-get update 
-apt-get install --no-install-recommends --no-install-suggests -y \
+
+sudo apt-get update 
+sudo apt-get install --no-install-recommends --no-install-suggests -y \
                 build-essential \
                 cmake \
                 pkg-config \
