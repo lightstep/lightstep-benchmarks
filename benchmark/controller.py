@@ -1,7 +1,4 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
-import json
-import copy
 import time
 from os import path
 import logging
@@ -9,7 +6,6 @@ from .utils import PROJECT_DIR, start_logging_subprocess
 from .exceptions import InvalidClient, ClientTimeout
 import psutil
 from threading import Thread, Lock
-from urllib.parse import urlparse
 import subprocess
 
 """
@@ -53,10 +49,19 @@ client_args = {
 logger = logging.getLogger(__name__)
 
 
-class CommandServer(HTTPServer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+def get_client_args(command):
+    return [
+        '--trace', str(int(command['Trace'])),
+        '--sleep', str(command['Sleep']),
+        '--sleep_interval', str(command['SleepInterval']),
+        '--work', str(command['Work']),
+        '--repeat', str(command['Repeat']),
+        '--no_flush', str(int(command['NoFlush'])),
+    ]
 
+
+class CommandHandle:
+    def __init__(self):
         self._lock = threading.Lock()
         self._command = None
 
@@ -68,14 +73,6 @@ class CommandServer(HTTPServer):
 
     def run_test(self, command, process_handle):
         logger.info("execute command")
-        # Schedules a test for the client process to run.
-        with self._lock:
-            assert self._command is None
-            self._command = command
-
-        logger.info('handling one request')
-        self.handle_request()
-        logger.info('request handled')
 
         while process_handle.poll() is None:
             pass
@@ -83,15 +80,6 @@ class CommandServer(HTTPServer):
         logger.info("execute command finished.")
 
         return process_handle.get_results()
-
-    def get_test_command(self):
-        logger.info("next command")
-        with self._lock:
-            assert self._command is not None
-            command = copy.copy(self._command)
-            self._command = None
-
-        return command
 
 
 class ClientProcess(subprocess.Popen):
@@ -200,26 +188,6 @@ class ClientProcess(subprocess.Popen):
             self.clock_time,
             self.memory_list,
             self.cpu_list)
-
-
-class RequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        parsed_url = urlparse(self.path)
-        self.path = parsed_url.path  # redefine path so it excludes query str
-        if self.path == "/control":
-            self._handle_control()
-
-    def _handle_control(self):
-        next_command = self.server.get_test_command()
-
-        self.send_response(200)
-        body_string = json.dumps(next_command)
-        self.send_header("Content-Length", len(body_string))
-        self.end_headers()
-        self.wfile.write(body_string.encode('utf-8'))
-
-    def log_message(self, format, *args):
-        return
 
 
 class Result:
@@ -337,14 +305,14 @@ class Controller:
         self.client_name = client_name
 
         # start server that will communicate with client
-        self.server = CommandServer(('', CONTROLLER_PORT), RequestHandler)
+        self.command_handle = CommandHandle()
         logger.info("Started controller server.")
 
         self._calibrate(target_cpu_usage)
 
     def _calibrate(self, target_cpu_usage):
         # timeout used during client calibration
-        self.server.timeout = CALIBRATION_TIMEOUT
+        self.command_handle.timeout = CALIBRATION_TIMEOUT
 
         try:
             # calibrate the amount of work the controller does so that when we
@@ -369,10 +337,7 @@ class Controller:
 
     def shutdown(self):
         """ Shutdown the Controller. """
-
-        logger.info("Controller shutdown called")
-        self.server.server_close()  # unbind controller server from socket
-        logger.info("Controller shutdown complete")
+        pass
 
     def _estimate_work_per_second(self):
         # Estimate how much work per second the client does. Although in
@@ -508,9 +473,9 @@ class Controller:
 
         # set command server timeout relative to target runtime
         if not no_timeout:
-            self.server.timeout = runtime * 2
+            self.command_handle.timeout = runtime * 2
         else:
-            self.server.timeout = None
+            self.command_handle.timeout = None
 
         # make sure that satellite span counters are all zeroed
         # throws an error if the satellites aren't running
@@ -541,12 +506,12 @@ class Controller:
             f'{__name__}.{self.client_name}_client')
 
         client_handle = start_logging_subprocess(
-            self.client_startup_args,
+            self.client_startup_args + get_client_args(command),
             client_logger,
             popen_class=ClientProcess)
 
         logger.info("Client test started.")
-        results = self.server.run_test(command, client_handle)
+        results = self.command_handle.run_test(command, client_handle)
         logger.info("Client test stopped.")
 
         results.spans_sent = int(command['Repeat'])
