@@ -26,7 +26,8 @@ apt-get install --no-install-recommends --no-install-suggests -y \
                 zip \
                 unzip \
                 trickle \
-                sudo
+                sudo \
+                npm
 update-alternatives --remove python /usr/bin/python2
 update-alternatives --install /usr/bin/python python /usr/bin/python3.7 10
 

@@ -23,42 +23,7 @@ const test_tracer = new lightstep.Tracer({
   report_timeout_millis: 200 // .2s
 });
 
-// Note: Keep-Alive does not work properly, reason unknown.  Disable
-// it to make progress.
-var keepAliveAgent = new http.Agent({
-  keepAlive: false
-});
-
-function get_control() {
-  console.log("requesting next command.");
-  return http.get(
-    {
-      host: controller_host,
-      port: controller_port,
-      path: "/control",
-      agent: keepAliveAgent
-    },
-    response => {
-      console.log("parsing control response.");
-
-      var body = "";
-      response.on("data", function(d) {
-        body += d;
-        return;
-      });
-      response.on("end", function() {
-        var c = JSON.parse(body);
-        console.log(`got control command ${c}`);
-
-        var tracer = c.Trace ? test_tracer : noop_tracer;
-
-        return exec_control(c, tracer);
-      });
-    }
-  );
-}
-
-function exec_control(c, tracer) {
+function exec_control(args, tracer) {
   var begin = process.hrtime();
   var sleep_debt = 0;
   var sleep_at;
@@ -73,13 +38,13 @@ function exec_control(c, tracer) {
     }
     for (var r = repeat; r > 0; r--) {
       var span = tracer.startSpan("span/test");
-      for (var i = 0; i < c.Work; i++) {
+      for (var i = 0; i < args.work; i++) {
         p *= p;
         p %= 2147483647;
       }
       span.finish();
-      sleep_debt += c.Sleep;
-      if (sleep_debt > c.SleepInterval) {
+      sleep_debt += args.sleep;
+      if (sleep_debt > args.sleep_interval) {
         sleep_at = process.hrtime();
         return setTimeout(body_func, sleep_debt / millis_per_nano, r - 1);
       }
@@ -90,14 +55,14 @@ function exec_control(c, tracer) {
     var endTime = process.hrtime();
     var elapsed = endTime[0] - begin[0] + (endTime[1] - begin[1]) * 1e-9;
 
-    if (c.Trace && !c.NoFlush) {
+    if (args.trace && !args.no_flush) {
       // call next_control when the flush is complete
       return tracer.flush();
     }
     process.exit();
   };
 
-  body_func(c.Repeat);
+  body_func(args.repeat);
 }
 
-get_control();
+const args = require('minimist')(process.argv.slice(2));
