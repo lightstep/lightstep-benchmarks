@@ -1,7 +1,6 @@
 import time
 import opentracing
 import sys
-import requests
 import argparse
 import logging
 
@@ -31,8 +30,8 @@ def do_work(units):
         i *= i
 
 
-def build_tracer(command, tracer_name):
-    if command['Trace'] and tracer_name == "vanilla":
+def build_tracer(args, tracer_name):
+    if args.trace and tracer_name == "vanilla":
         logging.info("We're using the python tracer.")
         import lightstep
         return lightstep.Tracer(
@@ -45,7 +44,7 @@ def build_tracer(command, tracer_name):
             periodic_flush_seconds=REPORTING_PERIOD,
             max_span_records=MAX_BUFFERED_SPANS,
         )
-    elif command['Trace'] and tracer_name == "cpp":
+    elif args.trace and tracer_name == "cpp":
         logging.info("We're using the python-cpp tracer.")
         import lightstep_streaming
         return lightstep_streaming.Tracer(
@@ -124,27 +123,27 @@ def generate_spans(tracer, units_work, number_spans, scope=None):
                            number_spans, scope=server_scope)
 
 
-def perform_work(command, tracer_name):
-    logging.info("About to run this test: {}".format(command))
+def perform_work(args, tracer_name):
+    logging.info("About to run this test: {}".format(args))
 
-    tracer = build_tracer(command, tracer_name)
+    tracer = build_tracer(args, tracer_name)
 
     sleep_debt = 0
     spans_sent = 0
 
-    while spans_sent < command['Repeat']:
-        spans_to_send = min(command['Repeat'] - spans_sent, SPANS_PER_LOOP)
-        generate_spans(tracer, command['Work'], spans_to_send)
+    while spans_sent < args.repeat:
+        spans_to_send = min(args.repeat - spans_sent, SPANS_PER_LOOP)
+        generate_spans(tracer, args.work, spans_to_send)
         spans_sent += spans_to_send
-        sleep_debt += command['Sleep'] * spans_to_send
+        sleep_debt += args.sleep * spans_to_send
 
-        if sleep_debt > command['SleepInterval']:
-            sleep_debt -= command['SleepInterval']
+        if sleep_debt > args.sleep_interval:
+            sleep_debt -= args.sleep_interval
             # 10^-9 nanoseconds / second
-            time.sleep(command['SleepInterval'] * 10**-9)
+            time.sleep(args.sleep_interval * 10**-9)
 
     # don't include flush in time measurement
-    if command['Trace'] and not command['NoFlush']:
+    if args.trace and not args.no_flush:
         logging.info("Flushing spans.")
         tracer.flush()
 
@@ -189,5 +188,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     while True:
-        r = requests.get(f'http://localhost:{CONTROLLER_PORT}/control')
-        perform_work(r.json(), args.tracer)
+        perform_work(args, args.tracer)
