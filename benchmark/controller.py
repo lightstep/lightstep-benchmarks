@@ -53,6 +53,16 @@ client_args = {
 logger = logging.getLogger(__name__)
 
 
+def get_client_args(command):
+    return [
+        '--trace', str(int(command['Trace'])),
+        '--sleep', str(command['Sleep']),
+        '--sleep_interval', str(command['SleepInterval']),
+        '--work', str(command['Work']),
+        '--repeat', str(command['Repeat']),
+        '--no_flush', str(int(command['NoFlush'])),
+    ]
+
 class CommandServer(HTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -541,7 +551,7 @@ class Controller:
             f'{__name__}.{self.client_name}_client')
 
         client_handle = start_logging_subprocess(
-            self.client_startup_args,
+            self.client_startup_args + get_client_args(command),
             client_logger,
             popen_class=ClientProcess)
 

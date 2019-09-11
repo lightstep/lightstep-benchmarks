@@ -161,6 +161,30 @@ if __name__ == '__main__':
         type=str,
         choices=["vanilla", "cpp"],
         help='Which LightStep tracer to use.')
+    parser.add_argument(
+        '--trace',
+        type=bool,
+        help='Whether to trace')
+    parser.add_argument(
+        '--sleep',
+        type=float,
+        help='The amount of time to sleep for each span')
+    parser.add_argument(
+        '--sleep_interval',
+        type=float,
+        help='The duration for each sleep')
+    parser.add_argument(
+        '--work',
+        type=int,
+        help='The quantity of work to perform between spans')
+    parser.add_argument(
+        '--repeat',
+        type=int,
+        help='The number of span generation repetitions to perform')
+    parser.add_argument(
+        '--no_flush',
+        type=bool,
+        help='Whether to flush on finishing')
 
     args = parser.parse_args()
 
