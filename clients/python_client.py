@@ -162,7 +162,7 @@ if __name__ == '__main__':
         help='Which LightStep tracer to use.')
     parser.add_argument(
         '--trace',
-        type=bool,
+        type=int,
         help='Whether to trace')
     parser.add_argument(
         '--sleep',
@@ -182,7 +182,7 @@ if __name__ == '__main__':
         help='The number of span generation repetitions to perform')
     parser.add_argument(
         '--no_flush',
-        type=bool,
+        type=int,
         help='Whether to flush on finishing')
 
     args = parser.parse_args()
