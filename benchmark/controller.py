@@ -1,7 +1,4 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
-import json
-import copy
 import time
 from os import path
 import logging
@@ -9,7 +6,6 @@ from .utils import PROJECT_DIR, start_logging_subprocess
 from .exceptions import InvalidClient, ClientTimeout
 import psutil
 from threading import Thread, Lock
-from urllib.parse import urlparse
 import subprocess
 
 """
@@ -62,6 +58,7 @@ def get_client_args(command):
         '--repeat', str(command['Repeat']),
         '--no_flush', str(int(command['NoFlush'])),
     ]
+
 
 class CommandHandle:
     def __init__(self):
