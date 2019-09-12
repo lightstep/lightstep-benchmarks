@@ -17,7 +17,7 @@ jobs:
       - run: sudo pip install lightstep
       - run: pytest benchmark/test.py
       - run: python cpu_graphs.py --trials 3 --runtime 1 python
-      - run: python cpu_graphs.py python
+      - run: python dropped_graphs.py python
       - store_artifacts:
           path: graphs
           destination: graphs
@@ -38,7 +38,7 @@ jobs:
       # not installed by ci_setup.sh because this script is shared across
       # many CI pipelines which all test different tracers
       - run: python cpu_graphs.py --trials 3 --runtime 1 go
-      - run: python cpu_graphs.py go
+      - run: python dropped_graphs.py go
       - store_artifacts:
           path: graphs
           destination: graphs
