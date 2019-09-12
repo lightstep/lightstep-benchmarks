@@ -42,8 +42,7 @@ if __name__ == '__main__':
 
     with SatelliteGroup('typical') as satellites:
         with Controller(args.client) as controller:
-            for sps in [100, 500, 1000, 2000, 3000, 4000, 5000, 7500, 10000,
-                        20000]:
+            for sps in [100, 500, 1000, 2000, 3000, 4000, 5000, 7500, 10000]:
                 temp_cpu_traced = []
                 temp_cpu_untraced = []
                 temp_sps_traced = []
