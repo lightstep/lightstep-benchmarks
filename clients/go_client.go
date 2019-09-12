@@ -8,7 +8,6 @@ import (
   "time"
   "math"
   "context"
-  // "log"
 )
 
 const (
@@ -122,9 +121,7 @@ func performWork() {
 
   sleepDebt := 0.0
   spansSent := 0
-  // log.Printf("nuf: %d\n", *argRepeat)
   for spansSent < *argRepeat {
-    // log.Println("arf")
     spansToSend := min(*argRepeat - spansSent, spansPerLoop)
     generateSpans(tracer, *argWork, spansToSend, nil)
     spansSent += spansToSend
