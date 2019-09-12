@@ -43,6 +43,10 @@ client_args = {
         'cpp'],
     'js': [
         'node', path.join(PROJECT_DIR, 'clients/js_client.js'),
+    ],
+    'go': [
+        # "go", "run", path.join(PROJECT_DIR, 'clients/go_client.go'),
+        path.join(PROJECT_DIR, 'clients/go_client'),
     ]
 }
 
@@ -421,7 +425,7 @@ class Controller:
             spans_per_second=100,
             runtime=10,
             no_timeout=False):
-
+        print("target_spans_per_second=", spans_per_second)
         """
         Run a test using the client this Controller is bound to.
 
@@ -505,6 +509,7 @@ class Controller:
         client_logger = logging.getLogger(
             f'{__name__}.{self.client_name}_client')
 
+        print("args: ", self.client_startup_args + get_client_args(command))
         client_handle = start_logging_subprocess(
             self.client_startup_args + get_client_args(command),
             client_logger,
