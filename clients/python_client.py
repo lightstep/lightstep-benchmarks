@@ -14,7 +14,6 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)])
 
 
-CONTROLLER_PORT = 8023
 SPANS_PER_LOOP = 6
 SATELLITE_PORTS = [8360, 8361, 8362, 8363, 8364, 8365, 8366, 8367]
 

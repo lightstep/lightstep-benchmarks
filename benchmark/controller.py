@@ -43,6 +43,10 @@ client_args = {
         'cpp'],
     'js': [
         'node', path.join(PROJECT_DIR, 'clients/js_client.js'),
+    ],
+    'go': [
+        # "go", "run", path.join(PROJECT_DIR, 'clients/go_client.go'),
+        path.join(PROJECT_DIR, 'clients/go_client'),
     ]
 }
 
@@ -421,7 +425,6 @@ class Controller:
             spans_per_second=100,
             runtime=10,
             no_timeout=False):
-
         """
         Run a test using the client this Controller is bound to.
 
