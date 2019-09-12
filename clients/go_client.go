@@ -78,7 +78,7 @@ func generateSpans(tracer opentracing.Tracer, unitsWork int, numSpans int, paren
     return
   }
 
-  server_span := tracer.StartSpan("handle_some_request")
+  server_span := tracer.StartSpan("handle_some_request", opentracing.ChildOf(client_span.Context()))
   defer server_span.Finish()
   server_span.SetTag("http.url", "http://somerequesturl.com")
   server_span.SetTag("span.kind", "server")
@@ -92,7 +92,7 @@ func generateSpans(tracer opentracing.Tracer, unitsWork int, numSpans int, paren
     return
   }
 
-  db_span := tracer.StartSpan("database_write")
+  db_span := tracer.StartSpan("database_write", opentracing.ChildOf(server_span.Context()))
   defer db_span.Finish()
   db_span.SetTag("db.user", "test_user")
   db_span.SetTag("db.type", "sql")
@@ -103,11 +103,11 @@ func generateSpans(tracer opentracing.Tracer, unitsWork int, numSpans int, paren
     otlog.String("event", "error"),
     otlog.String("stack", 
                `File \"example.py\", line 7, in <module>
-                caller()
-                File \"example.py\", line 5, in caller
-                callee()
-                File \"example.py\", line 2, in callee
-                raise Exception(\"Yikes\")`))
+caller()
+File \"example.py\", line 5, in caller
+callee()
+File \"example.py\", line 2, in callee
+raise Exception(\"Yikes\")`))
   doWork(unitsWork)
   numSpans -= 1
   if numSpans == 0 {
