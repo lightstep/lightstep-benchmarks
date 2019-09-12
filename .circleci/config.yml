@@ -32,7 +32,7 @@ jobs:
     steps:
       - checkout
       - run: ./scripts/ci_setup.sh
-      - run: ./ci/setup_go_client.sh
+      - run: sudo ./ci/setup_go_client.sh
 
       # not installed by ci_setup.sh because this script is shared across
       # many CI pipelines which all test different tracers
