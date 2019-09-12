@@ -37,7 +37,7 @@ func min(a, b int) int {
 func doWork(units int) {
   // Follows the approach outlined in
   // https://stackoverflow.com/a/36975497/4447365
-  // to avoid the compiler optimizing out the result
+  // to prevent the compiler from optimizing out the result
   x := 1.12563
   for i:=0; i<units; i++ {
     x *= math.Sqrt(math.Log(float64(i)))
