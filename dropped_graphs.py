@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     with SatelliteGroup('typical') as satellites:
         with Controller(args.client) as controller:
-            for sps in [500, 1000, 5000, 20000, 50000, 100000, 200000]:
+            for sps in [500, 1000, 5000, 20000, 50000, 100000]:
                 result = controller.benchmark(
                     trace=True,
                     satellites=satellites,
