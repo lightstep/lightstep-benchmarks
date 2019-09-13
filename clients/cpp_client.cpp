@@ -29,7 +29,7 @@ static void do_not_optimize_away(T&& x) {
 
 static void do_work(int quantity) {
   double x = 1.12563;
-  for (int i=0; i<quantity; ++i) {
+  for (int i = 0; i < quantity; ++i) {
     x *= std::sqrt(std::log(static_cast<double>(i + 5)));
   }
   do_not_optimize_away(x);
@@ -51,9 +51,10 @@ static void generate_spans(opentracing::Tracer& tracer, int work_quantity,
 
   auto server_span = tracer.StartSpan(
       "handle_some_request", {opentracing::ChildOf(&client_span->context())});
-	server_span->SetTag("http.url", "http://somerequesturl.com");
-	server_span->SetTag("span.kind", "server");
-  server_span->Log({{"event", "soft error"}, {"message", "some cache missed :("}});
+  server_span->SetTag("http.url", "http://somerequesturl.com");
+  server_span->SetTag("span.kind", "server");
+  server_span->Log(
+      {{"event", "soft error"}, {"message", "some cache missed :("}});
   do_work(work_quantity);
   num_spans -= 1;
   if (num_spans == 0) {
@@ -116,7 +117,8 @@ static void perform_work() {
     sleep_debt += FLAGS_sleep * spans_to_send;
     if (sleep_debt > FLAGS_sleep_interval) {
       sleep_debt -= FLAGS_sleep_interval;
-      std::this_thread::sleep_for(std::chrono::nanoseconds{FLAGS_sleep_interval});
+      std::this_thread::sleep_for(
+          std::chrono::nanoseconds{FLAGS_sleep_interval});
     }
   }
   if (FLAGS_no_flush != 1) {
