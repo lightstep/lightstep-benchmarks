@@ -19,7 +19,7 @@ const (
 
 var argTracer = flag.String("tracer", "", "Which LightStep tracer to use")
 var argTrace = flag.Int("trace", 0, "Whether to trace")
-var argSleep = flag.Float64("sleep", 0, "The amount of time to sleep for eadh span")
+var argSleep = flag.Float64("sleep", 0, "The amount of time to sleep for each span")
 var argSleepInterval = flag.Int("sleep_interval", 0, "The duration of each sleep")
 var argWork = flag.Int("work", 0, "The quanitity of work to perform between spans")
 var argRepeat = flag.Int("repeat", 0, "The number of span generation repetitions to perform")
@@ -40,7 +40,7 @@ func doWork(units int) {
 	// to prevent the compiler from optimizing out the result
 	x := 1.12563
 	for i := 0; i < units; i++ {
-		x *= math.Sqrt(math.Log(float64(i)))
+		x *= math.Sqrt(math.Log(float64(i+5)))
 	}
 	workResult = x
 }

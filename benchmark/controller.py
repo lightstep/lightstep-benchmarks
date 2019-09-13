@@ -45,9 +45,11 @@ client_args = {
         'node', path.join(PROJECT_DIR, 'clients/js_client.js'),
     ],
     'go': [
-        # "go", "run", path.join(PROJECT_DIR, 'clients/go_client.go'),
         path.join(PROJECT_DIR, 'clients/go_client'),
-    ]
+    ],
+    'cpp': [
+        path.join(PROJECT_DIR, 'clients/cpp_client'),
+    ],
 }
 
 logger = logging.getLogger(__name__)
