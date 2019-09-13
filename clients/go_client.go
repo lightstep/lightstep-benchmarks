@@ -40,7 +40,7 @@ func doWork(units int) {
 	// to prevent the compiler from optimizing out the result
 	x := 1.12563
 	for i := 0; i < units; i++ {
-		x *= math.Sqrt(math.Log(float64(i+5)))
+		x *= math.Sqrt(math.Log(float64(i + 5)))
 	}
 	workResult = x
 }
