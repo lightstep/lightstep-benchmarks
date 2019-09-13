@@ -9,6 +9,8 @@ set -e
 apt-get update 
 apt-get install --no-install-recommends --no-install-suggests -y \
                 build-essential \
+                cmake \
+                pkg-config \
                 libgflags-dev \
                 libevent-dev \
                 curl
@@ -29,7 +31,7 @@ cd /build
 git clone -b ${OPENTRACING_VERSION} https://github.com/opentracing/opentracing-cpp.git
 cd opentracing-cpp
 mkdir .build && cd .build
-cmake -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=OFF ..
+cmake -DCMAKE_BUILD_TYPE=RELEASE -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=OFF ..
 make && make install
 cd /build
 
@@ -50,3 +52,5 @@ make && make install
 cd /build
 
 popd
+cd clients
+make cpp_client

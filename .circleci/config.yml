@@ -58,8 +58,8 @@ jobs:
 
       # not installed by ci_setup.sh because this script is shared across
       # many CI pipelines which all test different tracers
-      - run: python cpu_graphs.py --trials 3 --runtime 1 go
-      - run: python dropped_graphs.py go
+      - run: python cpu_graphs.py --trials 3 --runtime 1 cpp
+      - run: python dropped_graphs.py cpp
       - store_artifacts:
           path: graphs
           destination: graphs
