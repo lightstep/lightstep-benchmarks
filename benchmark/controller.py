@@ -32,6 +32,9 @@ DEFAULT_SLEEP_INTERVAL = 10**8  # ns
 CALIBRATION_REPEAT = 500
 CALIBRATION_TIMEOUT = 60
 
+NUM_TAGS = 10
+NUM_LOGS = 15
+
 
 calibration_work = 200000
 client_args = {
@@ -63,6 +66,8 @@ def get_client_args(command):
         '--work', str(command['Work']),
         '--repeat', str(command['Repeat']),
         '--no_flush', str(int(command['NoFlush'])),
+        '--num_tags', str(NUM_TAGS),
+        '--num_logs', str(NUM_LOGS),
     ]
 
 

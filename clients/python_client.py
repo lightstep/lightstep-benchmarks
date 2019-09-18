@@ -183,6 +183,14 @@ if __name__ == '__main__':
         '--no_flush',
         type=int,
         help='Whether to flush on finishing')
+    parser.add_argument(
+        '--num_tags',
+        type=int,
+        help='The number of tags to annotate spans with')
+    parser.add_argument(
+        '--num_logs',
+        type=int,
+        help='The number of logs to annotate spans with')
 
     args = parser.parse_args()
 

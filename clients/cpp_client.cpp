@@ -13,6 +13,8 @@ DEFINE_int32(sleep_interval, 0, "The duration of each sleep");
 DEFINE_int32(work, 0, "The quantity of work to perform between spans");
 DEFINE_int32(repeat, 0, "The number of span generation repetitions to perform");
 DEFINE_int32(no_flush, 0, "Whether to flush on finishing");
+DEFINE_int32(num_tags, 0, "The number of tags to annotate spans with");
+DEFINE_int32(num_logs, 0, "The number of logs to annotate spans with")
 
 std::initializer_list<uint16_t> SatellitePorts = {8360, 8361, 8362, 8363,
                                                   8364, 8365, 8366, 8367};

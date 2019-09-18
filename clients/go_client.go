@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+  "fmt"
 	"github.com/lightstep/lightstep-tracer-go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -24,8 +25,29 @@ var argSleepInterval = flag.Int("sleep_interval", 0, "The duration of each sleep
 var argWork = flag.Int("work", 0, "The quanitity of work to perform between spans")
 var argRepeat = flag.Int("repeat", 0, "The number of span generation repetitions to perform")
 var argNoFlush = flag.Int("no_flush", 0, "Whether to flush on finishing")
+var argNumTags = flag.Int("num_tags", 0, "The number of tags to set on a span")
+var argNumLogs = flag.Int("num_logs", 0, "The number of logs to set on a span")
 
 var workResult = 0.0
+var tagKeys []string = nil
+var tagVals []string = nil
+var logKeys []string = nil
+var logVals []string = nil
+
+func setupAnnotations() {
+  tagKeys = make([]string, *argNumTags)
+  tagVals = make([]string, *argNumTags)
+  logKeys = make([]string, *argNumLogs)
+  logVals = make([]string, *argNumLogs)
+  for i := 0; i<*argNumTags; i++ {
+    tagKeys[i] = fmt.Sprintf("tag.key%d", i)
+    tagVals[i] = fmt.Sprintf("tag.value%d", i)
+  }
+  for i := 0; i<*argNumLogs; i++ {
+    logKeys[i] = fmt.Sprintf("log.key%d", i)
+    logVals[i] = fmt.Sprintf("log.value%d", i)
+  }
+}
 
 func min(a, b int) int {
 	if a < b {
@@ -65,48 +87,37 @@ func buildTracer() opentracing.Tracer {
 	})
 }
 
+func makeSpan(tracer opentracing.Tracer, parent opentracing.SpanContext) opentracing.Span {
+  span := tracer.StartSpan("isaac_service", opentracing.ChildOf(parent))
+  for i := 0; i<*argNumTags; i++ {
+    span.SetTag(tagKeys[i], tagVals[i])
+  }
+  for i := 0; i<*argNumLogs; i++ {
+    span.LogFields(otlog.String(logKeys[i], logVals[i]))
+  }
+  return span
+}
+
+
 func generateSpans(tracer opentracing.Tracer, unitsWork int, numSpans int, parent opentracing.SpanContext) {
-	client_span := tracer.StartSpan("make_some_request", opentracing.ChildOf(parent))
+  client_span := makeSpan(tracer, parent)
 	defer client_span.Finish()
-	client_span.SetTag("http.url", "http://somerequesturl.com")
-	client_span.SetTag("http.method", "POST")
-	client_span.SetTag("span.kind", "client")
 	doWork(unitsWork)
 	numSpans -= 1
 	if numSpans == 0 {
 		return
 	}
 
-	server_span := tracer.StartSpan("handle_some_request", opentracing.ChildOf(client_span.Context()))
+  server_span := makeSpan(tracer, client_span.Context())
 	defer server_span.Finish()
-	server_span.SetTag("http.url", "http://somerequesturl.com")
-	server_span.SetTag("span.kind", "server")
-	server_span.LogFields(
-		otlog.String("event", "soft error"),
-		otlog.String("message", "some cache missed :("),
-	)
 	doWork(unitsWork)
 	numSpans -= 1
 	if numSpans == 0 {
 		return
 	}
 
-	db_span := tracer.StartSpan("database_write", opentracing.ChildOf(server_span.Context()))
+  db_span := makeSpan(tracer, server_span.Context())
 	defer db_span.Finish()
-	db_span.SetTag("db.user", "test_user")
-	db_span.SetTag("db.type", "sql")
-	db_span.SetTag("db_statement",
-		"UPDATE ls_employees SET email = 'isaac@lightstep.com' WHERE employeeNumber = 27;")
-	db_span.SetTag("error", true)
-	db_span.LogFields(
-		otlog.String("event", "error"),
-		otlog.String("stack",
-			`File \"example.py\", line 7, in <module>
-caller()
-File \"example.py\", line 5, in caller
-callee()
-File \"example.py\", line 2, in callee
-raise Exception(\"Yikes\")`))
 	doWork(unitsWork)
 	numSpans -= 1
 	if numSpans == 0 {
@@ -138,5 +149,6 @@ func performWork() {
 
 func main() {
 	flag.Parse()
+  setupAnnotations()
 	performWork()
 }
