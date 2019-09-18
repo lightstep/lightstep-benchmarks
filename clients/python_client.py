@@ -22,6 +22,20 @@ SATELLITE_PORTS = [8360, 8361, 8362, 8363, 8364, 8365, 8366, 8367]
 MAX_BUFFERED_SPANS = 10000
 REPORTING_PERIOD = .2  # seconds
 
+args = None
+
+tags = None
+logs = None
+
+def setup_annotations():
+    global tags
+    global logs
+    tags = []
+    for i in range(args.num_tags):
+        tags.append(('tag.key%d' % i, 'tag.value%d' % i))
+    logs = []
+    for i in range(args.num_logs):
+        logs.append(('log.key%d' % i, 'log.value%d' % i))
 
 def do_work(units):
     i = 1.12563
@@ -29,7 +43,8 @@ def do_work(units):
         i *= i
 
 
-def build_tracer(args, tracer_name):
+def build_tracer():
+    tracer_name = args.tracer
     if args.trace and tracer_name == "vanilla":
         logging.info("We're using the python tracer.")
         import lightstep
@@ -60,72 +75,44 @@ def build_tracer(args, tracer_name):
     logging.info("We're using a NoOp tracer.")
     return opentracing.Tracer()
 
+def make_scope(tracer, parent=None):
+    if parent:
+        scope = tracer.start_active_span('isaac_service', child_of=parent)
+    else:
+        scope = tracer.start_active_span('isaac_service')
+    for key, val in tags:
+        scope.span.set_tag(key, val)
+    for key, val in logs:
+        scope.span.log_kv({key : val})
+    return scope
 
-def generate_spans(tracer, units_work, number_spans, scope=None):
+
+def generate_spans(tracer, units_work, number_spans, parent=None):
     assert number_spans >= 1
 
-    # since python-cpp tracer doesn't allow child_of=None
-    child_of_kwargs = {'child_of': scope.span} if scope else {}
-
-    with tracer.start_active_span(
-            operation_name='make_some_request',
-            **child_of_kwargs) as client_scope:
-
-        client_scope.span.set_tag('http.url', 'http://somerequesturl.com')
-        client_scope.span.set_tag('http.method', "POST")
-        client_scope.span.set_tag('span.kind', 'client')
+    with make_scope(tracer, parent) as client_scope:
         do_work(units_work)
         number_spans -= 1
         if number_spans == 0:
             return
-
-        with tracer.start_active_span(
-                operation_name='handle_some_request') as server_scope:
-            server_scope.span.set_tag('http.url', 'http://somerequesturl.com')
-            server_scope.span.set_tag('span.kind', 'server')
-            server_scope.span.log_kv({
-                'event': 'cache_miss',
-                'message': 'some cache missed :('
-            })
-
+        with make_scope(tracer) as server_scope:
             do_work(units_work)
             number_spans -= 1
             if number_spans == 0:
                 return
-
-            with tracer.start_active_span(
-                    operation_name='database_write') as db_scope:
-                db_scope.span.set_tag('db.user', 'test_user')
-                db_scope.span.set_tag('db.type', 'sql')
-                db_scope.span.set_tag(
-                    'db_statement',
-                    "UPDATE ls_employees SET email = 'isaac@lightstep.com' " +
-                    "WHERE employeeNumber = 27;")
-
-                # pretend that an error happened
-                db_scope.span.set_tag('error', True)
-                db_scope.span.log_kv({
-                    'event': 'error',
-                    'stack': """File \"example.py\", line 7, in <module>
-                                caller()
-                                File \"example.py\", line 5, in caller
-                                callee()
-                                File \"example.py\", line 2, in callee
-                                raise Exception(\"Yikes\")"""})
-
+            with make_scope(tracer) as db_scope:
                 do_work(units_work)
                 number_spans -= 1
                 if number_spans == 0:
                     return
-
             generate_spans(tracer, units_work,
-                           number_spans, scope=server_scope)
+                           number_spans, parent=server_scope.span)
 
 
-def perform_work(args, tracer_name):
+def perform_work():
     logging.info("About to run this test: {}".format(args))
 
-    tracer = build_tracer(args, tracer_name)
+    tracer = build_tracer()
 
     sleep_debt = 0
     spans_sent = 0
@@ -194,5 +181,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    setup_annotations()
+
     while True:
-        perform_work(args, args.tracer)
+        perform_work()
