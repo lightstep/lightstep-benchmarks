@@ -27,6 +27,7 @@ args = None
 tags = None
 logs = None
 
+
 def setup_annotations():
     global tags
     global logs
@@ -36,6 +37,7 @@ def setup_annotations():
     logs = []
     for i in range(args.num_logs):
         logs.append(('log.key%d' % i, 'log.value%d' % i))
+
 
 def do_work(units):
     i = 1.12563
@@ -75,6 +77,7 @@ def build_tracer():
     logging.info("We're using a NoOp tracer.")
     return opentracing.Tracer()
 
+
 def make_scope(tracer, parent=None):
     if parent:
         scope = tracer.start_active_span('isaac_service', child_of=parent)
@@ -83,14 +86,14 @@ def make_scope(tracer, parent=None):
     for key, val in tags:
         scope.span.set_tag(key, val)
     for key, val in logs:
-        scope.span.log_kv({key : val})
+        scope.span.log_kv({key: val})
     return scope
 
 
 def generate_spans(tracer, units_work, number_spans, parent=None):
     assert number_spans >= 1
 
-    with make_scope(tracer, parent) as client_scope:
+    with make_scope(tracer, parent):
         do_work(units_work)
         number_spans -= 1
         if number_spans == 0:
@@ -100,7 +103,7 @@ def generate_spans(tracer, units_work, number_spans, parent=None):
             number_spans -= 1
             if number_spans == 0:
                 return
-            with make_scope(tracer) as db_scope:
+            with make_scope(tracer):
                 do_work(units_work)
                 number_spans -= 1
                 if number_spans == 0:
