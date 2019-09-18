@@ -1,10 +1,20 @@
 #include <algorithm>
 #include <cmath>
 #include <thread>
+#include <vector>
+#include <string>
+#include <utility>
 
 #include <gflags/gflags.h>
 #include <lightstep/tracer.h>
 #include <opentracing/noop.h>
+std::initializer_list<uint16_t> SatellitePorts = {8360, 8361, 8362, 8363,
+                                                  8364, 8365, 8366, 8367};
+const size_t MaxBufferedSpans = 10000;
+const int SpansPerLoop = 6;
+const std::chrono::steady_clock::duration ReportingPeriod =
+    std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::milliseconds{200});
 
 DEFINE_string(tracer, "", "Which LightStep tracer to use");
 DEFINE_int32(trace, 0, "Whether to trace");
@@ -14,15 +24,21 @@ DEFINE_int32(work, 0, "The quantity of work to perform between spans");
 DEFINE_int32(repeat, 0, "The number of span generation repetitions to perform");
 DEFINE_int32(no_flush, 0, "Whether to flush on finishing");
 DEFINE_int32(num_tags, 0, "The number of tags to annotate spans with");
-DEFINE_int32(num_logs, 0, "The number of logs to annotate spans with")
+DEFINE_int32(num_logs, 0, "The number of logs to annotate spans with");
 
-std::initializer_list<uint16_t> SatellitePorts = {8360, 8361, 8362, 8363,
-                                                  8364, 8365, 8366, 8367};
-const size_t MaxBufferedSpans = 10000;
-const int SpansPerLoop = 6;
-const std::chrono::steady_clock::duration ReportingPeriod =
-    std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::milliseconds{200});
+std::vector<std::pair<std::string, std::string>> Tags;
+std::vector<std::pair<std::string, std::string>> Logs;
+
+static void setup_annotations() {
+  Tags.reserve(FLAGS_num_tags);
+  for (int i = 0; i < FLAGS_num_tags; ++i) {
+    Tags.emplace_back("tag.key" + std::to_string(i), "tag.value" + std::to_string(i));
+  }
+  Logs.reserve(FLAGS_num_logs);
+  for (int i = 0; i < FLAGS_num_logs; ++i) {
+    Logs.emplace_back("log.key" + std::to_string(i), "log.value" + std::to_string(i));
+  }
+}
 
 template <class T>
 static void do_not_optimize_away(T&& x) {
@@ -37,48 +53,36 @@ static void do_work(int quantity) {
   do_not_optimize_away(x);
 }
 
+static std::unique_ptr<opentracing::Span> make_span(opentracing::Tracer& tracer,
+    const opentracing::SpanContext* parent_context) {
+  auto span = tracer.StartSpan("isaac_service", {opentracing::ChildOf(parent_context)});
+  for (auto& tag : Tags) {
+    span->SetTag(tag.first, tag.second.data());
+  }
+  for (auto& log : Logs) {
+    span->Log({{log.first, log.second.data()}});
+  }
+  return span;
+}
+
 static void generate_spans(opentracing::Tracer& tracer, int work_quantity,
                            int num_spans,
                            const opentracing::SpanContext* parent_context) {
-  auto client_span = tracer.StartSpan("make_some_request",
-                                      {opentracing::ChildOf(parent_context)});
-  client_span->SetTag("http.url", "http://somerequesturl.com");
-  client_span->SetTag("http.method", "POST");
-  client_span->SetTag("span.kind", "client");
+  auto client_span = make_span(tracer, parent_context);
   do_work(work_quantity);
   num_spans -= 1;
   if (num_spans == 0) {
     return;
   }
 
-  auto server_span = tracer.StartSpan(
-      "handle_some_request", {opentracing::ChildOf(&client_span->context())});
-  server_span->SetTag("http.url", "http://somerequesturl.com");
-  server_span->SetTag("span.kind", "server");
-  server_span->Log(
-      {{"event", "soft error"}, {"message", "some cache missed :("}});
+  auto server_span = make_span(tracer, &client_span->context());
   do_work(work_quantity);
   num_spans -= 1;
   if (num_spans == 0) {
     return;
   }
 
-  auto db_span = tracer.StartSpan(
-      "datasbase_write", {opentracing::ChildOf(&server_span->context())});
-  db_span->SetTag("db.user", "test_user");
-  db_span->SetTag("db.type", "sql");
-  db_span->SetTag("db_statement",
-                  "UPDATE ls_employees SET email = 'isaac@lightstep.com' "
-                  "WHERE employeeNumber = 27;");
-  db_span->SetTag("error", true);
-  db_span->Log({{"event", "error"},
-                {"stack",
-                 R"(File \"example.py\", line 7, in <module>
-caller()
-File \"example.py\", line 5, in caller
-callee()
-File \"example.py\", line 2, in callee
-raise Exception(\"Yikes\"))"}});
+  auto db_span = make_span(tracer, &server_span->context());
   do_work(work_quantity);
   num_spans -= 1;
   if (num_spans == 0) {
@@ -130,6 +134,7 @@ static void perform_work() {
 
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+  setup_annotations();
   perform_work();
   return 0;
 }
