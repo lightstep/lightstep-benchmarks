@@ -25,6 +25,26 @@ jobs:
           path: logs
           destination: logs
 
+  python_streaming_test:
+    docker:
+      - image: circleci/python:3.7.4
+    working_directory: ~/repo
+
+    steps:
+      - checkout
+      - run: ./scripts/ci_setup.sh
+      # not installed by ci_setup.sh because this script is shared across
+      # many CI pipelines which all test different tracers
+      - run: sudo pip install lightstep-streaming
+      - run: python cpu_graphs.py --trials 3 --runtime 1 python-cpp
+      - run: python dropped_graphs.py python-cpp
+      - store_artifacts:
+          path: graphs
+          destination: graphs
+      - store_artifacts:
+          path: logs
+          destination: logs
+
   go_test:
     docker:
       - image: circleci/python:3.7.4
@@ -72,5 +92,6 @@ workflows:
   build_and_test:
     jobs:
       - python_test
+      - python_streaming_test
       - go_test
       - cpp_test
