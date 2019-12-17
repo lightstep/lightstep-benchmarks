@@ -13,9 +13,7 @@
   "dependencies": {
     "lightstep-tracer": "^0.24.2",
     "minimist": "^1.2.0",
-    "opentracing": "^0.14.4",
-    "request": "^2.88.0",
-    "request-promise": "^4.2.5"
+    "opentracing": "^0.14.4"
   },
   "devDependencies": {
     "eslint": "^6.7.2",
