@@ -6,9 +6,9 @@ const minimist = require("minimist");
 */
 const args = minimist(process.argv.slice(2));
 let maybeTransport = minimist(process.argv.slice(2))._[0];
-let transport = 'thrift';
-if (maybeTransport && maybeTransport == 'proto' ) {
-  transport = 'proto';
+let transport = "thrift";
+if (maybeTransport && maybeTransport == "proto") {
+  transport = "proto";
 }
 // test args
 // const args = {"_":[],"trace":1,"sleep":15076976,"sleep_interval":100000000,"work":3593930,"repeat":1000,"no_flush":0,"num_tags":10,"num_logs":15};
