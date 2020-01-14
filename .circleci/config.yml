@@ -17,6 +17,7 @@ jobs:
       - run: sudo pip install lightstep
       - run: pytest benchmark/test.py
       - run: python cpu_graphs.py --trials 3 --runtime 1 python
+      - run: python cpu_graphs.py --trials 3 --runtime 1 thrift
       - run: python dropped_graphs.py python
       - store_artifacts:
           path: graphs

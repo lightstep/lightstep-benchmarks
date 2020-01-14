@@ -60,6 +60,19 @@ def build_tracer():
             periodic_flush_seconds=REPORTING_PERIOD,
             max_span_records=MAX_BUFFERED_SPANS,
         )
+    elif args.trace and tracer_name == "thrift":
+        logging.info("We're using the python tracer.")
+        import lightstep
+        return lightstep.Tracer(
+            component_name='isaac_service',
+            collector_port=SATELLITE_PORTS[0],
+            collector_host='localhost',
+            collector_encryption='none',
+            use_thrift=True,
+            access_token='developer',
+            periodic_flush_seconds=REPORTING_PERIOD,
+            max_span_records=MAX_BUFFERED_SPANS,
+        )
     elif args.trace and tracer_name == "cpp":
         logging.info("We're using the python-cpp tracer.")
         import lightstep_streaming
