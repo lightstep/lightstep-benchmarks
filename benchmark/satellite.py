@@ -26,10 +26,10 @@ class MockSatelliteHandler:
 
         self._handler = start_logging_subprocess(
             [
-                "trickle",
-                "-s",
-                "-u", str(BANDWIDTH_LIMIT_KB_PER_SEC),
-                "-d", str(BANDWIDTH_LIMIT_KB_PER_SEC),
+                # "trickle",
+                # "-s",
+                # "-u", str(BANDWIDTH_LIMIT_KB_PER_SEC),
+                # "-d", str(BANDWIDTH_LIMIT_KB_PER_SEC),
                 "python3", mock_satellite_path, str(port), mode
             ],
             mock_satellite_logger)
