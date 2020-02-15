@@ -98,7 +98,7 @@ const generateSpan = (tracer, depth, units, parent = null) => {
 const buildTracer = () => {
   const tracer = new lightstep.Tracer({
     transport: transport, // IMPORTANT: THIS IS WHERE WE CAN CHANGE TO "PROTO" AND SEE TRANSPORT PERF DIFFERENCE
-    component_name: "steph_service",
+    component_name: "test",
     disable_report_on_exit: Boolean(args.no_flush),
     // disable_reporting_loop: false, // would need to set this to true and call flush manually for our own reporting period
     // access_token: '', // for testing on public
