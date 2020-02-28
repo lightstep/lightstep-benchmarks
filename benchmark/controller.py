@@ -44,6 +44,12 @@ client_args = {
     'python-cpp': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
         'cpp'],
+    'js2': [
+        'node', path.join(PROJECT_DIR, 'clients/js_client_v2/src/index.js'),
+    ],
+    'js2-proto': [
+        'node', path.join(PROJECT_DIR, 'clients/js_client_v2/src/index.js'),
+        'proto'],
     'js': [
         'node', path.join(PROJECT_DIR, 'clients/js_client.js'),
     ],
