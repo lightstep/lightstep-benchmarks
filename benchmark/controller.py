@@ -41,6 +41,9 @@ client_args = {
     'python': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
         'vanilla'],
+    'python-thrift': [
+        'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
+        'vanilla'],
     'python-cpp': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
         'cpp'],
