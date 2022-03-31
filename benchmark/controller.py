@@ -28,7 +28,7 @@ CONTROLLER_PORT = 8023
 DEFAULT_SLEEP_INTERVAL = 10**8  # ns
 
 # since calibration_work should be set to produce roughly 100 spans / second,
-# this value of CALIBARATION_REPEAT should make the test last 5 seconds.
+# this value of CALIBRATION_REPEAT should make the test last 5 seconds.
 CALIBRATION_REPEAT = 500
 CALIBRATION_TIMEOUT = 60
 

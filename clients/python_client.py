@@ -51,7 +51,7 @@ def build_tracer():
         logging.info("We're using the python tracer.")
         import lightstep
         return lightstep.Tracer(
-            component_name='isaac_service',
+            component_name='python_benchmark_service',
             collector_port=SATELLITE_PORTS[0],
             collector_host='localhost',
             collector_encryption='none',
@@ -64,7 +64,7 @@ def build_tracer():
         logging.info("We're using the python-cpp tracer.")
         import lightstep_streaming
         return lightstep_streaming.Tracer(
-            component_name='isaac_service',
+            component_name='python_benchmark_service',
             access_token='developer',
             use_stream_recorder=True,
             collector_plaintext=True,
@@ -80,9 +80,12 @@ def build_tracer():
 
 def make_scope(tracer, parent=None):
     if parent:
-        scope = tracer.start_active_span('isaac_service', child_of=parent)
+        scope = tracer.start_active_span(
+            'python_benchmark_service',
+            child_of=parent
+        )
     else:
-        scope = tracer.start_active_span('isaac_service')
+        scope = tracer.start_active_span('python_benchmark_service')
     for key, val in tags:
         scope.span.set_tag(key, val)
     for key, val in logs:

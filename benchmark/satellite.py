@@ -1,8 +1,10 @@
-import time
+import logging
+import platform
 import requests
+import time
+
 from os import path
 from .utils import BENCHMARK_DIR, start_logging_subprocess
-import logging
 from .exceptions import SatelliteBadResponse, DeadSatellites
 
 DEFAULT_PORTS = list(range(8360, 8368))
@@ -24,15 +26,18 @@ class MockSatelliteHandler:
         mock_satellite_path = path.join(BENCHMARK_DIR, 'mock_satellite.py')
         mock_satellite_logger = logging.getLogger(f'{__name__}.{port}')
 
-        self._handler = start_logging_subprocess(
-            [
+        args = ["python3", mock_satellite_path, str(port), mode]
+        if platform.system() == "Linux":
+            args = [
                 "trickle",
                 "-s",
-                "-u", str(BANDWIDTH_LIMIT_KB_PER_SEC),
-                "-d", str(BANDWIDTH_LIMIT_KB_PER_SEC),
-                "python3", mock_satellite_path, str(port), mode
-            ],
-            mock_satellite_logger)
+                "-u",
+                str(BANDWIDTH_LIMIT_KB_PER_SEC),
+                "-d",
+                str(BANDWIDTH_LIMIT_KB_PER_SEC)
+            ] + args
+
+        self._handler = start_logging_subprocess(args, mock_satellite_logger)
 
     def is_running(self):
         return self._handler.poll() is None
@@ -72,7 +77,7 @@ class MockSatelliteGroup:
         Parameters
         ----------
         mode : str
-            Mode deteremines the response characteristics, like timing, of the
+            Mode determines the response characteristics, like timing, of the
             mock satellites. Can be 'typical', 'slow_succeed', or 'slow_fail'.
         ports : list of int
             Ports the mock satellites should listen on. A mock satellite will

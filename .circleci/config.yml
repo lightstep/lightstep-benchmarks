@@ -2,7 +2,7 @@ version: 2
 jobs:
   python_test:
     docker:
-      - image: circleci/python:3.7.4
+      - image: cimg/python:3.9.12
     working_directory: ~/repo
 
     steps:
@@ -14,7 +14,7 @@ jobs:
       - run: flake8 benchmark/*.py *.py clients/*.py
       # not installed by ci_setup.sh because this script is shared across
       # many CI pipelines which all test different tracers
-      - run: sudo pip install lightstep
+      - run: pip install lightstep
       - run: pytest benchmark/test.py
       - run: python cpu_graphs.py --trials 3 --runtime 1 python
       - run: python dropped_graphs.py python
@@ -27,7 +27,7 @@ jobs:
 
   python_streaming_test:
     docker:
-      - image: circleci/python:3.7.4
+      - image: cimg/python:3.9.12
     working_directory: ~/repo
 
     steps:
@@ -35,7 +35,7 @@ jobs:
       - run: ./scripts/ci_setup.sh
       # not installed by ci_setup.sh because this script is shared across
       # many CI pipelines which all test different tracers
-      - run: sudo pip install lightstep-streaming
+      - run: pip install lightstep-streaming
       - run: python cpu_graphs.py --trials 3 --runtime 1 python-cpp
       - run: python dropped_graphs.py python-cpp
       - store_artifacts:
@@ -47,13 +47,18 @@ jobs:
 
   go_test:
     docker:
-      - image: circleci/python:3.7.4
+      - image: cimg/python:3.9.12
     working_directory: ~/repo
 
     steps:
       - checkout
+      - run:
+          name: add go to path
+          command: |
+            echo 'export PATH=$PATH:/usr/local/go/bin' >> $BASH_ENV
+            source $BASH_ENV
       - run: ./scripts/ci_setup.sh
-      - run: sudo ./ci/setup_go_client.sh
+      - run: ./ci/setup_go_client.sh
 
       # not installed by ci_setup.sh because this script is shared across
       # many CI pipelines which all test different tracers
@@ -68,13 +73,13 @@ jobs:
 
   cpp_test:
     docker:
-      - image: circleci/python:3.7.4
+      - image: cimg/python:3.9.12
     working_directory: ~/repo
 
     steps:
       - checkout
       - run: ./scripts/ci_setup.sh
-      - run: sudo ./ci/setup_cpp_client.sh
+      - run: ./ci/setup_cpp_client.sh
 
       # not installed by ci_setup.sh because this script is shared across
       # many CI pipelines which all test different tracers

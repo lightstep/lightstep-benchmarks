@@ -17,7 +17,7 @@ def start_logging_subprocess(cli_args, logger, popen_class=subprocess.Popen):
         cli_args,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        bufsize=1  # 1 sets this to line-buffered
+        bufsize=0  # 0 sets this to unbuffered
     )
 
     stdout_thread = Thread(
@@ -95,7 +95,7 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
             self.binary_body = bytearray()
 
             while True:
-                # chunk begind with [length hex]\r\n
+                # chunk begins with [length hex]\r\n
                 read_len = self._read_chunk_length()
 
                 # when there is a 0-length chunk we are done
@@ -107,7 +107,8 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
                 self.binary_body += binary_chunk
 
                 # chunk ends with /r/n
-                self._read_delimiter()
+                if not self._read_delimiter():
+                    break
 
         else:
             raise Exception(
@@ -127,8 +128,11 @@ class ChunkedRequestHandler(BaseHTTPRequestHandler):
     def _read_delimiter(self, delimiter=b'\r\n'):
         bytes_read = self.rfile.read(len(delimiter))
 
+        if bytes_read == '':
+            return False
         if bytes_read != delimiter:
             raise Exception("Unable to read delimiter.")
+        return True
 
     def _read_chunk_length(self, delimiter=b'\r\n', max_bytes=16):
         buf = bytearray()

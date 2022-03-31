@@ -8,3 +8,4 @@ logs
 *.pyc
 sandbox
 node_modules
+clients/go_client
