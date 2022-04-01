@@ -55,7 +55,7 @@ static void do_work(int quantity) {
 
 static std::unique_ptr<opentracing::Span> make_span(opentracing::Tracer& tracer,
     const opentracing::SpanContext* parent_context) {
-  auto span = tracer.StartSpan("isaac_service", {opentracing::ChildOf(parent_context)});
+  auto span = tracer.StartSpan("cpp_benchmark_service", {opentracing::ChildOf(parent_context)});
   for (auto& tag : Tags) {
     span->SetTag(tag.first, tag.second.data());
   }
@@ -97,7 +97,7 @@ static std::shared_ptr<opentracing::Tracer> build_tracer() {
     return opentracing::MakeNoopTracer();
   }
   lightstep::LightStepTracerOptions options;
-  options.component_name = "isaac_service";
+  options.component_name = "cpp_benchmark_service";
   options.access_token = "developer";
   options.collector_plaintext = true;
   options.use_stream_recorder = true;

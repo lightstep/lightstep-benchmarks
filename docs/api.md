@@ -27,9 +27,14 @@ with Controller('python', target_cpu_usage=.7) as c:
         print(f'{result.dropped_spans} spans were dropped.')
 ```
 
-The `Controller`'s constructor is passed the name of a client. To date two clients have been written: Pass 'python' to test the [legacy Python Tracer](https://github.com/lightstep/lightstep-tracer-python) or 'python-cpp' to test the [Streaming Python Tracer](https://pypi.org/project/lightstep-native/). Since `target_cpu_usage=.7` was passed to the controller, it will tune the amount of work the client program does such that it uses a baseline 70% CPU when a NoOp tracer is running.
+The `Controller`'s constructor is passed the name of a client. Three clients are currently available. You can pass
+* 'python' to test the [legacy Python Tracer](https://github.com/lightstep/lightstep-tracer-python)
+* 'python-cpp' to test the [Streaming Python Tracer](https://pypi.org/project/lightstep-native/)
+* 'go' to test the [go tracer](https://github.com/lightstep/lightstep-tracer-go)
 
-A `MockSatelliteGroup` can be started in different modes: 'typical', 'slow_success', and 'slow_fail.' 'typical' Should be used unless you read the code and know what you're doing. The `Controller.benchmark` method is used to run a test. `trace=True` specifies that a real tracer -- in this case the legacy Python tracer -- should be used for this test. Since we passed a `MockSatelliteGroup` object to `benchmark`, the `Result.spans_received` and `Result.dropped_spans` will be accurate, which was not the case in our "Getting Started" example. A mock satellite group can be reused across many calls to `Controller.benchmark`. `spans_per_second=100` and `runtime=10` set the client program to generate around 100 spans a second and run for 10 seconds. Since `no_timeout=False`, there will be a timeout if the test doesn't complete in `2 * runtime` seconds. If instead `no_timeout=True`, there would never be a timeout.
+Since `target_cpu_usage=.7` was passed to the controller, it will tune the amount of work the client program does such that it uses a baseline 70% CPU when a NoOp tracer is running.
+
+A `MockSatelliteGroup` can be started in different modes: 'typical', 'slow_success', and 'slow_fail.' 'typical' Should be used unless you've read the code and know what you're doing. The `Controller.benchmark` method is used to run a test. `trace=True` specifies that a real tracer -- in this case the legacy Python tracer -- should be used for this test. Since we passed a `MockSatelliteGroup` object to `benchmark`, the `Result.spans_received` and `Result.dropped_spans` will be accurate, which was not the case in our "Getting Started" example. A mock satellite group can be reused across many calls to `Controller.benchmark`. `spans_per_second=100` and `runtime=10` set the client program to generate around 100 spans a second and run for 10 seconds. Since `no_timeout=False`, there will be a timeout if the test doesn't complete in `2 * runtime` seconds. If instead `no_timeout=True`, there would never be a timeout.
 
 `Controller.benchmark` returns a `Result` object. All of this object's fields are explained in the code sample.
 

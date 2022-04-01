@@ -3,11 +3,11 @@
 set -e
 
 [ -z "${OPENTRACING_VERSION}" ] && export OPENTRACING_VERSION="v1.5.0"
-[ -z "${LIGHTSTEP_VERSION}" ] && export LIGHTSTEP_VERSION="v0.11.0"
-[ -z "${PROTOBUF_VERSION}" ] && export PROTOBUF_VERSION="3.5.1"
+[ -z "${LIGHTSTEP_VERSION}" ] && export LIGHTSTEP_VERSION="v0.14.0"
+[ -z "${PROTOBUF_VERSION}" ] && export PROTOBUF_VERSION="3.19.4"
 
-apt-get update 
-apt-get install --no-install-recommends --no-install-suggests -y \
+sudo apt-get update
+sudo apt-get install --no-install-recommends --no-install-suggests -y \
                 build-essential \
                 cmake \
                 pkg-config \
@@ -15,7 +15,8 @@ apt-get install --no-install-recommends --no-install-suggests -y \
                 libevent-dev \
                 curl
 
-mkdir -p /build
+sudo mkdir -p /build
+sudo chown circleci: /build
 pushd /build
 
 # Build protobuf
@@ -23,8 +24,8 @@ curl -OL https://github.com/google/protobuf/releases/download/v${PROTOBUF_VERSIO
 tar zxf protobuf-cpp-${PROTOBUF_VERSION}.tar.gz
 cd protobuf-${PROTOBUF_VERSION}
 ./configure
-make && make install
-ldconfig
+make && sudo make install
+sudo ldconfig
 cd /build
 
 # Build OpenTracing
@@ -32,14 +33,13 @@ git clone -b ${OPENTRACING_VERSION} https://github.com/opentracing/opentracing-c
 cd opentracing-cpp
 mkdir .build && cd .build
 cmake -DCMAKE_BUILD_TYPE=RELEASE -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=OFF ..
-make && make install
+make && sudo make install
 cd /build
 
 # Build lightstep
 git clone -b ${LIGHTSTEP_VERSION} https://github.com/lightstep/lightstep-tracer-cpp.git
 cd lightstep-tracer-cpp
-mkdir .build
-cd .build
+mkdir .build && cd .build
 cmake -DCMAKE_BUILD_TYPE=RELEASE \
       -DBUILD_SHARED_LIBS=OFF \
       -DBUILD_TESTING=OFF \
@@ -48,7 +48,7 @@ cmake -DCMAKE_BUILD_TYPE=RELEASE \
       -DWITH_LIBEVENT=ON \
       -DWITH_CARES=OFF \
       ..
-make && make install
+make && sudo make install
 cd /build
 
 popd

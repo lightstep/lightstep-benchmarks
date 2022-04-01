@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-  "fmt"
+	"fmt"
 	"github.com/lightstep/lightstep-tracer-go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -12,13 +12,16 @@ import (
 )
 
 const (
-	satellitePort    = 8360
-	reportingPeriod  = 200 * time.Millisecond
-	maxBufferedSpans = 10000
-	spansPerLoop     = 6
+	satellitePort = 8360
+	spansPerLoop  = 6
+
+	// These values match the default tracer configuration
+	reportingPeriod    = 2500 * time.Millisecond
+	minReportingPeriod = 100 * time.Millisecond
+	maxBufferedSpans   = 1000
 )
 
-var argTracer = flag.String("tracer", "", "Which LightStep tracer to use")
+var argTracer = flag.String("traceR", "", "Which LightStep tracer to use")
 var argTrace = flag.Int("trace", 0, "Whether to trace")
 var argSleep = flag.Float64("sleep", 0, "The amount of time to sleep for each span")
 var argSleepInterval = flag.Int("sleep_interval", 0, "The duration of each sleep")
@@ -35,18 +38,18 @@ var logKeys []string = nil
 var logVals []string = nil
 
 func setupAnnotations() {
-  tagKeys = make([]string, *argNumTags)
-  tagVals = make([]string, *argNumTags)
-  logKeys = make([]string, *argNumLogs)
-  logVals = make([]string, *argNumLogs)
-  for i := 0; i<*argNumTags; i++ {
-    tagKeys[i] = fmt.Sprintf("tag.key%d", i)
-    tagVals[i] = fmt.Sprintf("tag.value%d", i)
-  }
-  for i := 0; i<*argNumLogs; i++ {
-    logKeys[i] = fmt.Sprintf("log.key%d", i)
-    logVals[i] = fmt.Sprintf("log.value%d", i)
-  }
+	tagKeys = make([]string, *argNumTags)
+	tagVals = make([]string, *argNumTags)
+	logKeys = make([]string, *argNumLogs)
+	logVals = make([]string, *argNumLogs)
+	for i := 0; i < *argNumTags; i++ {
+		tagKeys[i] = fmt.Sprintf("tag.key%d", i)
+		tagVals[i] = fmt.Sprintf("tag.value%d", i)
+	}
+	for i := 0; i < *argNumLogs; i++ {
+		logKeys[i] = fmt.Sprintf("log.key%d", i)
+		logVals[i] = fmt.Sprintf("log.value%d", i)
+	}
 }
 
 func min(a, b int) int {
@@ -72,35 +75,60 @@ func buildTracer() opentracing.Tracer {
 		return opentracing.NoopTracer{}
 	}
 	return lightstep.NewTracer(lightstep.Options{
+		// Set this to your access token and switch the Collector and SystemMetrics
+		// entries below to report to Lightstep SaaS
 		AccessToken: "developer",
 		UseHttp:     true,
 		Tags: map[string]interface{}{
-			lightstep.ComponentNameKey: "isaac_service",
+			lightstep.ComponentNameKey: "go_benchmark_service",
 		},
+		// Comment this entry and uncomment the next one to report to Lightstep SaaS
 		Collector: lightstep.Endpoint{
-			Host:      "127.0.0.1",
+			Host:      "localhost",
 			Port:      satellitePort,
 			Plaintext: true,
 		},
-		ReportingPeriod:  reportingPeriod,
-		MaxBufferedSpans: maxBufferedSpans,
+		//Collector: lightstep.Endpoint{
+		//	Host:      "ingest.lightstep.com",
+		//	Port:      443,
+		//	Plaintext: false,
+		//},
+		ReportingPeriod:    reportingPeriod,
+		MinReportingPeriod: minReportingPeriod,
+		MaxBufferedSpans:   maxBufferedSpans,
+		// Comment this entry and uncomment the next one to report to Lightstep SaaS
+		SystemMetrics: lightstep.SystemMetricsOptions{
+			Endpoint: lightstep.Endpoint{
+				Host:      "localhost",
+				Port:      8360,
+				Plaintext: true,
+			},
+		},
+		//SystemMetrics: lightstep.SystemMetricsOptions{
+		//	Endpoint: lightstep.Endpoint{
+		//		Host:      "ingest.lightstep.com",
+		//		Port:      443,
+		//		Plaintext: false,
+		//	},
+		//},
+		UseGRPC: true,
 	})
 }
 
 func makeSpan(tracer opentracing.Tracer, parent opentracing.SpanContext) opentracing.Span {
-  span := tracer.StartSpan("isaac_service", opentracing.ChildOf(parent))
-  for i := 0; i<*argNumTags; i++ {
-    span.SetTag(tagKeys[i], tagVals[i])
-  }
-  for i := 0; i<*argNumLogs; i++ {
-    span.LogFields(otlog.String(logKeys[i], logVals[i]))
-  }
-  return span
+	span := tracer.StartSpan("benchmark_test_service", opentracing.ChildOf(parent))
+	for i := 0; i < *argNumTags; i++ {
+		span.SetTag(tagKeys[i], tagVals[i])
+	}
+	for i := 0; i < *argNumLogs; i++ {
+		span.LogFields(otlog.String(logKeys[i], logVals[i]))
+	}
+	span.SetTag("trial", "alpha")
+	return span
 }
 
-
 func generateSpans(tracer opentracing.Tracer, unitsWork int, numSpans int, parent opentracing.SpanContext) {
-  client_span := makeSpan(tracer, parent)
+	client_span := makeSpan(tracer, parent)
 	defer client_span.Finish()
 	doWork(unitsWork)
 	numSpans -= 1
@@ -108,7 +136,7 @@ func generateSpans(tracer opentracing.Tracer, unitsWork int, numSpans int, paren
 		return
 	}
 
-  server_span := makeSpan(tracer, client_span.Context())
+	server_span := makeSpan(tracer, client_span.Context())
 	defer server_span.Finish()
 	doWork(unitsWork)
 	numSpans -= 1
@@ -116,7 +144,7 @@ func generateSpans(tracer opentracing.Tracer, unitsWork int, numSpans int, paren
 		return
 	}
 
-  db_span := makeSpan(tracer, server_span.Context())
+	db_span := makeSpan(tracer, server_span.Context())
 	defer db_span.Finish()
 	doWork(unitsWork)
 	numSpans -= 1
@@ -149,6 +177,6 @@ func performWork() {
 
 func main() {
 	flag.Parse()
-  setupAnnotations()
+	setupAnnotations()
 	performWork()
 }

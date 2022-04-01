@@ -122,7 +122,8 @@ if __name__ == "__main__":
 
     logging.info(f'Running satellite on port {args.port} in {args.mode} mode')
 
-    # although this can't use "real" threading because of GIL, it can switch to
-    # execute something else when we are waiting on a synchronous syscall
-    httpd = ThreadingHTTPServer(('', args.port), SatelliteRequestHandler)
+    httpd = ThreadingHTTPServer(
+        ('127.0.0.1', args.port),
+        SatelliteRequestHandler
+    )
     httpd.serve_forever()
