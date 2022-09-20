@@ -9,3 +9,4 @@ logs
 sandbox
 node_modules
 clients/go_client
+lightbench-env/
