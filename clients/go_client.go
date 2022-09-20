@@ -4,11 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
+	"time"
+
 	"github.com/lightstep/lightstep-tracer-go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"math"
-	"time"
 )
 
 const (
@@ -21,7 +22,7 @@ const (
 	maxBufferedSpans   = 1000
 )
 
-var argTracer = flag.String("traceR", "", "Which LightStep tracer to use")
+var argTracer = flag.String("traceR", "", "Which Lightstep tracer to use")
 var argTrace = flag.Int("trace", 0, "Whether to trace")
 var argSleep = flag.Float64("sleep", 0, "The amount of time to sleep for each span")
 var argSleepInterval = flag.Int("sleep_interval", 0, "The duration of each sleep")

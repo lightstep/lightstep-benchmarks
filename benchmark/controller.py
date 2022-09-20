@@ -59,6 +59,12 @@ client_args = {
     'cpp': [
         path.join(PROJECT_DIR, 'clients/cpp_client'),
     ],
+    'otel_python': [
+        'python3', path.join(PROJECT_DIR, 'clients/otel_python_client.py'),
+    ],
+    'otel_go': [
+        path.join(PROJECT_DIR, 'clients/otel_go_client/otel_go_client'),
+    ],
 }
 
 logger = logging.getLogger(__name__)
