@@ -1,0 +1,30 @@
+receivers:
+    docker_stats:
+      collection_interval: 2s
+    otlp:
+      protocols:
+        grpc:
+        http:
+
+exporters:
+    logging:
+        loglevel: info
+    # configuring otlp to Lightstep
+    otlp:
+      endpoint: ingest.lightstep.com:443
+      headers:
+        "lightstep-access-token": "${LS_ACCESS_TOKEN}"
+
+processors:
+    batch:
+
+service:
+    pipelines:
+      metrics:
+        receivers: [docker_stats]
+        processors: [batch]
+        exporters: [otlp]
+      traces/otlp:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [logging]

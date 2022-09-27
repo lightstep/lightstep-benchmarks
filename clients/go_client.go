@@ -22,7 +22,6 @@ const (
 	maxBufferedSpans   = 1000
 )
 
-var argTracer = flag.String("traceR", "", "Which Lightstep tracer to use")
 var argTrace = flag.Int("trace", 0, "Whether to trace")
 var argSleep = flag.Float64("sleep", 0, "The amount of time to sleep for each span")
 var argSleepInterval = flag.Int("sleep_interval", 0, "The duration of each sleep")
@@ -76,42 +75,26 @@ func buildTracer() opentracing.Tracer {
 		return opentracing.NoopTracer{}
 	}
 	return lightstep.NewTracer(lightstep.Options{
-		// Set this to your access token and switch the Collector and SystemMetrics
-		// entries below to report to Lightstep SaaS
 		AccessToken: "developer",
 		UseHttp:     true,
 		Tags: map[string]interface{}{
 			lightstep.ComponentNameKey: "go_benchmark_service",
 		},
-		// Comment this entry and uncomment the next one to report to Lightstep SaaS
 		Collector: lightstep.Endpoint{
-			Host:      "localhost",
+			Host:      "satellite-lightstep-tracer-go",
 			Port:      satellitePort,
 			Plaintext: true,
 		},
-		//Collector: lightstep.Endpoint{
-		//	Host:      "ingest.lightstep.com",
-		//	Port:      443,
-		//	Plaintext: false,
-		//},
 		ReportingPeriod:    reportingPeriod,
 		MinReportingPeriod: minReportingPeriod,
 		MaxBufferedSpans:   maxBufferedSpans,
-		// Comment this entry and uncomment the next one to report to Lightstep SaaS
 		SystemMetrics: lightstep.SystemMetricsOptions{
 			Endpoint: lightstep.Endpoint{
-				Host:      "localhost",
+				Host:      "satellite-lightstep-tracer-go",
 				Port:      8360,
 				Plaintext: true,
 			},
 		},
-		//SystemMetrics: lightstep.SystemMetricsOptions{
-		//	Endpoint: lightstep.Endpoint{
-		//		Host:      "ingest.lightstep.com",
-		//		Port:      443,
-		//		Plaintext: false,
-		//	},
-		//},
 		UseGRPC: true,
 	})
 }

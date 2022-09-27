@@ -1,0 +1,7 @@
+FROM python:3
+
+WORKDIR /app
+ADD requirements-dev.txt /app
+RUN pip install -r requirements-dev.txt
+ADD clients/python_client.py ./
+ADD clients/parser.py ./

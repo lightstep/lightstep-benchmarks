@@ -54,7 +54,7 @@ def build_tracer():
         return lightstep.Tracer(
             component_name='python_benchmark_service',
             collector_port=SATELLITE_PORTS[0],
-            collector_host='localhost',
+            collector_host='satellite-lightstep-tracer-python',
             collector_encryption='none',
             use_http=True,
             access_token='developer',
@@ -69,7 +69,7 @@ def build_tracer():
             access_token='developer',
             use_stream_recorder=True,
             collector_plaintext=True,
-            satellite_endpoints=[{'host': 'localhost', 'port': p}
+            satellite_endpoints=[{'host': 'satellite-lightstep-tracer-python-cpp', 'port': p}
                                  for p in SATELLITE_PORTS],
             max_buffered_spans=MAX_BUFFERED_SPANS,
             reporting_period=REPORTING_PERIOD * 10**6,  # s --> us

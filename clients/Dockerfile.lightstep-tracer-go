@@ -1,0 +1,5 @@
+FROM golang:1.18
+
+WORKDIR /app
+ADD ./clients ./clients
+RUN cd clients && go mod download && go build ./go_client.go

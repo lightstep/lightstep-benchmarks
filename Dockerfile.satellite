@@ -1,0 +1,6 @@
+FROM python:3
+
+ADD ./requirements-dev.txt ./requirements-dev.txt
+RUN pip install -r ./requirements-dev.txt
+
+ADD ./benchmark /benchmark

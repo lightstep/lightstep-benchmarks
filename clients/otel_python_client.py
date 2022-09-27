@@ -7,7 +7,7 @@ from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     ConsoleSpanExporter,
 )
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from parser import get_args
 
 SPANS_PER_LOOP = 6
@@ -41,7 +41,7 @@ def do_work(units):
 
 def build_tracer():
     provider = TracerProvider()
-    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint="localhost:8360", headers=(("lightstep-access-token", "developer"),), insecure=True))
+    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint="http://satellite-otel-python:8360/v1/traces", headers=(("lightstep-access-token", "developer"),)))
     provider.add_span_processor(processor)
 
     # Sets the global default tracer provider
@@ -97,10 +97,7 @@ def perform_work():
 
 
 if __name__ == '__main__':
-    
     args = get_args()
-
     setup_annotations()
-
     while True:
         perform_work()

@@ -1,0 +1,100 @@
+version: '3.9'
+services:
+    lightstep-tracer-python:
+      container_name: lightstep-tracer-python
+      build:
+        dockerfile: ./clients/Dockerfile.lightstep-tracer-python
+      networks:
+          - benchmarking
+      command: "python /app/python_client.py --num_tags 10 --num_logs 10 --repeat 10000000 --work 10000 --sleep 10 --sleep_interval 1 --trace 1 vanilla"
+      depends_on:
+        - satellite-lightstep-tracer-python
+      restart: always
+    lightstep-tracer-go:
+      container_name: lightstep-tracer-go
+      build:
+        dockerfile: ./clients/Dockerfile.lightstep-tracer-go
+      networks:
+          - benchmarking
+      command: "/app/clients/go_client --num_tags 10 --num_logs 10 --repeat 10000000 --work 10000 --sleep 10 --sleep_interval 1 --trace 1 vanilla"
+      depends_on:
+        - satellite-lightstep-tracer-go
+      restart: always
+    otel-python:
+      container_name: otel-python
+      build:
+        dockerfile: ./clients/Dockerfile.otel-python
+      networks:
+          - benchmarking
+      command: "python /app/otel_python_client.py --num_tags 10 --num_logs 10 --repeat 10000000 --work 10000 --sleep 10 --sleep_interval 1 --trace 1 vanilla"
+      depends_on:
+        - otel-collector
+      restart: always
+    otel-go:
+      container_name: otel-go
+      build:
+        dockerfile: ./clients/Dockerfile.otel-go
+      networks:
+          - benchmarking
+      command: "/app/otel_go_client --num_tags 10 --num_logs 10 --repeat 10000000 --work 10000 --sleep 10 --sleep_interval 1 --trace 1 vanilla"
+      depends_on:
+        - otel-collector
+      restart: always
+    # run clients 
+    # run collector + docker stats
+    otel-collector:
+      container_name: otel-collector
+      image: docker.io/library/otelcontribcol
+      command: ["--config=/conf/collector.yml"]
+      environment:
+        LS_ACCESS_TOKEN: ${LS_ACCESS_TOKEN}
+      networks:
+          - benchmarking
+      volumes:
+          - ./config/collector.yml:/conf/collector.yml:rw
+          - /var/run/docker.sock:/var/run/docker.sock
+
+    # run satellite as destination
+    satellite-lightstep-tracer-go:
+      container_name: satellite-lightstep-tracer-go
+      build:
+        dockerfile: ./Dockerfile.satellite
+      command: "python benchmark/mock_satellite.py 8360 typical lightstep-tracer-go"
+      environment:
+        LS_ACCESS_TOKEN: ${LS_ACCESS_TOKEN}
+      restart: always
+      networks:
+          - benchmarking
+    satellite-lightstep-tracer-python:
+      container_name: satellite-lightstep-tracer-python
+      build:
+        dockerfile: ./Dockerfile.satellite
+      command: "python benchmark/mock_satellite.py 8360 typical lightstep-tracer-python"
+      environment:
+        LS_ACCESS_TOKEN: ${LS_ACCESS_TOKEN}
+      restart: always
+      networks:
+          - benchmarking
+    satellite-otel-go:
+      container_name: satellite-otel-go
+      build:
+        dockerfile: ./Dockerfile.satellite
+      command: "python benchmark/mock_satellite.py 8360 typical otel-go"
+      environment:
+        LS_ACCESS_TOKEN: ${LS_ACCESS_TOKEN}
+      restart: always
+      networks:
+          - benchmarking
+    satellite-otel-python:
+      container_name: satellite-otel-python
+      build:
+        dockerfile: ./Dockerfile.satellite
+      command: "python benchmark/mock_satellite.py 8360 typical otel-python"
+      environment:
+        LS_ACCESS_TOKEN: ${LS_ACCESS_TOKEN}
+      restart: always
+      networks:
+          - benchmarking
+
+networks:
+    benchmarking:

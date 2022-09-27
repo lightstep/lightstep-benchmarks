@@ -38,31 +38,32 @@ NUM_LOGS = 15
 
 calibration_work = 200000
 client_args = {
-    'python': [
+    'lightstep-tracer-python': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
         'vanilla'],
-    'python-cpp': [
+    'lightstep-tracer-python-cpp': [
         'python3', path.join(PROJECT_DIR, 'clients/python_client.py'),
         'cpp'],
-    'js2': [
+    'lightstep-tracer-js2': [
         'node', path.join(PROJECT_DIR, 'clients/js_client_v2/src/index.js'),
     ],
-    'js2-proto': [
+    'lightstep-tracer-js2-proto': [
         'node', path.join(PROJECT_DIR, 'clients/js_client_v2/src/index.js'),
         'proto'],
-    'js': [
+    'lightstep-tracer-js': [
         'node', path.join(PROJECT_DIR, 'clients/js_client.js'),
     ],
-    'go': [
+    'lightstep-tracer-go': [
         path.join(PROJECT_DIR, 'clients/go_client'),
     ],
-    'cpp': [
+    'lightstep-tracer-cpp': [
         path.join(PROJECT_DIR, 'clients/cpp_client'),
     ],
-    'otel_python': [
+    'otel-python': [
         'python3', path.join(PROJECT_DIR, 'clients/otel_python_client.py'),
+        'vanilla'
     ],
-    'otel_go': [
+    'otel-go': [
         path.join(PROJECT_DIR, 'clients/otel_go_client/otel_go_client'),
     ],
 }
@@ -443,7 +444,7 @@ class Controller:
             no_flush=False,
             spans_per_second=100,
             runtime=10,
-            no_timeout=False):
+            no_timeout=False) -> Result:
         """
         Run a test using the client this Controller is bound to.
 
